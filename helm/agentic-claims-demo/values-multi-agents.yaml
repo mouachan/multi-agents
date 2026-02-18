@@ -1,0 +1,121 @@
+---
+# =============================================================================
+# values-multi-agents.yaml
+# Deploiement multi-agents (claims + AO) dans le namespace multi-agents
+# Reutilise les modeles GPU existants (llama-3-3-70b, embeddinggemma-300m)
+# =============================================================================
+
+global:
+  namespace: multi-agents
+  clusterDomain: "apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com"
+  imageRegistry: quay.io/mouachan/agentic-claims-demo
+
+# =============================================================================
+# MODELES GPU : NE PAS DEPLOYER - reutilise les namespaces existants
+# =============================================================================
+inference:
+  enabled: false
+  namespace: "llama-3-3-70b"
+  model:
+    name: llama-3-3-70b-instruct-quantized-w8a8
+
+embedding:
+  enabled: false
+  namespace: "embeddinggemma-300m"
+  model:
+    name: embeddinggemma-300m
+
+# =============================================================================
+# PostgreSQL Database
+# =============================================================================
+postgresql:
+  enabled: true
+  image:
+    repository: docker.io/pgvector/pgvector
+    tag: pg15
+
+# =============================================================================
+# LlamaStack
+# =============================================================================
+llamastack:
+  enabled: true
+  embedding:
+    dimension: 768
+
+# =============================================================================
+# Backend API
+# =============================================================================
+backend:
+  enabled: true
+  image:
+    repository: backend
+    tag: v2.1
+  pvc:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+  seedDataUrl: "https://raw.githubusercontent.com/mouachan/agentic-claim-demo/feature/multi-agents/database/seed_data/002_tender_seed_data.sql"
+
+# =============================================================================
+# Frontend
+# =============================================================================
+frontend:
+  enabled: true
+  image:
+    repository: frontend
+    tag: v2.1
+
+# =============================================================================
+# MCP Servers
+# =============================================================================
+mcp:
+  ocr:
+    enabled: true
+    image:
+      repository: ocr-server
+      tag: v2.1
+    env:
+      OCR_LANGUAGES: "en,fr"
+      OCR_GPU_ENABLED: "false"
+      LOG_LEVEL: "INFO"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+  rag:
+    enabled: true
+    image:
+      repository: rag-server
+      tag: v2.1
+
+# =============================================================================
+# Guardrails (TrustyAI) - sans Llama Guard (pas de GPU supplementaire)
+# =============================================================================
+guardrails:
+  enabled: true
+  detectors:
+    llamaGuard:
+      enabled: false
+
+# =============================================================================
+# MinIO (S3-compatible object storage)
+# =============================================================================
+minio:
+  enabled: true
+
+# =============================================================================
+# Data Science Pipelines
+# =============================================================================
+dataSciencePipelines:
+  enabled: true
+
+# =============================================================================
+# Secrets
+# =============================================================================
+secrets:
+  postgresPassword: "multi-agents-pg-pass"
+  postgresAdminPassword: "multi-agents-pg-admin"
+  llamastackPassword: "llamastack-pass"
+  create: true

@@ -1,0 +1,24 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llamastack-rhoai-service
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app: llamastack
+spec:
+  host: llamastack-rhoai-claims-demo.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com
+  to:
+    kind: Service
+    name: llamastack-rhoai-service
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

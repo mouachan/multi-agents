@@ -1,0 +1,179 @@
+version: 2
+image_name: rh-dev
+
+apis:
+- agents
+- datasetio
+- files
+- inference
+- safety
+- eval
+- scoring
+- tool_runtime
+- vector_io
+
+providers:
+  inference:
+  - provider_id: vllm-inference
+    provider_type: remote::vllm
+    config:
+      url: https://llama-llama-3-3-70b.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      max_tokens: 4096
+      api_token: fake
+      tls_verify: false
+  - provider_id: vllm-embedding
+    provider_type: remote::vllm
+    config:
+      url: https://gemma-embeddinggemma-300m.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      max_tokens: 512
+      api_token: fake
+      tls_verify: false
+
+  vector_io:
+  - provider_id: pgvector
+    provider_type: remote::pgvector
+    config:
+      host: postgresql
+      port: 5432
+      db: claims_db
+      user: claims_user
+      password: claims_pass
+      persistence:
+        backend: kv_default
+        namespace: vector_io::pgvector
+
+  safety:
+    []
+
+  agents:
+  - provider_id: meta-reference
+    provider_type: inline::meta-reference
+    config:
+      persistence:
+        agent_state:
+          backend: kv_default
+          namespace: agents::meta_reference
+        responses:
+          backend: sql_default
+          table_name: agents_responses
+          max_write_queue_size: 10000
+          num_writers: 4
+
+  eval:
+  - provider_id: meta-reference-eval
+    provider_type: inline::meta-reference
+    config:
+      kvstore:
+        backend: kv_default
+        namespace: eval
+
+  datasetio:
+  - provider_id: huggingface
+    provider_type: remote::huggingface
+    config:
+      kvstore:
+        backend: kv_default
+        namespace: datasetio::huggingface
+
+  scoring:
+  - provider_id: basic
+    provider_type: inline::basic
+    config: {}
+  - provider_id: llm-as-judge
+    provider_type: inline::llm-as-judge
+    config: {}
+
+  tool_runtime:
+  - provider_id: rag-runtime
+    provider_type: inline::rag-runtime
+    config: {}
+  - provider_id: model-context-protocol
+    provider_type: remote::model-context-protocol
+    config: {}
+
+  files:
+  - provider_id: meta-reference-files
+    provider_type: inline::localfs
+    config:
+      storage_dir: /data/files
+      metadata_store:
+        backend: sql_default
+        table_name: files_metadata
+
+  batches:
+  - provider_id: reference
+    provider_type: inline::reference
+    config:
+      kvstore:
+        namespace: batches
+        backend: kv_default
+
+storage:
+  backends:
+    kv_default:
+      type: kv_sqlite
+      db_path: /data/llamastack_kv.db
+    sql_default:
+      type: sql_sqlite
+      db_path: /data/llamastack_sql.db
+  stores:
+    metadata:
+      backend: kv_default
+      namespace: registry
+    inference:
+      table_name: inference_store
+      backend: sql_default
+      max_write_queue_size: 10000
+      num_writers: 4
+    conversations:
+      table_name: openai_conversations
+      backend: sql_default
+    prompts:
+      namespace: prompts
+      backend: kv_default
+
+registered_resources:
+  models:
+  - metadata: {}
+    model_id: llama-3-3-70b
+    provider_id: vllm-inference
+    provider_model_id: llama-3-3-70b-instruct-quantized-w8a8
+    model_type: llm
+  - metadata:
+      embedding_dimension: 768
+    model_id: embeddinggemma-300m
+    provider_id: vllm-embedding
+    provider_model_id: embeddinggemma-300m
+    model_type: embedding
+
+  shields: []
+  vector_dbs: []
+  datasets: []
+  scoring_fns: []
+  benchmarks: []
+
+  tool_groups:
+  - toolgroup_id: mcp::ocr-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://ocr-server:8080/sse
+  - toolgroup_id: mcp::rag-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://rag-server:8080/sse
+  - toolgroup_id: mcp::claims-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://claims-server:8080/sse
+  - toolgroup_id: mcp::tenders-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://tenders-server:8080/sse
+  - toolgroup_id: builtin::rag
+    provider_id: rag-runtime
+
+telemetry:
+  enabled: true
+
+server:
+  port: 8321

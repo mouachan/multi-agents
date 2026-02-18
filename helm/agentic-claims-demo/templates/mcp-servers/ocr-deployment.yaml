@@ -1,0 +1,71 @@
+{{- if .Values.mcp.ocr.enabled }}
+# PVC is shared between backend deployment and OCR
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    # aligned with rag-server, but doesn't depend on llamastack API (for its health checks at least)
+    argocd.argoproj.io/sync-wave: "4"
+  name: ocr-server
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: ocr-server
+    component: mcp-server
+spec:
+  replicas: {{ .Values.mcp.ocr.replicas }}
+  selector:
+    matchLabels:
+      app: ocr-server
+  template:
+    metadata:
+      labels:
+        app: ocr-server
+        component: mcp-server
+    spec:
+      containers:
+        - name: ocr-server
+          image: {{ include "agentic-claims-demo.imageRegistry" . }}/{{ .Values.mcp.ocr.image.repository }}:{{ .Values.mcp.ocr.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: OCR_GPU_ENABLED
+              value: {{ .Values.mcp.ocr.env.OCR_GPU_ENABLED | quote }}
+            - name: OCR_LANGUAGES
+              value: {{ .Values.mcp.ocr.env.OCR_LANGUAGES | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.mcp.ocr.env.LOG_LEVEL | quote }}
+            - name: LLAMASTACK_ENDPOINT
+              value: {{ quote (include "llamastack.endpoint" .) }}
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "8080"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            {{- toYaml .Values.mcp.ocr.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: claim-documents
+              mountPath: /claim_documents
+      volumes:
+        - name: claim-documents
+          persistentVolumeClaim:
+            claimName: claim-documents
+{{- end }}

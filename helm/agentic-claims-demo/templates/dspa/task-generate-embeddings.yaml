@@ -1,0 +1,214 @@
+{{- if .Values.tekton.enabled }}
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: generate-embeddings
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: >
+    Generate embeddings for claim documents using LlamaStack.
+    Reads claim_documents, creates embeddings, and updates database.
+
+  params:
+    - name: batch-size
+      type: string
+      description: Number of documents to process in each batch
+      default: "5"
+    - name: max-retries
+      type: string
+      description: Maximum retries to wait for LlamaStack
+      default: "30"
+
+  steps:
+    - name: install-dependencies
+      image: registry.access.redhat.com/ubi9/python-312:latest
+      script: |
+        #!/bin/bash
+        set -e
+        echo "Installing Python dependencies..."
+        pip install --no-cache-dir \
+          httpx==0.27.2 \
+          sqlalchemy==2.0.36 \
+          psycopg2-binary==2.9.10 \
+          pgvector==0.3.6
+        echo "✓ Dependencies installed"
+
+    - name: generate-embeddings
+      image: registry.access.redhat.com/ubi9/python-312:latest
+      env:
+        - name: POSTGRES_HOST
+          value: {{ .Values.postgresql.service.name | default "postgresql" }}.{{ include "agentic-claims-demo.namespace" . }}.svc.cluster.local
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: {{ .Values.postgresql.auth.secretKeys.databaseKey }}
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: {{ .Values.postgresql.auth.secretKeys.userNameKey }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: {{ .Values.postgresql.auth.secretKeys.userPasswordKey }}
+        - name: LLAMASTACK_ENDPOINT
+          value: {{ quote (include "llamastack.endpoint" .) }}
+        - name: EMBEDDING_MODEL
+          value: {{ .Values.tekton.embeddingModel | default "gemma-300m" }}
+        - name: BATCH_SIZE
+          value: $(params.batch-size)
+        - name: MAX_RETRIES
+          value: $(params.max-retries)
+      script: |
+        #!/usr/bin/env python3
+        """Generate embeddings using LlamaStack."""
+
+        import asyncio
+        import logging
+        import os
+        import sys
+        from typing import List, Optional
+
+        import httpx
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import sessionmaker
+
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        logger = logging.getLogger(__name__)
+
+        DATABASE_URL = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DATABASE')}"
+        LLAMASTACK_ENDPOINT = os.getenv('LLAMASTACK_ENDPOINT')
+        EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'gemma-300m')
+        BATCH_SIZE = int(os.getenv('BATCH_SIZE', '5'))
+        MAX_RETRIES = int(os.getenv('MAX_RETRIES', '30'))
+
+        async def wait_for_llamastack():
+            """Wait for LlamaStack to be ready."""
+            logger.info(f"Waiting for LlamaStack at {LLAMASTACK_ENDPOINT}...")
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(f"{LLAMASTACK_ENDPOINT}/health")
+                        if response.status_code == 200:
+                            logger.info("✅ LlamaStack is ready")
+                            return True
+                except Exception as e:
+                    logger.debug(f"Attempt {attempt}/{MAX_RETRIES}: {e}")
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(10)
+            logger.error(f"❌ LlamaStack not ready")
+            return False
+
+        async def create_embedding(text: str, client: httpx.AsyncClient) -> Optional[List[float]]:
+            """Create embedding via LlamaStack."""
+            try:
+                response = await client.post(
+                    f"{LLAMASTACK_ENDPOINT}/embeddings",
+                    json={"model": EMBEDDING_MODEL, "content": text},
+                    timeout=60.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    return data if isinstance(data, list) else data.get('embedding')
+                else:
+                    logger.error(f"API error {response.status_code}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error: {e}")
+                return None
+
+        def format_embedding(embedding: List[float]) -> str:
+            """Format for pgvector."""
+            return '[' + ','.join(str(x) for x in embedding) + ']'
+
+        async def main():
+            if not await wait_for_llamastack():
+                sys.exit(1)
+
+            logger.info(f"Connecting to PostgreSQL...")
+            engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+            SessionLocal = sessionmaker(bind=engine)
+
+            with SessionLocal() as session:
+                query = text("""
+                    SELECT CAST(cd.id AS text) as doc_id, cd.raw_ocr_text, c.claim_number
+                    FROM claim_documents cd
+                    JOIN claims c ON cd.claim_id = c.id
+                    WHERE cd.embedding IS NULL
+                      AND cd.raw_ocr_text IS NOT NULL
+                    ORDER BY c.claim_number
+                """)
+                documents = session.execute(query).fetchall()
+
+            if not documents:
+                logger.info("✅ No documents need embeddings")
+                return
+
+            logger.info(f"Found {len(documents)} documents")
+            processed = 0
+            failed = 0
+
+            async with httpx.AsyncClient() as client:
+                for i in range(0, len(documents), BATCH_SIZE):
+                    batch = documents[i:i + BATCH_SIZE]
+                    batch_num = (i // BATCH_SIZE) + 1
+                    total_batches = (len(documents) + BATCH_SIZE - 1) // BATCH_SIZE
+                    logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} docs)")
+
+                    for row in batch:
+                        text = row.raw_ocr_text[:2000] if len(row.raw_ocr_text) > 2000 else row.raw_ocr_text
+                        logger.info(f"  Embedding {row.claim_number}...")
+
+                        embedding = await create_embedding(text, client)
+                        if embedding:
+                            try:
+                                with SessionLocal() as session:
+                                    update_query = text("""
+                                        UPDATE claim_documents
+                                        SET embedding = CAST(:embedding AS vector)
+                                        WHERE CAST(id AS text) = :doc_id
+                                    """)
+                                    session.execute(update_query, {
+                                        "embedding": format_embedding(embedding),
+                                        "doc_id": row.doc_id
+                                    })
+                                    session.commit()
+                                processed += 1
+                                logger.info(f"    ✅ ({processed}/{len(documents)})")
+                            except Exception as e:
+                                logger.error(f"    ❌ DB error: {e}")
+                                failed += 1
+                        else:
+                            logger.error(f"    ❌ Embedding failed")
+                            failed += 1
+
+                    if i + BATCH_SIZE < len(documents):
+                        await asyncio.sleep(2)
+
+            logger.info(f"✅ Processed: {processed}/{len(documents)}")
+            logger.info(f"❌ Failed: {failed}/{len(documents)}")
+            engine.dispose()
+
+            if failed > 0:
+                sys.exit(1)
+            else:
+                logger.info("🎉 All embeddings generated!")
+
+        if __name__ == "__main__":
+            asyncio.run(main())
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+{{- end }}

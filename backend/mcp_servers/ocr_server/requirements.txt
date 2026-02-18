@@ -1,0 +1,21 @@
+# MCP OCR Server Dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+Pillow==9.5.0  # Version compatible avec EasyOCR 1.7.0 (ANTIALIAS support)
+pdf2image==1.17.0
+httpx>=0.27.0
+pydantic>=2.7.2
+python-multipart>=0.0.9
+
+# OCR Engine - EasyOCR (fast, embedded, 80+ languages)
+# Migrated from Qwen-VL 7B for better performance (2-4s vs 30+s)
+easyocr==1.7.0
+opencv-python-headless==4.8.1.78  # Required by EasyOCR (headless = no GUI dependencies)
+numpy>=1.21.0,<2.0.0  # PyTorch 2.2+ works with numpy 1.x
+torch>=2.2.0,<2.3.0  # Newer PyTorch with better Python 3.11 support
+torchvision>=0.17.0,<0.18.0  # Compatible with torch 2.2
+
+# MCP SDK (official Model Context Protocol) with CLI tools for server
+# https://github.com/modelcontextprotocol/python-sdk
+# v1.8.0+ required for Streamable HTTP transport support (protocol 2025-03-26)
+mcp[cli]>=1.8.0

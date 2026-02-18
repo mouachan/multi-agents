@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocr-server
+  namespace: claims-demo
+  labels:
+    app: ocr-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ocr-server
+  template:
+    metadata:
+      labels:
+        app: ocr-server
+    spec:
+      containers:
+      - name: ocr-server
+        image: quay.io/mouachan/agentic-claims-demo/ocr-server:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: OCR_GPU_ENABLED
+          value: "true"
+        - name: OCR_LANGUAGES
+          value: "en,fr"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: PORT
+          value: "8080"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        volumeMounts:
+        - name: claim-documents
+          mountPath: /claim_documents
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /mcp
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /mcp
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: claim-documents
+        persistentVolumeClaim:
+          claimName: claim-documents

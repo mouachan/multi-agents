@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-claims
+  namespace: claims-demo
+spec:
+  template:
+    spec:
+      containers:
+      - name: seed
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          pip install --no-cache-dir psycopg2-binary && \
+          python3 /scripts/seed_database.py
+        env:
+        - name: POSTGRES_HOST
+          value: "postgresql.claims-demo.svc.cluster.local"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "claims_db"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: seed-script
+          mountPath: /scripts
+      volumes:
+      - name: seed-script
+        configMap:
+          name: seed-claims-script
+      restartPolicy: Never
+  backoffLimit: 3

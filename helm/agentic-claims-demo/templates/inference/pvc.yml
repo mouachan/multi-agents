@@ -1,0 +1,19 @@
+{{- if and .Values.inference.enabled (eq .Values.inference.model.source "huggingface") }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+  name: inference-model
+  namespace: {{ include "inference.namespace" . }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.inference.model.pvc.size }}
+  storageClassName: {{ .Values.inference.model.pvc.storageClass }}
+{{- end }}

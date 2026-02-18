@@ -1,0 +1,35 @@
+apiVersion: datasciencecluster.opendatahub.io/v1
+kind: DataScienceProject
+metadata:
+  name: claims-demo
+  labels:
+    app: claims-processing
+    environment: production
+spec:
+  displayName: "Claims Processing Demo"
+  description: "Agentic claims processing demonstration with MCP servers, LlamaStack, and RAG"
+  owner:
+    kind: User
+    name: admin
+  # Resource quotas for the namespace
+  resourceQuotas:
+    - name: compute-resources
+      spec:
+        hard:
+          requests.cpu: "10"
+          requests.memory: 20Gi
+          limits.cpu: "20"
+          limits.memory: 40Gi
+          persistentvolumeclaims: "5"
+  # Limit ranges
+  limitRanges:
+    - name: resource-limits
+      spec:
+        limits:
+          - type: Container
+            default:
+              cpu: "1"
+              memory: 2Gi
+            defaultRequest:
+              cpu: 500m
+              memory: 1Gi

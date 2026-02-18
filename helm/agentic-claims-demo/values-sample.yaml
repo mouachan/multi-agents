@@ -1,0 +1,127 @@
+# Sample values file for agentic-claims-demo Helm chart
+# Copy this file and customize for your environment
+
+global:
+  namespace: claims-demo
+
+# Container images configuration
+backend:
+  image:
+    repository: quay.io/your-org/backend
+    tag: v1.3
+    pullPolicy: IfNotPresent
+
+frontend:
+  image:
+    repository: quay.io/your-org/frontend
+    tag: v1.3
+    pullPolicy: IfNotPresent
+  route:
+    enabled: true
+    tls:
+      enabled: false  # Set to true for HTTPS
+
+# MCP Servers
+mcp:
+  ocr:
+    image:
+      repository: quay.io/your-org/ocr-server
+      tag: v1.3
+  rag:
+    image:
+      repository: quay.io/your-org/rag-server
+      tag: v1.3
+
+# PostgreSQL Database
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg15
+  auth:
+    username: claims_user
+    database: claims_db
+    # Set strong passwords in your actual values file
+    existingSecret: postgresql-secret
+  persistence:
+    size: 10Gi
+    storageClass: ""  # Use default storage class
+
+# Hugging Face CLI (for model downloads)
+hfcli:
+  token: ""  # Set your HuggingFace token
+  image:
+    repository: quay.io/your-org/hfcli
+    tag: v1.3
+
+# LlamaStack Configuration
+llamastack:
+  enabled: true
+  database:
+    name: llamastack
+    user: llamastack
+    # Password will be auto-generated
+
+# Model Inference Configuration
+inference:
+  enabled: true
+  namespace: llama-3-3-70b
+  modelId: llama-3-3-70b
+  # Update with your cluster domain
+  endpoint: "https://llama-3-3-70b-llama-3-3-70b.apps.CLUSTER_DOMAIN/v1"
+
+embedding:
+  enabled: true
+  namespace: embeddinggemma-300m
+  modelId: gemma-300m
+  # Update with your cluster domain
+  endpoint: "https://embeddinggemma-300m-embeddinggemma-300m.apps.CLUSTER_DOMAIN/v1"
+
+# MinIO Object Storage
+minio:
+  enabled: true
+  rootUser: admin
+  rootPassword: "ChangeThisPassword123!"  # Change this!
+  persistence:
+    size: 20Gi
+    storageClass: ""  # Use default storage class
+  route:
+    api:
+      enabled: true
+      tls:
+        enabled: false
+    console:
+      enabled: true
+      tls:
+        enabled: false
+
+# Data Science Pipelines (DSPA)
+dataSciencePipelines:
+  enabled: true
+  dspVersion: v2
+
+  apiServer:
+    enableSamplePipeline: false
+    enableOauth: true
+    cacheEnabled: true
+    pipelineStore: kubernetes
+
+  database:
+    # Uses internal MariaDB (recommended)
+    mariaDB:
+      pipelineDBName: mlpipeline
+      username: mlpipeline
+      pvcSize: 10Gi
+
+  objectStorage:
+    useInternalMinio: true  # Use MinIO deployed by this chart
+    bucket: pipelines
+    region: us-east-1
+    scheme: http  # Important: use http for internal MinIO
+    s3CredentialsSecret:
+      accessKey: AWS_ACCESS_KEY_ID
+      secretKey: AWS_SECRET_ACCESS_KEY
+
+# Guardrails (Optional)
+guardrails:
+  enabled: false  # Enable for PII detection and content safety

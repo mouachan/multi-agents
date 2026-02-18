@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: claims-demo
+  labels:
+    app: claims-processing
+    component: backend
+data:
+  # Application Settings
+  APP_NAME: "Claims Processing Demo"
+  APP_VERSION: "0.1.0"
+  ENVIRONMENT: "production"
+  DEBUG: "false"
+  
+  # API Configuration
+  API_V1_PREFIX: "/api/v1"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  
+  # Database Configuration
+  POSTGRES_HOST: "postgresql.claims-demo.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "claims_db"
+  DATABASE_POOL_SIZE: "10"
+  DATABASE_MAX_OVERFLOW: "20"
+  
+  # LlamaStack Configuration (OpenShift AI)
+  LLAMASTACK_ENDPOINT: "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321"
+  LLAMASTACK_DEFAULT_MODEL: "vllm-inference-1/llama-3-3-70b"
+  LLAMASTACK_EMBEDDING_MODEL: "gemma-embedding/gemma-300m"
+  LLAMASTACK_EMBEDDING_DIMENSION: "768"
+  LLAMASTACK_TIMEOUT: "300"
+  LLAMASTACK_MAX_RETRIES: "3"
+  
+  # MCP Servers Configuration
+  OCR_SERVER_URL: "http://ocr-server.claims-demo.svc.cluster.local:8080"
+  RAG_SERVER_URL: "http://rag-server.claims-demo.svc.cluster.local:8080"
+  GUARDRAILS_SERVER_URL: "http://claims-guardrails.claims-demo.svc.cluster.local:8080"
+  
+  # CORS Configuration
+  CORS_ALLOW_CREDENTIALS: "true"
+  
+  # Security Configuration
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  
+  # File Storage Configuration
+  DOCUMENTS_STORAGE_PATH: "/claim_documents"
+  MAX_UPLOAD_SIZE_MB: "10"
+  
+  # Processing Configuration
+  MAX_PROCESSING_TIME_SECONDS: "300"
+  DEFAULT_WORKFLOW_TYPE: "standard"
+  ENABLE_ASYNC_PROCESSING: "true"
+  
+  # Logging Configuration
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  
+  # Monitoring Configuration
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "9090"
+  
+  # Prompts Directory
+  PROMPTS_DIR: "/app/prompts"

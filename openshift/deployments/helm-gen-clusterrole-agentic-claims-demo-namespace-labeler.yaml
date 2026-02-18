@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentic-claims-demo-namespace-labeler
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: namespace-setup
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: '-95'
+    helm.sh/hook-delete-policy: before-hook-creation
+    argocd.argoproj.io/sync-wave: '-95'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - patch
+  - update

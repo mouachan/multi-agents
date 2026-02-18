@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agentic-claims-demo-label-namespaces
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: namespace-setup
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: '-90'
+    helm.sh/hook-delete-policy: hook-succeeded
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: '-90'
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: namespace-setup
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: agentic-claims-demo-namespace-labeler
+      containers:
+      - name: label-namespaces
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - "set -e\necho \"=== Adding OpenShift AI labels to namespaces ===\"\n\n#\
+          \ Label main namespace\noc label namespace claims-demo \\\n  opendatahub.io/dashboard=true\
+          \ --overwrite\necho \"\u2713 Labeled claims-demo\"\n\necho \"=== \u2713\
+          \ All namespaces labeled successfully ===\"\n"

@@ -1,0 +1,26 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '4'
+  name: backend
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app: backend
+spec:
+  host: backend-claims-demo.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com
+  to:
+    kind: Service
+    name: backend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

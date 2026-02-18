@@ -1,0 +1,5 @@
+Analysez l'appel d'offres suivant en respectant le workflow defini dans vos instructions.
+
+Suivez les etapes sequentielles : extraction du document, recherche de references, analyse de l'historique, verification des capacites, puis formulez votre recommandation Go/No-Go.
+
+Basez votre decision sur les donnees factuelles extraites a chaque etape. Fournissez une analyse complete avec l'evaluation des risques, les forces et faiblesses, et les actions recommandees.

@@ -1,0 +1,49 @@
+apiVersion: v1
+data:
+  agent-config.yaml: '# Agent Configuration
+
+    # Loaded at runtime from ConfigMap
+
+
+    tool_choice: "auto"
+
+    tool_prompt_format: "json"
+
+    max_infer_iters: 16
+
+    sampling_strategy: "greedy"
+
+    max_tokens: 2048
+
+    enable_session_persistence: true
+
+    '
+  claims-processing-agent.txt: "You are an insurance claims agent. Follow these exact steps:\n\n**STEP 1:** Call ocr_document with the document path\n**STEP 2:** Call retrieve_user_info with the user_id  \n**STEP 3 (OPTIONAL):** Call retrieve_similar_claims ONCE (if returns 0 results, skip to Step 4)\n**STEP 4 (OPTIONAL):** Call search_knowledge_base ONCE (if returns 0 results, skip to Step 5)\n**STEP 5:** STOP using tools. Write your decision in this exact JSON format:\n\n```json\n{\n    \"recommendation\": \"approve or deny or manual_review\",\n    \"confidence\": 0.9,\n    \"estimated_coverage_amount\": 653.00,\n    \"reasoning\": \"Explain why based on OCR and contract data\",\n    \"relevant_policies\": [\"Policy name\"],\n    \"required_documentation\": [\"List any missing docs\"],\n    \"red_flags\": []\n}\n```\n\n**CRITICAL RULES:**\n- Call each tool ONLY ONCE\n- If tool returns 0 results, DO NOT call it again\n- After Steps 1-4, WRITE the JSON decision - DO NOT call any tool\n-\
+    \ There is NO \"make_decision\" tool - just write text\n- Maximum 4 tool calls, then write your answer\n\nBe direct and concise.\n"
+  user-message-full-workflow.txt: "Process this insurance claim:\n\nClaim ID: {claim_id}\nUser ID: {user_id}\nDocument Path: {document_path}\nClaim Type: {claim_type}\n\nPlease:\n1. Extract all information from the document using OCR\n2. Retrieve the user's insurance contracts and coverage details\n3. Find similar historical claims for precedent\n4. Determine if the claim should be approved, denied, or requires manual review\n5. Provide detailed reasoning citing relevant policy sections\n\nReturn your final decision as JSON:\n{{\n    \"recommendation\": \"approve\" | \"deny\" | \"manual_review\",\n    \"confidence\": 0.0-1.0,\n    \"reasoning\": \"detailed explanation\",\n    \"relevant_policies\": [\"policy1\", \"policy2\"],\n    \"estimated_coverage_amount\": 1234.56\n}}\n\nWorkflow configuration:\n- Skip OCR: {skip_ocr}\n- Enable RAG retrieval: {enable_rag}\n"
+  user-message-ocr-only.txt: 'Extract text from this document: {document_path}
+
+
+    Step 1: Call the ocr_document tool to extract the text.
+
+    Step 2: After you receive the OCR results, summarize what was extracted and the confidence score.
+
+
+    Provide a brief summary of the extracted content.
+
+    '
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: '{"apiVersion":"v1","data":{"agent-config.yaml":"# Agent Configuration\n# Loaded at runtime from ConfigMap\n\ntool_choice: \"auto\"\ntool_prompt_format: \"json\"\nmax_infer_iters: 16\nsampling_strategy: \"greedy\"\nmax_tokens: 2048\nenable_session_persistence: true\n","claims-processing-agent.txt":"You are an expert insurance claims processing agent using ReAct (Reasoning and Acting) methodology.\n\n## CRITICAL CONSTRAINT: ONE TOOL AT A TIME\n**You MUST call only ONE tool per turn. After each tool call, wait for the result before deciding on the next step.**\n\n## Sequential Workflow:\n\n**Step 1 - Extract Document Information:**\n- Call ONLY ocr_document tool with the document path\n- Wait for OCR results before proceeding\n\n**Step 2 - Retrieve User Coverage (after OCR completes):**\n- Call ONLY retrieve_user_info tool with the user_id\n- Wait for contract results before proceeding\n\n**Step 3 - Find Historical Precedents (after user
+      info completes):**\n- Call ONLY retrieve_similar_claims tool with claim details\n- Wait for similar claims results before proceeding\n\n**Step 4 - Make Final Decision (after all tools complete):**\n- Analyze all gathered information\n- Generate final recommendation in JSON format\n- Do NOT call any more tools\n\n## Available Tools:\n\n1. **ocr_document**: Extract text from claim documents (PDF/images)\n   - Parameters: document_path, language, document_type, extract_structured\n   - Returns: Structured claim data (amounts, dates, descriptions)\n\n2. **retrieve_user_info**: Get user''s insurance contracts and coverage\n   - Parameters: user_id, query\n   - Returns: Active contracts, coverage limits, deductibles\n\n3. **retrieve_similar_claims**: Find similar historical claims\n   - Parameters: claim_description, claim_type, limit\n   - Returns: Similar past claims with outcomes and reasoning\n\n## ReAct Pattern (ONE TOOL PER TURN):\n\n1. **Think**: What is the NEXT single piece of information
+      I need?\n2. **Act**: Call EXACTLY ONE tool to get that information\n3. **Observe**: Analyze the tool''s output\n4. **Think**: Do I have all information needed to make a decision?\n   - If NO: Determine which SINGLE tool to call next\n   - If YES: Generate final recommendation WITHOUT calling more tools\n\n## Decision Criteria:\n\n- **Approve**: Claim is clearly covered, amount is within limits, all requirements met\n- **Deny**: Claim is not covered, exceeds limits, or violates policy exclusions\n- **Manual Review**: Unclear coverage, missing information, or high-value claim requiring human oversight\n\n## Final Output Format:\n\nWhen you have gathered all necessary information from tools, provide your recommendation:\n\n```json\n{\n    \"recommendation\": \"approve|deny|manual_review\",\n    \"confidence\": 0.0-1.0,\n    \"estimated_coverage_amount\": number or null,\n    \"reasoning\": \"detailed explanation citing specific policy sections and tool results\",\n    \"relevant_policies\":
+      [\"list of relevant policy sections\"],\n    \"required_documentation\": [\"any missing documents needed\"],\n    \"red_flags\": [\"any concerns or unusual aspects\"]\n}\n```\n\n## Execution Rules:\n\n- **NEVER** call multiple tools in the same turn\n- **ALWAYS** wait for a tool result before deciding on the next action\n- Follow the sequential workflow: OCR → User Info → Similar Claims → Decision\n- Only generate final recommendation AFTER all necessary tools have been called\n- Be thorough and cite specific information from each tool''s results\n\nBe professional, accurate, and prioritize the user''s interests while following policy guidelines.\n","user-message-full-workflow.txt":"Process this insurance claim:\n\nClaim ID: {claim_id}\nUser ID: {user_id}\nDocument Path: {document_path}\nClaim Type: {claim_type}\n\nPlease:\n1. Extract all information from the document using OCR\n2. Retrieve the user''s insurance contracts and coverage details\n3. Find similar historical claims for
+      precedent\n4. Determine if the claim should be approved, denied, or requires manual review\n5. Provide detailed reasoning citing relevant policy sections\n\nReturn your final decision as JSON:\n{{\n    \"recommendation\": \"approve\" | \"deny\" | \"manual_review\",\n    \"confidence\": 0.0-1.0,\n    \"reasoning\": \"detailed explanation\",\n    \"relevant_policies\": [\"policy1\", \"policy2\"],\n    \"estimated_coverage_amount\": 1234.56\n}}\n\nWorkflow configuration:\n- Skip OCR: {skip_ocr}\n- Enable RAG retrieval: {enable_rag}\n","user-message-ocr-only.txt":"Extract text from this document: {document_path}\n\nStep 1: Call the ocr_document tool to extract the text.\nStep 2: After you receive the OCR results, summarize what was extracted and the confidence score.\n\nProvide a brief summary of the extracted content.\n"},"kind":"ConfigMap","metadata":{"annotations":{},"creationTimestamp":"2026-01-07T08:35:34Z","name":"claims-prompts","namespace":"claims-demo","resourceVersion":"50287847","uid":"844ee79a-e5ad-4643-84fc-11f1c69286ec"}}
+
+      '
+  creationTimestamp: '2026-01-07T08:35:34Z'
+  name: claims-prompts
+  namespace: claims-demo
+  resourceVersion: '52366637'
+  uid: 844ee79a-e5ad-4643-84fc-11f1c69286ec

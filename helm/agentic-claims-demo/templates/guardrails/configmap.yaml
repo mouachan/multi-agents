@@ -1,0 +1,38 @@
+{{- if .Values.guardrails.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fms-orchestr8-config-nlp
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: claims-processing
+    component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+data:
+  config.yaml: |
+    detectors:
+      regex:
+        type: text_contents
+        service:
+          hostname: "127.0.0.1"
+          port: 8080
+        chunker_id: whole_doc_chunker
+        default_threshold: {{ .Values.guardrails.detectors.regex.threshold | default 0.5 }}
+      hap:
+        type: text_contents
+        service:
+          hostname: "127.0.0.1"
+          port: 8080
+        chunker_id: whole_doc_chunker
+        default_threshold: {{ .Values.guardrails.detectors.hap.threshold | default 0.5 }}
+      pii:
+        type: text_contents
+        service:
+          hostname: "127.0.0.1"
+          port: 8080
+        chunker_id: whole_doc_chunker
+        default_threshold: {{ .Values.guardrails.detectors.pii.threshold | default 0.7 }}
+{{- end }}

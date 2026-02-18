@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fms-orchestr8-config-nlp
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app: claims-processing
+    component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: '4'
+data:
+  config.yaml: "detectors:\n  regex:\n    type: text_contents\n    service:\n    \
+    \  hostname: \"127.0.0.1\"\n      port: 8080\n    chunker_id: whole_doc_chunker\n\
+    \    default_threshold: 0.5\n  hap:\n    type: text_contents\n    service:\n \
+    \     hostname: \"127.0.0.1\"\n      port: 8080\n    chunker_id: whole_doc_chunker\n\
+    \    default_threshold: 0.5\n  pii:\n    type: text_contents\n    service:\n \
+    \     hostname: \"127.0.0.1\"\n      port: 8080\n    chunker_id: whole_doc_chunker\n\
+    \    default_threshold: 0.7\n"

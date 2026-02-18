@@ -1,0 +1,21 @@
+---
+apiVersion: v2
+name: agentic-claims-demo
+description: AI-powered insurance claims processing with LlamaStack and MCP agents
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - ai
+  - llama
+  - mcp
+  - insurance
+  - claims
+  - agents
+
+maintainers:
+  - name: Claims Demo Team
+    email: mouachan@redhat.com
+
+dependencies: []

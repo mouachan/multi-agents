@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-llama-3-3-70b
+  namespace: llama-3-3-70b
+  labels:
+    app: llama-3-3-70b
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 80Gi  # Llama 3.3 70B INT8 ~70GB + overhead
+  storageClassName: gp3-csi
+  volumeMode: Filesystem

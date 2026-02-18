@@ -1,0 +1,67 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-vectorstore
+  namespace: claims-demo
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        job: init-vectorstore
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: init-vectorstore
+        image: python:3.12-slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -ex
+          echo "===== STARTING INITIALIZATION ====="
+          mkdir -p /tmp/pylibs
+          export PYTHONPATH=/tmp/pylibs:$PYTHONPATH
+
+          echo "Installing dependencies..."
+          pip install --no-cache-dir --target=/tmp/pylibs asyncpg httpx
+
+          echo "Checking environment variables..."
+          echo "POSTGRES_HOST: $POSTGRES_HOST"
+          echo "LLAMASTACK_ENDPOINT: $LLAMASTACK_ENDPOINT"
+
+          echo "Testing connectivity..."
+          python3 -c "import httpx; print('httpx OK')" || exit 1
+          python3 -c "import asyncpg; print('asyncpg OK')" || exit 1
+
+          echo "Running vector_store initialization..."
+          python /scripts/init_vectorstore.py
+
+          echo "✅ Initialization complete"
+
+        env:
+        - name: POSTGRES_HOST
+          value: "postgresql.claims-demo.svc.cluster.local"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "claims_db"
+        - name: POSTGRES_USER
+          value: "claims_user"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_PASSWORD
+        - name: LLAMASTACK_ENDPOINT
+          value: "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321"
+
+        volumeMounts:
+        - name: init-script
+          mountPath: /scripts
+
+      volumes:
+      - name: init-script
+        configMap:
+          name: init-vectorstore-script

@@ -1,0 +1,119 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+.cache/
+.parcel-cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Documentation de session (fichiers intermédiaires - local only)
+SESSION_SUMMARY.md
+NEXT_SESSION.md
+DEMAIN_START_HERE.md
+OPENSHIFT_AI_3.0_CHANGES.md
+QUICKSTART.md
+TESTING_GUIDE.md
+test_workflow.sh
+LOCAL_NOTES.md
+TODO-NEXT-SESSION.md
+FIXES-2025-12-24.md
+TRUSTYAI-EVALUATION-GUIDE.md
+TRUSTYAI-GUARDRAILS-GUIDE.md
+MCP-CLEANUP-ANALYSIS.md
+MIGRATION-TO-LLAMASTACK-ARCHITECTURE.md
+LLAMASTACK-COMPLETE-ARCHITECTURE.md
+BRANCHES.md
+DEPLOYMENT.md
+REACTAGENT_SDK_TESTING.md
+
+# Build artifacts
+BUILD.md
+deploy.sh
+
+# Documentation READMEs (local only)
+backend/mcp_servers/*/README.md
+docs/*.md
+openshift/llama-32-3b-instruct/README.md
+openshift/README-OPENSHIFT-AI.md
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PostgreSQL
+*.sql.gz
+openshift/README-OPENSHIFT-AI.md
+helm/values-secrets-*.yaml
+TODO-LUNDI.md

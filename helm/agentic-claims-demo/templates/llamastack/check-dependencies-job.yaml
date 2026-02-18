@@ -1,0 +1,106 @@
+{{- if .Values.llamastack.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "8"
+    "helm.sh/hook-delete-policy": hook-succeeded
+    # ArgoCD GitOps
+    "argocd.argoproj.io/hook": PostSync
+    "argocd.argoproj.io/hook-delete-policy": HookSucceeded
+    "argocd.argoproj.io/sync-wave": "8"
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: llamastack-init
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+      containers:
+        - name: check-dependencies
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Checking LlamaStack Dependencies ==="
+
+              # Function to check if a resource is ready
+              check_ready() {
+                local resource=$1
+                local namespace=$2
+                local timeout=300
+                local elapsed=0
+
+                echo "Waiting for $resource in namespace $namespace..."
+                while [ $elapsed -lt $timeout ]; do
+                  if oc get $resource -n $namespace &>/dev/null; then
+                    echo "✓ $resource found"
+                    return 0
+                  fi
+                  echo "  Waiting... ($elapsed/$timeout seconds)"
+                  sleep 10
+                  elapsed=$((elapsed + 10))
+                done
+                echo "✗ Timeout waiting for $resource"
+                return 1
+              }
+
+              # 1. Check PostgreSQL is ready
+              echo ""
+              echo "1. Checking PostgreSQL..."
+              check_ready "statefulset/postgresql" "{{ .Values.global.namespace }}"
+
+              # Wait for PostgreSQL pod to be ready
+              echo "Waiting for PostgreSQL pod to be ready..."
+              oc wait --for=condition=ready pod \
+                -l app.kubernetes.io/name=postgresql \
+                -n {{ .Values.global.namespace }} \
+                --timeout=300s || true
+
+              # Check if database is accepting connections
+              echo "Testing PostgreSQL connection..."
+              timeout=60
+              elapsed=0
+              while [ $elapsed -lt $timeout ]; do
+                if oc exec -n {{ .Values.global.namespace }} \
+                  statefulset/postgresql \
+                  -- pg_isready -U {{ .Values.postgresql.auth.username }} &>/dev/null; then
+                  echo "✓ PostgreSQL is accepting connections"
+                  break
+                fi
+                echo "  PostgreSQL not ready yet... ($elapsed/$timeout seconds)"
+                sleep 5
+                elapsed=$((elapsed + 5))
+              done
+
+              {{- if .Values.inference.enabled }}
+              # 2. Check Llama InferenceService exists (opérateur le gérera)
+              echo ""
+              echo "2. Checking Llama InferenceService..."
+              check_ready "inferenceservice/llama" "{{ .Values.inference.namespace }}"
+              echo "  Note: InferenceService will be managed by RHOAI operator"
+              {{- end }}
+
+              {{- if .Values.embedding.enabled }}
+              # 3. Check Gemma InferenceService exists (opérateur le gérera)
+              echo ""
+              echo "3. Checking Gemma InferenceService..."
+              check_ready "inferenceservice/gemma" "{{ .Values.embedding.namespace }}"
+              echo "  Note: InferenceService will be managed by RHOAI operator"
+              {{- end }}
+
+              echo ""
+              echo "=== ✓ All dependencies checked successfully ==="
+              echo "LlamaStack can now be deployed safely"
+{{- end }}

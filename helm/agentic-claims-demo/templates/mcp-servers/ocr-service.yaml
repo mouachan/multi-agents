@@ -1,0 +1,29 @@
+{{- if or (and .Values.mcp.ocr.enabled (eq .Values.backend.pvc.accessMode "ReadWriteMany"))
+          (and .Values.backend.enabled (ne .Values.backend.pvc.accessMode "ReadWriteMany")) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ocr-server
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: ocr-server
+spec:
+  type: {{ .Values.mcp.ocr.service.type }}
+  ports:
+    - port: {{ .Values.mcp.ocr.service.port }}
+{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
+      targetPort: 8080
+{{- else }}
+      targetPort: 8081
+{{- end }}
+      protocol: TCP
+      name: http
+  selector:
+{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
+    app: ocr-server
+{{- else }}
+    app: backend
+{{- end }}
+{{- end }}

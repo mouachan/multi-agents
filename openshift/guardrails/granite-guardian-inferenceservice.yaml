@@ -1,0 +1,38 @@
+# Granite Guardian InferenceService for TrustyAI Guardrails Detection
+# IBM Granite Guardian for HAP, PII, and other detections
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: granite-guardian-detector
+  namespace: claims-demo
+  labels:
+    trustyai/detector: "true"  # Label for auto-discovery by GuardrailsOrchestrator
+    app: claims-processing
+    component: guardrails-detector
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.knative.openshift.io/enablePassthrough: "true"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: vllm
+      # Using Granite Guardian 3.1 2B model
+      protocolVersion: v2
+      runtime: vllm-runtime
+      args:
+        - --model=ibm-granite/granite-guardian-3.1-2b
+        - --dtype=auto
+        - --max-model-len=4096
+      resources:
+        requests:
+          cpu: "2"
+          memory: 8Gi
+        limits:
+          cpu: "4"
+          memory: 16Gi
+      env:
+        - name: HF_HUB_OFFLINE
+          value: "0"

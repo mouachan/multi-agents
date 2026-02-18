@@ -1,0 +1,19 @@
+{{- if and .Values.embedding.enabled (eq .Values.embedding.model.source "huggingface") }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+  name: embedding-model
+  namespace: {{ include "embedding.namespace" . }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.embedding.model.pvc.size }}
+  storageClassName: {{ .Values.embedding.model.pvc.storageClass }}
+{{- end }}

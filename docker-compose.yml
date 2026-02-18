@@ -1,0 +1,204 @@
+---
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector
+  postgresql:
+    image: pgvector/pgvector:pg16
+    container_name: multi-agents-postgres
+    environment:
+      POSTGRES_DB: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./database/migrations/003_add_pii_redacted_fields.sql:/docker-entrypoint-initdb.d/02-pii-fields.sql:ro
+      - ./database/migrations/004_add_chat_tables.sql:/docker-entrypoint-initdb.d/03-chat-tables.sql:ro
+      - ./database/seed_data/001_sample_data.sql:/docker-entrypoint-initdb.d/04-seed-data.sql:ro
+      - ./database/seed_data/002_tender_seed_data.sql:/docker-entrypoint-initdb.d/05-tender-seed.sql:ro
+      - ./database/seed_data/004_harmonized_scenario.sql:/docker-entrypoint-initdb.d/06-harmonized.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claims_user -d claims_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - multi-agents-network
+
+  # LlamaStack - local orchestrator connecting to remote models
+  llamastack:
+    image: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9@sha256:a9e415ce30b0a61ae35ef43870b03ccb193074fdbd02683757f1908343266837
+    container_name: multi-agents-llamastack
+    environment:
+      INFERENCE_MODEL: llama-3-3-70b-instruct-quantized-w8a8
+      VLLM_URL: https://llama-llama-3-3-70b.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      VLLM_API_TOKEN: fake
+      EMBEDDING_MODEL: embeddinggemma-300m
+      VLLM_EMBEDDING_URL: https://gemma-embeddinggemma-300m.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      VLLM_EMBEDDING_API_TOKEN: fake
+      RUN_CONFIG_PATH: /config/run.yaml
+    ports:
+      - "8321:8321"
+    volumes:
+      - ./llamastack/run.yaml:/config/run.yaml:ro
+      - llamastack_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - multi-agents-network
+
+  # Backend FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: multi-agents-backend
+    environment:
+      DEBUG: "true"
+      ENVIRONMENT: development
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+      LLAMASTACK_ENDPOINT: http://llamastack:8321
+      LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
+      LLAMASTACK_EMBEDDING_MODEL: embeddinggemma-300m
+      LLAMASTACK_EMBEDDING_DIMENSION: 768
+      OCR_SERVER_URL: http://ocr-server:8080
+      RAG_SERVER_URL: http://rag-server:8080
+      CLAIMS_SERVER_URL: http://claims-server:8080
+      TENDERS_SERVER_URL: http://tenders-server:8080
+      GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-claims-demo.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/opt/app-root/src/app
+      - ./documents:/documents
+    networks:
+      - multi-agents-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # MCP OCR Server
+  ocr-server:
+    build:
+      context: ./backend/mcp_servers/ocr_server
+      dockerfile: Dockerfile
+    container_name: multi-agents-ocr-server
+    environment:
+      LOG_LEVEL: INFO
+      LLAMASTACK_ENDPOINT: http://llamastack:8321
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./documents:/documents:ro
+    networks:
+      - multi-agents-network
+
+  # MCP RAG Server
+  rag-server:
+    build:
+      context: ./backend/mcp_servers/rag_server
+      dockerfile: Dockerfile
+    container_name: multi-agents-rag-server
+    environment:
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+      LLAMASTACK_ENDPOINT: http://llamastack:8321
+      VECTOR_DIMENSION: 768
+      LOG_LEVEL: INFO
+    ports:
+      - "8082:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  # MCP Claims Server (CRUD)
+  claims-server:
+    build:
+      context: ./backend/mcp_servers/claims_server
+      dockerfile: Dockerfile
+    container_name: multi-agents-claims-server
+    environment:
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+      LOG_LEVEL: INFO
+    ports:
+      - "8083:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  # MCP Tenders Server (CRUD)
+  tenders-server:
+    build:
+      context: ./backend/mcp_servers/tenders_server
+      dockerfile: Dockerfile
+    container_name: multi-agents-tenders-server
+    environment:
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+      LOG_LEVEL: INFO
+    ports:
+      - "8084:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  # Frontend React (dev mode)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: multi-agents-frontend
+    ports:
+      - "3000:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/package.json:/app/package.json:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:ro
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js:ro
+      - ./frontend/postcss.config.js:/app/postcss.config.js:ro
+    networks:
+      - multi-agents-network
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+    driver: local
+  llamastack_data:
+    driver: local
+
+networks:
+  multi-agents-network:
+    driver: bridge

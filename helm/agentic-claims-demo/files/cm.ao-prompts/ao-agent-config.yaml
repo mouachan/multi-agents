@@ -1,0 +1,10 @@
+---
+# AO Agent Configuration
+# Loaded at runtime from ConfigMap
+
+tool_choice: "auto"
+tool_prompt_format: "json"
+max_infer_iters: 16
+sampling_strategy: "greedy"
+max_tokens: 2048
+enable_session_persistence: true

@@ -1,0 +1,82 @@
+apiVersion: llamastack.io/v1alpha1
+kind: LlamaStackDistribution
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: '10'
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+  name: llamastack-rhoai
+  namespace: claims-demo
+spec:
+  replicas: 1
+  server:
+    containerSpec:
+      env:
+      - name: INFERENCE_MODEL
+        value: llama-3-3-70b-instruct-quantized-w8a8
+      - name: VLLM_URL
+        value: https://llama-llama-3-3-70b.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com/v1
+      - name: VLLM_TLS_VERIFY
+        value: 'false'
+      - name: VLLM_API_TOKEN
+        value: fake
+      - name: VLLM_MAX_TOKENS
+        value: '4096'
+      - name: EMBEDDING_MODEL
+        value: embeddinggemma-300m
+      - name: EMBEDDING_PROVIDER_MODEL_ID
+        value: embeddinggemma-300m
+      - name: VLLM_EMBEDDING_URL
+        value: https://gemma-embeddinggemma-300m.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com/v1
+      - name: VLLM_EMBEDDING_TLS_VERIFY
+        value: 'false'
+      - name: VLLM_EMBEDDING_API_TOKEN
+        value: fake
+      - name: VLLM_EMBEDDING_MAX_TOKENS
+        value: '512'
+      - name: POSTGRES_HOST
+        value: postgresql.claims-demo.svc.cluster.local
+      - name: POSTGRES_PORT
+        value: '5432'
+      - name: POSTGRES_DB
+        valueFrom:
+          secretKeyRef:
+            name: postgresql-secret
+            key: LLAMASTACK_DATABASE
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: postgresql-secret
+            key: LLAMASTACK_USER
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: postgresql-secret
+            key: LLAMASTACK_PASSWORD
+      - name: ENABLE_PGVECTOR
+        value: 'true'
+      - name: FMS_ORCHESTRATOR_URL
+        value: https://guardrails-orchestrator-service.claims-demo.svc.cluster.local:8032
+      name: llama-stack
+      port: 8321
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+        requests:
+          cpu: 500m
+          memory: 2Gi
+    distribution:
+      name: rh-dev
+    userConfig:
+      configMapName: llamastack-rhoai
+    storage:
+      size: 20Gi
+      mountPath: /opt/app-root/src/.llama/distributions/rh/

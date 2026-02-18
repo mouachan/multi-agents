@@ -1,0 +1,434 @@
+"""
+MCP RAG Server - Retrieval-Augmented Generation for claims processing
+"""
+
+import asyncio
+import logging
+import os
+from typing import Dict, Any, List, Optional
+
+import httpx
+import numpy as np
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
+# Import prompts
+from prompts import get_knowledge_base_synthesis_prompt
+
+# Configure logging
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
+
+# FastAPI app
+app = FastAPI(
+    title="MCP RAG Server",
+    description="Vector search and retrieval for claims processing",
+    version="1.0.0",
+)
+
+# Configuration
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "claims_pass")
+LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://localhost:8090")
+EMBEDDING_URL = os.getenv("EMBEDDING_URL", LLAMASTACK_ENDPOINT + "/embeddings")
+VECTOR_DIMENSION = int(os.getenv("VECTOR_DIMENSION", "768"))
+
+# Database connection
+DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20)
+SessionLocal = sessionmaker(bind=engine)
+
+
+# Pydantic models
+class RetrieveUserInfoRequest(BaseModel):
+    user_id: str
+    query: str
+    top_k: int = Field(default=5, ge=1, le=20)
+    include_contracts: bool = True
+
+
+class RetrieveUserInfoResponse(BaseModel):
+    user_info: Dict[str, Any]
+    contracts: List[Dict[str, Any]]
+    similarity_scores: List[float]
+    source_documents: List[str]
+
+
+class RetrieveSimilarClaimsRequest(BaseModel):
+    claim_text: str
+    claim_type: Optional[str] = None
+    top_k: int = Field(default=10, ge=1, le=50)
+    min_similarity: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class SimilarClaim(BaseModel):
+    claim_id: str
+    claim_number: str
+    claim_text: str
+    similarity_score: float
+    outcome: Optional[str]
+    processing_time: Optional[int]
+
+
+class RetrieveSimilarClaimsResponse(BaseModel):
+    similar_claims: List[SimilarClaim]
+
+
+class SearchKnowledgeBaseRequest(BaseModel):
+    query: str
+    filters: Optional[Dict[str, Any]] = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class KnowledgeBaseResult(BaseModel):
+    id: str
+    title: str
+    content: str
+    similarity_score: float
+    category: Optional[str]
+
+
+class SearchKnowledgeBaseResponse(BaseModel):
+    results: List[KnowledgeBaseResult]
+    synthesized_answer: str
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    database_connected: bool
+
+
+# Helper functions
+async def create_embedding(text: str) -> List[float]:
+    """Create embedding using TEI (Text Embeddings Inference) service."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                EMBEDDING_URL,
+                json={
+                    "inputs": text,
+                }
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                # TEI returns embeddings directly as an array
+                if isinstance(result, list) and len(result) > 0:
+                    embedding = result[0]
+                # Or in data/embedding format from LlamaStack
+                elif isinstance(result, dict) and "data" in result:
+                    embedding = result["data"][0]["embedding"]
+                else:
+                    logger.error(f"Unexpected embedding response format: {result}")
+                    raise HTTPException(status_code=500, detail="Invalid embedding response format")
+
+                logger.debug(f"Created embedding with dimension: {len(embedding)}")
+                return embedding
+            else:
+                logger.error(f"Embedding API error: {response.status_code} - {response.text}")
+                raise HTTPException(status_code=500, detail="Failed to create embedding")
+
+    except Exception as e:
+        logger.error(f"Error creating embedding: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Embedding error: {str(e)}")
+
+
+async def synthesize_with_llm(query: str, context: List[Dict[str, Any]]) -> str:
+    """Synthesize answer from retrieved context using LLM."""
+    try:
+        # Prepare context text
+        context_text = "\n\n".join([
+            f"Document {i+1} (Title: {doc.get('title', 'N/A')}):\n{doc.get('content', '')[:500]}"
+            for i, doc in enumerate(context[:5])  # Limit to top 5
+        ])
+
+        # Use centralized prompt
+        prompt = get_knowledge_base_synthesis_prompt(query, context_text)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{LLAMASTACK_ENDPOINT}/inference/generate",
+                json={
+                    "model": "llama-3.1-8b-instruct",
+                    "prompt": prompt,
+                    "temperature": 0.3,
+                    "max_tokens": 512,
+                }
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                answer = result.get("generated_text", "Unable to generate answer.")
+                return answer
+            else:
+                return "Unable to synthesize answer from knowledge base."
+
+    except Exception as e:
+        logger.error(f"Error synthesizing answer: {str(e)}")
+        return f"Error: {str(e)}"
+
+
+# API Endpoints
+@app.post("/retrieve_user_info", response_model=RetrieveUserInfoResponse)
+async def retrieve_user_info(request: RetrieveUserInfoRequest) -> RetrieveUserInfoResponse:
+    """
+    Retrieve user information and contracts using vector search.
+
+    MCP Tool: retrieve_user_info
+    """
+    try:
+        # Create embedding for query
+        query_embedding = await create_embedding(request.query)
+
+        with SessionLocal() as session:
+            # Get user basic info
+            user_query = text("""
+                SELECT id, user_id, email, full_name, date_of_birth, phone_number, address
+                FROM users
+                WHERE user_id = :user_id
+            """)
+            user_result = session.execute(user_query, {"user_id": request.user_id}).fetchone()
+
+            if not user_result:
+                raise HTTPException(status_code=404, detail=f"User not found: {request.user_id}")
+
+            user_info = dict(user_result._mapping)
+
+            # Get user contracts with similarity search if requested
+            contracts = []
+            similarity_scores = []
+            source_documents = []
+
+            if request.include_contracts:
+                # Vector search on contracts
+                # Convert embedding to PostgreSQL vector format
+                embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+
+                # Note: Using CAST() instead of :: to avoid parameter parsing issues with SQLAlchemy
+                contract_query = text("""
+                    SELECT
+                        id, contract_number, contract_type, coverage_amount,
+                        full_text, key_terms, is_active,
+                        COALESCE(1 - (embedding <=> CAST(:query_embedding AS vector)), 0.0) AS similarity
+                    FROM user_contracts
+                    WHERE user_id = :user_id AND is_active = true
+                        AND embedding IS NOT NULL
+                    ORDER BY COALESCE(embedding <=> CAST(:query_embedding AS vector), 999999)
+                    LIMIT :top_k
+                """)
+
+                contract_results = session.execute(
+                    contract_query,
+                    {
+                        "user_id": request.user_id,
+                        "query_embedding": embedding_str,
+                        "top_k": request.top_k
+                    }
+                ).fetchall()
+
+                for row in contract_results:
+                    contract = dict(row._mapping)
+                    similarity_scores.append(contract.pop("similarity", 0.0))
+                    contracts.append(contract)
+                    source_documents.append(contract.get("contract_number", ""))
+
+        logger.info(f"Retrieved info for user {request.user_id} with {len(contracts)} contracts")
+
+        return RetrieveUserInfoResponse(
+            user_info=user_info,
+            contracts=contracts,
+            similarity_scores=similarity_scores,
+            source_documents=source_documents
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving user info: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/retrieve_similar_claims", response_model=RetrieveSimilarClaimsResponse)
+async def retrieve_similar_claims(request: RetrieveSimilarClaimsRequest) -> RetrieveSimilarClaimsResponse:
+    """
+    Find similar historical claims using vector similarity search.
+
+    MCP Tool: retrieve_similar_claims
+    """
+    try:
+        # Create embedding for claim text
+        claim_embedding = await create_embedding(request.claim_text)
+
+        with SessionLocal() as session:
+            # Vector search on claim documents
+            # Convert embedding to PostgreSQL vector format
+            embedding_str = '[' + ','.join(map(str, claim_embedding)) + ']'
+
+            query = text("""
+                SELECT
+                    CAST(c.id AS text) as claim_id,
+                    c.claim_number,
+                    cd.raw_ocr_text as claim_text,
+                    1 - (cd.embedding <=> CAST(:claim_embedding AS vector)) AS similarity,
+                    c.status as outcome,
+                    c.total_processing_time_ms
+                FROM claim_documents cd
+                JOIN claims c ON cd.claim_id = c.id
+                WHERE 1 - (cd.embedding <=> CAST(:claim_embedding AS vector)) >= :min_similarity
+                    AND (:claim_type IS NULL OR c.claim_type = :claim_type)
+                    AND c.status IN ('completed', 'manual_review')
+                ORDER BY cd.embedding <=> CAST(:claim_embedding AS vector)
+                LIMIT :top_k
+            """)
+
+            results = session.execute(
+                query,
+                {
+                    "claim_embedding": embedding_str,
+                    "min_similarity": request.min_similarity,
+                    "claim_type": request.claim_type,
+                    "top_k": request.top_k
+                }
+            ).fetchall()
+
+            similar_claims = [
+                SimilarClaim(
+                    claim_id=row.claim_id,
+                    claim_number=row.claim_number,
+                    claim_text=row.claim_text[:500] if row.claim_text else "",  # Truncate
+                    similarity_score=row.similarity,
+                    outcome=row.outcome,
+                    processing_time=row.total_processing_time_ms
+                )
+                for row in results
+            ]
+
+        logger.info(f"Found {len(similar_claims)} similar claims")
+
+        return RetrieveSimilarClaimsResponse(similar_claims=similar_claims)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving similar claims: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/search_knowledge_base", response_model=SearchKnowledgeBaseResponse)
+async def search_knowledge_base(request: SearchKnowledgeBaseRequest) -> SearchKnowledgeBaseResponse:
+    """
+    Search the knowledge base for relevant policy information.
+
+    MCP Tool: search_knowledge_base
+    """
+    try:
+        # Create embedding for query
+        query_embedding = await create_embedding(request.query)
+
+        with SessionLocal() as session:
+            # Vector search on knowledge base
+            # Convert embedding to PostgreSQL vector format
+            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+
+            query = text("""
+                SELECT
+                    CAST(id AS text),
+                    title,
+                    content,
+                    category,
+                    1 - (embedding <=> CAST(:query_embedding AS vector)) AS similarity
+                FROM knowledge_base
+                WHERE is_active = true
+                ORDER BY embedding <=> CAST(:query_embedding AS vector)
+                LIMIT :top_k
+            """)
+
+            results = session.execute(
+                query,
+                {
+                    "query_embedding": embedding_str,
+                    "top_k": request.top_k
+                }
+            ).fetchall()
+
+            kb_results = [
+                KnowledgeBaseResult(
+                    id=row.id,
+                    title=row.title,
+                    content=row.content,
+                    category=row.category,
+                    similarity_score=row.similarity
+                )
+                for row in results
+            ]
+
+        # Synthesize answer from retrieved documents
+        context = [{"title": r.title, "content": r.content} for r in kb_results]
+        synthesized_answer = await synthesize_with_llm(request.query, context)
+
+        logger.info(f"Found {len(kb_results)} knowledge base articles")
+
+        return SearchKnowledgeBaseResponse(
+            results=kb_results,
+            synthesized_answer=synthesized_answer
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching knowledge base: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health/live", response_model=HealthResponse)
+async def liveness():
+    """Liveness probe."""
+    return HealthResponse(
+        status="alive",
+        service="mcp-rag-server",
+        database_connected=False
+    )
+
+
+@app.get("/health/ready", response_model=HealthResponse)
+async def readiness():
+    """Readiness probe."""
+    try:
+        # Test database connection
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+
+        return HealthResponse(
+            status="ready",
+            service="mcp-rag-server",
+            database_connected=True
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database not ready: {str(e)}"
+        )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "service": "MCP RAG Server",
+        "version": "1.0.0",
+        "status": "running",
+        "tools": ["retrieve_user_info", "retrieve_similar_claims", "search_knowledge_base"]
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1,0 +1,3 @@
+Process the following insurance claim according to the workflow steps defined in your instructions.
+
+Analyze all provided data and make your decision based on the claim details, user contracts, and any relevant historical precedents.

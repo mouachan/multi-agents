@@ -1,0 +1,20 @@
+{{- if .Values.guardrails.enabled }}
+---
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: GuardrailsOrchestrator
+metadata:
+  name: guardrails-orchestrator
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: claims-processing
+    component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  orchestratorConfig: "fms-orchestr8-config-nlp"
+  enableBuiltInDetectors: {{ .Values.guardrails.enableBuiltInDetectors }}
+  enableGuardrailsGateway: false
+  replicas: {{ .Values.guardrails.replicas }}
+  logLevel: {{ .Values.guardrails.logLevel | quote }}
+{{- end }}

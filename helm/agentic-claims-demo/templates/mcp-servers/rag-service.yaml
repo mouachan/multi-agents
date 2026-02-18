@@ -1,0 +1,20 @@
+{{- if .Values.mcp.rag.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-server
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: rag-server
+spec:
+  type: {{ .Values.mcp.rag.service.type }}
+  ports:
+  - port: {{ .Values.mcp.rag.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: rag-server
+{{- end }}

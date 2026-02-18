@@ -1,0 +1,46 @@
+{{- if and .Values.backend.enabled .Values.backend.pvc.initPvc }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: backend
+  name: copy-test-documents
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: copy-documents
+{{- if .Values.global.proxies.HTTP_PROXY }}
+          env:
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxies.HTTP_PROXY }}
+{{- end }}
+          image: registry.access.redhat.com/ubi9/python-311:latest
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          command:
+            - /scripts/init-back.sh
+          volumeMounts:
+            - mountPath: /claim_documents
+              name: claim-documents
+            - mountPath: /scripts
+              name: helpers
+      volumes:
+        - configMap:
+            name: init-backend
+            defaultMode: 0777
+          name: helpers
+        - name: claim-documents
+          persistentVolumeClaim:
+            claimName: claim-documents
+      restartPolicy: Never
+  backoffLimit: 3
+{{- end }}

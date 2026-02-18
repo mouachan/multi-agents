@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agentic-claims-demo-check-deps
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: '8'
+    helm.sh/hook-delete-policy: hook-succeeded
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: '8'
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: llamastack-init
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: agentic-claims-demo-check-deps
+      containers:
+      - name: check-dependencies
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - "set -e\necho \"=== Checking LlamaStack Dependencies ===\"\n\n# Function\
+          \ to check if a resource is ready\ncheck_ready() {\n  local resource=$1\n\
+          \  local namespace=$2\n  local timeout=300\n  local elapsed=0\n\n  echo\
+          \ \"Waiting for $resource in namespace $namespace...\"\n  while [ $elapsed\
+          \ -lt $timeout ]; do\n    if oc get $resource -n $namespace &>/dev/null;\
+          \ then\n      echo \"\u2713 $resource found\"\n      return 0\n    fi\n\
+          \    echo \"  Waiting... ($elapsed/$timeout seconds)\"\n    sleep 10\n \
+          \   elapsed=$((elapsed + 10))\n  done\n  echo \"\u2717 Timeout waiting for\
+          \ $resource\"\n  return 1\n}\n\n# 1. Check PostgreSQL is ready\necho \"\"\
+          \necho \"1. Checking PostgreSQL...\"\ncheck_ready \"statefulset/postgresql\"\
+          \ \"claims-demo\"\n\n# Wait for PostgreSQL pod to be ready\necho \"Waiting\
+          \ for PostgreSQL pod to be ready...\"\noc wait --for=condition=ready pod\
+          \ \\\n  -l app.kubernetes.io/name=postgresql \\\n  -n claims-demo \\\n \
+          \ --timeout=300s || true\n\n# Check if database is accepting connections\n\
+          echo \"Testing PostgreSQL connection...\"\ntimeout=60\nelapsed=0\nwhile\
+          \ [ $elapsed -lt $timeout ]; do\n  if oc exec -n claims-demo \\\n    statefulset/postgresql\
+          \ \\\n    -- pg_isready -U claims_user &>/dev/null; then\n    echo \"\u2713\
+          \ PostgreSQL is accepting connections\"\n    break\n  fi\n  echo \"  PostgreSQL\
+          \ not ready yet... ($elapsed/$timeout seconds)\"\n  sleep 5\n  elapsed=$((elapsed\
+          \ + 5))\ndone\n# 2. Check Llama InferenceService exists (op\xE9rateur le\
+          \ g\xE9rera)\necho \"\"\necho \"2. Checking Llama InferenceService...\"\n\
+          check_ready \"inferenceservice/llama\" \"\"\necho \"  Note: InferenceService\
+          \ will be managed by RHOAI operator\"\n# 3. Check Gemma InferenceService\
+          \ exists (op\xE9rateur le g\xE9rera)\necho \"\"\necho \"3. Checking Gemma\
+          \ InferenceService...\"\ncheck_ready \"inferenceservice/gemma\" \"\"\necho\
+          \ \"  Note: InferenceService will be managed by RHOAI operator\"\n\necho\
+          \ \"\"\necho \"=== \u2713 All dependencies checked successfully ===\"\n\
+          echo \"LlamaStack can now be deployed safely\"\n"

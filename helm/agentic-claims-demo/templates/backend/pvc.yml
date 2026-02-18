@@ -1,0 +1,22 @@
+{{- if .Values.backend.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: backend
+  name: claim-documents
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+spec:
+  accessModes:
+    - {{ .Values.backend.pvc.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.pvc.size }}
+{{- if .Values.backend.pvc.storageClass }}
+  storageClassName: {{ .Values.backend.pvc.storageClass }}
+{{- end }}
+{{- end }}

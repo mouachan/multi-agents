@@ -1,0 +1,57 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+    opendatahub.io/genai-use-case: chat, natural language processing, text generation,
+      question answering
+    opendatahub.io/model-type: generative
+    openshift.io/description: Gemma embedding model
+    openshift.io/display-name: embeddinggemma-300m
+    security.opendatahub.io/enable-auth: 'false'
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.kserve.io/stop: 'false'
+  labels:
+    networking.kserve.io/visibility: exposed
+    opendatahub.io/dashboard: 'true'
+    opendatahub.io/genai-asset: 'true'
+    serving.kserve.io/inferenceservice: gemma
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+  name: gemma
+  namespace: claims-demo
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      args:
+      - --model
+      - /mnt/models/embeddinggemma-300m
+      - --gpu-memory-utilization
+      - '0.90'
+      - --max-model-len
+      - '2048'
+      - --tensor-parallel-size
+      - '1'
+      - --dtype=auto
+      - --enforce-eager
+      - --served-model-name
+      - embeddinggemma-300m
+      modelFormat:
+        name: vLLM
+      resources:
+        limits:
+          cpu: '2'
+          memory: 8Gi
+          nvidia.com/gpu: '1'
+        requests:
+          cpu: '1'
+          memory: 8Gi
+          nvidia.com/gpu: '1'
+      runtime: gemma
+      storageUri: pvc://embedding-model

@@ -1,0 +1,16 @@
+# MCP RAG Server Dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+starlette
+httpx>=0.27.0
+pydantic>=2.7.2
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+
+# Retry logic
+tenacity>=8.2.0
+
+# MCP SDK (official from Anthropic)
+mcp[cli]>=1.8.0

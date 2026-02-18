@@ -1,0 +1,90 @@
+{{- if .Values.minio.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-create-minio-bucket
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio-setup
+  annotations:
+    # Helm hooks - run after MinIO is deployed
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "15"
+    "helm.sh/hook-delete-policy": hook-succeeded
+    # ArgoCD GitOps
+    "argocd.argoproj.io/hook": PostSync
+    "argocd.argoproj.io/hook-delete-policy": HookSucceeded
+    "argocd.argoproj.io/sync-wave": "15"
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: minio-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-bucket
+          image: quay.io/minio/mc:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Creating MinIO bucket for pipelines ==="
+
+              # Configure MinIO client
+              mc alias set minio http://{{ include "agentic-claims-demo.fullname" . }}-minio:{{ .Values.minio.service.apiPort }} \
+                $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+
+              # Wait for MinIO to be ready
+              echo "Waiting for MinIO to be ready..."
+              timeout=120
+              elapsed=0
+              while [ $elapsed -lt $timeout ]; do
+                if mc admin info minio &>/dev/null; then
+                  echo "✓ MinIO is ready"
+                  break
+                fi
+                echo "  Waiting... ($elapsed/$timeout seconds)"
+                sleep 5
+                elapsed=$((elapsed + 5))
+              done
+
+              if [ $elapsed -ge $timeout ]; then
+                echo "✗ Timeout waiting for MinIO"
+                exit 1
+              fi
+
+              # Create bucket if it doesn't exist
+              BUCKET_NAME="{{ .Values.dataSciencePipelines.objectStorage.bucket }}"
+
+              if mc ls minio/$BUCKET_NAME &>/dev/null; then
+                echo "✓ Bucket '$BUCKET_NAME' already exists"
+              else
+                echo "Creating bucket '$BUCKET_NAME'..."
+                mc mb minio/$BUCKET_NAME
+                echo "✓ Bucket '$BUCKET_NAME' created successfully"
+              fi
+
+              # Set bucket policy to allow access
+              echo "Setting bucket policy..."
+              mc anonymous set download minio/$BUCKET_NAME || true
+
+              echo "=== ✓ MinIO bucket setup completed ==="
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentic-claims-demo.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentic-claims-demo.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+{{- end }}

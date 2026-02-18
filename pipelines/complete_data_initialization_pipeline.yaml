@@ -1,0 +1,885 @@
+# PIPELINE DEFINITION
+# Name: complete-data-initialization
+# Description: Complete data initialization: KB embeddings + historical claims + test scenarios
+# Inputs:
+#    embedding_model: str [Default: 'vllm-embedding/embeddinggemma-300m']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    llm_model: str [Default: 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8']
+#    num_historical_claims: int [Default: 60.0]
+#    postgres_host: str [Default: 'postgresql.claims-demo.svc.cluster.local']
+#    postgres_port: str [Default: '5432']
+components:
+  comp-generate-historical-decisions:
+    executorLabel: exec-generate-historical-decisions
+    inputDefinitions:
+      parameters:
+        llamastack_endpoint:
+          parameterType: STRING
+        llm_model:
+          parameterType: STRING
+        num_historical_claims:
+          parameterType: NUMBER_INTEGER
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-historical-embeddings:
+    executorLabel: exec-generate-historical-embeddings
+    inputDefinitions:
+      parameters:
+        embedding_model:
+          parameterType: STRING
+        llamastack_endpoint:
+          parameterType: STRING
+        num_historical_claims:
+          parameterType: NUMBER_INTEGER
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-historical-pdfs:
+    executorLabel: exec-generate-historical-pdfs
+    inputDefinitions:
+      parameters:
+        num_historical_claims:
+          parameterType: NUMBER_INTEGER
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        workspace_path:
+          parameterType: STRING
+  comp-generate-kb-embeddings:
+    executorLabel: exec-generate-kb-embeddings
+    inputDefinitions:
+      parameters:
+        embedding_model:
+          parameterType: STRING
+        llamastack_endpoint:
+          parameterType: STRING
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-test-claims:
+    executorLabel: exec-generate-test-claims
+    inputDefinitions:
+      parameters:
+        embedding_model:
+          parameterType: STRING
+        llamastack_endpoint:
+          parameterType: STRING
+        num_historical_claims:
+          parameterType: NUMBER_INTEGER
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-parse-historical-pdfs:
+    executorLabel: exec-parse-historical-pdfs
+    inputDefinitions:
+      parameters:
+        num_historical_claims:
+          parameterType: NUMBER_INTEGER
+        postgres_host:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+        workspace_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-generate-historical-decisions:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_historical_decisions
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.0'\
+          \ 'sqlalchemy==2.0.25' 'psycopg2-binary==2.9.9'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_historical_decisions(\n    num_historical_claims: int,\n\
+          \    postgres_host: str,\n    postgres_port: str,\n    llamastack_endpoint:\
+          \ str,\n    llm_model: str,\n    metrics: Output[Metrics]\n):\n    \"\"\"\
+          Step 5: Generate AI decisions and mark historical claims as completed.\"\
+          \"\"\n    import asyncio\n    import logging\n    import json\n    import\
+          \ os\n    import httpx\n    from sqlalchemy import create_engine, text\n\
+          \    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n\
+          \    logger = logging.getLogger(__name__)\n\n    # Get credentials from\
+          \ environment (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    async def generate_decision(claim_data: dict, client: httpx.AsyncClient)\
+          \ -> dict:\n        prompt = f\"\"\"Analyze this insurance claim and provide\
+          \ a decision.\n\nClaim: {claim_data['claim_number']}\nType: {claim_data['claim_type']}\n\
+          Amount: ${claim_data['amount']}\nDescription: {claim_data['description']}\n\
+          \nProvide decision as JSON:\n{{\"decision\": \"approve/deny\", \"reasoning\"\
+          : \"brief explanation\", \"confidence\": 0.0-1.0}}\"\"\"\n\n        try:\n\
+          \            response = await client.post(\n                f\"{llamastack_endpoint}/v1/chat/completions\"\
+          ,\n                json={\"model\": llm_model, \"messages\": [{\"role\"\
+          : \"user\", \"content\": prompt}]},\n                timeout=120.0\n   \
+          \         )\n            response.raise_for_status()\n            result\
+          \ = response.json()\n            content = result[\"choices\"][0][\"message\"\
+          ][\"content\"]\n\n            # Parse JSON from response\n            if\
+          \ \"```json\" in content:\n                content = content.split(\"```json\"\
+          )[1].split(\"```\")[0].strip()\n            decision = json.loads(content)\n\
+          \            return decision\n        except Exception as e:\n         \
+          \   logger.error(f\"Decision error: {e}\")\n            return {\"decision\"\
+          : \"approve\", \"reasoning\": \"Default approval\", \"confidence\": 0.5}\n\
+          \n    async def process():\n        engine = create_engine(DATABASE_URL,\
+          \ pool_pre_ping=True)\n        SessionLocal = sessionmaker(bind=engine)\n\
+          \        processed = 0\n\n        async with httpx.AsyncClient() as client:\n\
+          \            logger.info(\"=== Generating Historical Decisions ===\")\n\n\
+          \            with SessionLocal() as session:\n                query = text(\"\
+          \"\"\n                    SELECT CAST(id AS text) as id, claim_number, claim_type,\
+          \ amount, description\n                    FROM claims\n               \
+          \     WHERE status = 'pending'\n                    ORDER BY claim_number\n\
+          \                    LIMIT :limit\n                \"\"\")\n           \
+          \     claims = session.execute(query, {\"limit\": num_historical_claims}).fetchall()\n\
+          \n            for claim_id, claim_num, claim_type, amount, description in\
+          \ claims:\n                logger.info(f\"  Processing: {claim_num}\")\n\
+          \n                decision = await generate_decision({\n               \
+          \     \"claim_number\": claim_num,\n                    \"claim_type\":\
+          \ claim_type,\n                    \"amount\": float(amount),\n        \
+          \            \"description\": description\n                }, client)\n\n\
+          \                with SessionLocal() as session:\n                    #\
+          \ Update claim status to completed\n                    session.execute(text(\"\
+          \"\"\n                        UPDATE claims\n                        SET\
+          \ status = 'completed', decision = :decision, processing_completed_at =\
+          \ NOW()\n                        WHERE CAST(id AS text) = :claim_id\n  \
+          \                  \"\"\"), {\"decision\": decision[\"decision\"], \"claim_id\"\
+          : claim_id})\n\n                    # Insert decision record\n         \
+          \           session.execute(text(\"\"\"\n                        INSERT\
+          \ INTO claim_decisions\n                        (claim_id, decision_type,\
+          \ decision, reasoning, confidence_score, decided_by)\n                 \
+          \       VALUES (CAST(:claim_id AS uuid), 'system', :decision, :reasoning,\
+          \ :confidence, 'AI-Historical')\n                    \"\"\"), {\n      \
+          \                  \"claim_id\": claim_id,\n                        \"decision\"\
+          : decision[\"decision\"],\n                        \"reasoning\": decision.get(\"\
+          reasoning\", \"\"),\n                        \"confidence\": decision.get(\"\
+          confidence\", 0.8)\n                    })\n                    session.commit()\n\
+          \n                processed += 1\n                await asyncio.sleep(1)\n\
+          \n        engine.dispose()\n        logger.info(f\"\u2705 Historical decisions:\
+          \ {processed}/{num_historical_claims}\")\n        metrics.log_metric(\"\
+          historical_decisions\", processed)\n\n    asyncio.run(process())\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-historical-embeddings:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_historical_embeddings
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.0'\
+          \ 'sqlalchemy==2.0.25' 'psycopg2-binary==2.9.9'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_historical_embeddings(\n    num_historical_claims: int,\n\
+          \    postgres_host: str,\n    postgres_port: str,\n    llamastack_endpoint:\
+          \ str,\n    embedding_model: str,\n    metrics: Output[Metrics]\n):\n  \
+          \  \"\"\"Step 4: Generate embeddings for historical claim_documents.\"\"\
+          \"\n    import asyncio\n    import logging\n    import os\n    from typing\
+          \ import List, Optional\n    import httpx\n    from sqlalchemy import create_engine,\
+          \ text\n    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n\
+          \    logger = logging.getLogger(__name__)\n\n    # Get credentials from\
+          \ environment (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    async def create_embedding(text: str, client: httpx.AsyncClient)\
+          \ -> Optional[List[float]]:\n        try:\n            response = await\
+          \ client.post(\n                f\"{llamastack_endpoint}/v1/embeddings\"\
+          ,\n                json={\"model\": embedding_model, \"input\": text.strip()},\n\
+          \                timeout=60.0\n            )\n            response.raise_for_status()\n\
+          \            result = response.json()\n            if \"data\" in result\
+          \ and len(result[\"data\"]) > 0:\n                return result[\"data\"\
+          ][0].get(\"embedding\")\n            return None\n        except Exception\
+          \ as e:\n            logger.error(f\"Error: {e}\")\n            return None\n\
+          \n    def format_embedding(embedding: List[float]) -> str:\n        return\
+          \ '[' + ','.join(str(x) for x in embedding) + ']'\n\n    async def process():\n\
+          \        engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n    \
+          \    SessionLocal = sessionmaker(bind=engine)\n        emb_count = 0\n\n\
+          \        async with httpx.AsyncClient() as client:\n            logger.info(\"\
+          === Generating Historical Claim Embeddings ===\")\n\n            with SessionLocal()\
+          \ as session:\n                query = text(\"\"\"\n                   \
+          \ SELECT CAST(cd.id AS text) as doc_id, cd.raw_ocr_text, c.claim_number\n\
+          \                    FROM claim_documents cd\n                    JOIN claims\
+          \ c ON cd.claim_id = c.id\n                    WHERE cd.embedding IS NULL\n\
+          \                      AND cd.raw_ocr_text IS NOT NULL\n               \
+          \     ORDER BY c.claim_number\n                    LIMIT :limit\n      \
+          \          \"\"\")\n                docs = session.execute(query, {\"limit\"\
+          : num_historical_claims}).fetchall()\n\n            for doc_id, ocr_text,\
+          \ claim_num in docs:\n                logger.info(f\"  Claim: {claim_num}\"\
+          )\n\n                embedding = await create_embedding(ocr_text[:2000],\
+          \ client)\n                if embedding:\n                    with SessionLocal()\
+          \ as session:\n                        session.execute(\n              \
+          \              text(\"UPDATE claim_documents SET embedding = CAST(:emb AS\
+          \ vector) WHERE CAST(id AS text) = :id\"),\n                           \
+          \ {\"emb\": format_embedding(embedding), \"id\": doc_id}\n             \
+          \           )\n                        session.commit()\n              \
+          \          emb_count += 1\n\n                await asyncio.sleep(0.3)\n\n\
+          \        engine.dispose()\n        logger.info(f\"\u2705 Historical embeddings:\
+          \ {emb_count}/{num_historical_claims}\")\n        metrics.log_metric(\"\
+          historical_embeddings\", emb_count)\n\n    asyncio.run(process())\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-historical-pdfs:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_historical_pdfs
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'reportlab==4.2.5'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_historical_pdfs(\n    workspace_path: dsl.OutputPath(str),\n\
+          \    num_historical_claims: int,\n    postgres_host: str,\n    postgres_port:\
+          \ str\n):\n    \"\"\"Step 2: Generate PDFs for historical claims (first\
+          \ N claims).\"\"\"\n    import logging\n    import os\n    from reportlab.lib.pagesizes\
+          \ import letter\n    from reportlab.platypus import SimpleDocTemplate, Paragraph,\
+          \ Spacer\n    from reportlab.lib.styles import getSampleStyleSheet\n   \
+          \ from sqlalchemy import create_engine, text\n    from sqlalchemy.orm import\
+          \ sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n    logger\
+          \ = logging.getLogger(__name__)\n\n    # Get credentials from environment\
+          \ (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n    SessionLocal\
+          \ = sessionmaker(bind=engine)\n\n    # Get first N claims (these will be\
+          \ historical)\n    with SessionLocal() as session:\n        query = text(\"\
+          \"\"\n            SELECT claim_number, claim_type, amount, description,\
+          \ submitted_at\n            FROM claims\n            WHERE status = 'pending'\n\
+          \            ORDER BY claim_number\n            LIMIT :limit\n        \"\
+          \"\")\n        claims = session.execute(query, {\"limit\": num_historical_claims}).fetchall()\n\
+          \n    pdf_dir = os.path.join(workspace_path, \"pdfs\")\n    os.makedirs(pdf_dir,\
+          \ exist_ok=True)\n\n    logger.info(f\"Generating {len(claims)} PDFs...\"\
+          )\n    styles = getSampleStyleSheet()\n\n    for claim in claims:\n    \
+          \    claim_num, claim_type, amount, description, submitted_at = claim\n\
+          \        pdf_path = os.path.join(pdf_dir, f\"{claim_num}.pdf\")\n\n    \
+          \    doc = SimpleDocTemplate(pdf_path, pagesize=letter)\n        story =\
+          \ []\n\n        story.append(Paragraph(f\"<b>Insurance Claim: {claim_num}</b>\"\
+          , styles['Title']))\n        story.append(Spacer(1, 12))\n        story.append(Paragraph(f\"\
+          <b>Type:</b> {claim_type}\", styles['Normal']))\n        story.append(Paragraph(f\"\
+          <b>Amount:</b> ${amount:,.2f}\", styles['Normal']))\n        story.append(Paragraph(f\"\
+          <b>Date:</b> {submitted_at.strftime('%Y-%m-%d')}\", styles['Normal']))\n\
+          \        story.append(Spacer(1, 12))\n        story.append(Paragraph(f\"\
+          <b>Description:</b>\", styles['Heading2']))\n        story.append(Paragraph(description\
+          \ or \"No description provided.\", styles['Normal']))\n\n        doc.build(story)\n\
+          \        logger.info(f\"  Generated: {claim_num}.pdf\")\n\n    logger.info(f\"\
+          \u2705 Generated {len(claims)} PDFs in {pdf_dir}\")\n\n    # Write path\
+          \ for next step\n    with open(workspace_path, 'w') as f:\n        f.write(pdf_dir)\n\
+          \n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-kb-embeddings:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_kb_embeddings
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.0'\
+          \ 'sqlalchemy==2.0.25' 'psycopg2-binary==2.9.9'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_kb_embeddings(\n    postgres_host: str,\n    postgres_port:\
+          \ str,\n    llamastack_endpoint: str,\n    embedding_model: str,\n    metrics:\
+          \ Output[Metrics]\n):\n    \"\"\"Step 1: Generate Knowledge Base embeddings.\"\
+          \"\"\n    import asyncio\n    import logging\n    import os\n    from typing\
+          \ import List, Optional\n    import httpx\n    from sqlalchemy import create_engine,\
+          \ text\n    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n\
+          \    logger = logging.getLogger(__name__)\n\n    # Get credentials from\
+          \ environment (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    async def create_embedding(text: str, client: httpx.AsyncClient)\
+          \ -> Optional[List[float]]:\n        try:\n            response = await\
+          \ client.post(\n                f\"{llamastack_endpoint}/v1/embeddings\"\
+          ,\n                json={\"model\": embedding_model, \"input\": text.strip()},\n\
+          \                timeout=60.0\n            )\n            response.raise_for_status()\n\
+          \            result = response.json()\n            if \"data\" in result\
+          \ and len(result[\"data\"]) > 0:\n                return result[\"data\"\
+          ][0].get(\"embedding\")\n            return None\n        except Exception\
+          \ as e:\n            logger.error(f\"Error creating embedding: {e}\")\n\
+          \            return None\n\n    def format_embedding(embedding: List[float])\
+          \ -> str:\n        return '[' + ','.join(str(x) for x in embedding) + ']'\n\
+          \n    async def process():\n        engine = create_engine(DATABASE_URL,\
+          \ pool_pre_ping=True)\n        SessionLocal = sessionmaker(bind=engine)\n\
+          \        kb_count = 0\n\n        async with httpx.AsyncClient() as client:\n\
+          \            logger.info(\"=== Generating Knowledge Base Embeddings ===\"\
+          )\n            with SessionLocal() as session:\n                query =\
+          \ text(\"SELECT CAST(id AS text) as id, title, content FROM knowledge_base\
+          \ WHERE embedding IS NULL\")\n                kb_entries = [(r.id, r.title,\
+          \ r.content) for r in session.execute(query).fetchall()]\n\n           \
+          \ for kb_id, title, content in kb_entries:\n                text_to_embed\
+          \ = f\"{title}\\n\\n{content}\"[:2000]\n                logger.info(f\"\
+          \  KB: {title}\")\n\n                embedding = await create_embedding(text_to_embed,\
+          \ client)\n                if embedding:\n                    with SessionLocal()\
+          \ as session:\n                        session.execute(\n              \
+          \              text(\"UPDATE knowledge_base SET embedding = CAST(:emb AS\
+          \ vector) WHERE CAST(id AS text) = :id\"),\n                           \
+          \ {\"emb\": format_embedding(embedding), \"id\": kb_id}\n              \
+          \          )\n                        session.commit()\n               \
+          \         kb_count += 1\n\n                await asyncio.sleep(0.5)\n\n\
+          \        engine.dispose()\n        logger.info(f\"\u2705 Knowledge Base\
+          \ embeddings: {kb_count}/15\")\n        metrics.log_metric(\"kb_embeddings\"\
+          , kb_count)\n\n    asyncio.run(process())\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-test-claims:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_test_claims
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.0'\
+          \ 'sqlalchemy==2.0.25' 'psycopg2-binary==2.9.9'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_test_claims(\n    num_historical_claims: int,\n    postgres_host:\
+          \ str,\n    postgres_port: str,\n    llamastack_endpoint: str,\n    embedding_model:\
+          \ str,\n    metrics: Output[Metrics]\n):\n    \"\"\"Step 6: Generate claim_documents\
+          \ for test claims (APPROVE/DENY/MANUAL_REVIEW).\"\"\"\n    import asyncio\n\
+          \    import logging\n    import os\n    from typing import List, Optional\n\
+          \    import httpx\n    from sqlalchemy import create_engine, text\n    from\
+          \ sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n\
+          \    logger = logging.getLogger(__name__)\n\n    # Get credentials from\
+          \ environment (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    # Test scenarios - Claims to mark as MANUAL_REVIEW (short OCR)\n\
+          \    MANUAL_REVIEW_CLAIMS = [\n        \"CLM-2024-0061\", \"CLM-2024-0062\"\
+          , \"CLM-2024-0063\", \"CLM-2024-0064\", \"CLM-2024-0065\",\n        \"CLM-2024-0066\"\
+          , \"CLM-2024-0067\", \"CLM-2024-0068\", \"CLM-2024-0069\", \"CLM-2024-0070\"\
+          \n    ]\n\n    OCR_TEMPLATES = {\n        \"Auto\": \"Vehicle damage claim.\
+          \ Accident date: 2025-11-15. Driver: {name}. Vehicle: Toyota Camry. Damage:\
+          \ Front bumper. Estimated repair: ${amount}. Police report filed.\",\n \
+          \       \"Home\": \"Home insurance claim for water damage. Property owner:\
+          \ {name}. Date of loss: 2025-11-10. Cause: Burst pipe. Estimated damages:\
+          \ ${amount}.\",\n        \"Medical\": \"Medical insurance claim. Patient:\
+          \ {name}. Service: Hospital visit. Total charges: ${amount}. Hospital stay:\
+          \ 2 days.\",\n        \"Life\": \"Life insurance claim. Beneficiary: {name}.\
+          \ Claim amount: ${amount}. Documentation attached.\"\n    }\n\n    SHORT_OCR\
+          \ = \"Claim document for {name}. Date: 2025-12. Insufficient data.\"\n\n\
+          \    async def create_embedding(text: str, client: httpx.AsyncClient) ->\
+          \ Optional[List[float]]:\n        try:\n            response = await client.post(\n\
+          \                f\"{llamastack_endpoint}/v1/embeddings\",\n           \
+          \     json={\"model\": embedding_model, \"input\": text.strip()},\n    \
+          \            timeout=60.0\n            )\n            response.raise_for_status()\n\
+          \            result = response.json()\n            if \"data\" in result\
+          \ and len(result[\"data\"]) > 0:\n                return result[\"data\"\
+          ][0].get(\"embedding\")\n            return None\n        except Exception\
+          \ as e:\n            logger.error(f\"Error: {e}\")\n            return None\n\
+          \n    def format_embedding(embedding: List[float]) -> str:\n        return\
+          \ '[' + ','.join(str(x) for x in embedding) + ']'\n\n    async def process():\n\
+          \        engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n    \
+          \    SessionLocal = sessionmaker(bind=engine)\n\n        approve_count =\
+          \ 0\n        deny_count = 0\n        manual_count = 0\n\n        async with\
+          \ httpx.AsyncClient() as client:\n            logger.info(\"=== Generating\
+          \ Test Claims ===\")\n\n            # Get pending claims (after historical\
+          \ ones)\n            with SessionLocal() as session:\n                query\
+          \ = text(\"\"\"\n                    SELECT CAST(c.id AS text) as id, c.claim_number,\
+          \ c.claim_type, c.amount,\n                           c.user_id, u.first_name,\
+          \ u.last_name\n                    FROM claims c\n                    JOIN\
+          \ users u ON c.user_id = u.id\n                    WHERE c.status = 'pending'\n\
+          \                    ORDER BY c.claim_number\n                    OFFSET\
+          \ :offset\n                \"\"\")\n                claims = session.execute(query,\
+          \ {\"offset\": num_historical_claims}).fetchall()\n\n            for claim_id,\
+          \ claim_num, claim_type, amount, user_id, first_name, last_name in claims:\n\
+          \                full_name = f\"{first_name} {last_name}\"\n           \
+          \     is_manual = claim_num in MANUAL_REVIEW_CLAIMS\n\n                #\
+          \ Generate OCR text\n                if is_manual:\n                   \
+          \ ocr_text = SHORT_OCR.format(name=full_name)\n                    confidence\
+          \ = 0.60\n                    manual_count += 1\n                    scenario\
+          \ = \"MANUAL_REVIEW\"\n                else:\n                    template\
+          \ = OCR_TEMPLATES.get(claim_type, OCR_TEMPLATES[\"Auto\"])\n           \
+          \         ocr_text = template.format(name=full_name, amount=float(amount))\n\
+          \                    confidence = 0.95\n                    # Determine\
+          \ scenario based on amount (simplified)\n                    if float(amount)\
+          \ > 15000:\n                        deny_count += 1\n                  \
+          \      scenario = \"DENY\"\n                    else:\n                \
+          \        approve_count += 1\n                        scenario = \"APPROVE\"\
+          \n\n                logger.info(f\"  {claim_num}: {scenario}\")\n\n    \
+          \            # Generate embedding\n                embedding = await create_embedding(ocr_text,\
+          \ client)\n                if embedding:\n                    with SessionLocal()\
+          \ as session:\n                        session.execute(text(\"\"\"\n   \
+          \                         INSERT INTO claim_documents\n                \
+          \            (claim_id, document_type, file_path, raw_ocr_text, ocr_confidence,\
+          \ embedding)\n                            VALUES (CAST(:claim_id AS uuid),\
+          \ :doc_type, :file_path, :ocr_text, :confidence, CAST(:emb AS vector))\n\
+          \                        \"\"\"), {\n                            \"claim_id\"\
+          : claim_id,\n                            \"doc_type\": claim_type,\n   \
+          \                         \"file_path\": f\"/claim_documents/{claim_num}.pdf\"\
+          ,\n                            \"ocr_text\": ocr_text,\n               \
+          \             \"confidence\": confidence,\n                            \"\
+          emb\": format_embedding(embedding)\n                        })\n       \
+          \                 session.commit()\n\n                await asyncio.sleep(0.3)\n\
+          \n        engine.dispose()\n\n        logger.info(f\"\\n{'='*60}\")\n  \
+          \      logger.info(f\"TEST CLAIMS SUMMARY\")\n        logger.info(f\"{'='*60}\"\
+          )\n        logger.info(f\"\u2705 APPROVE: {approve_count}\")\n        logger.info(f\"\
+          \u274C DENY: {deny_count}\")\n        logger.info(f\"\u26A0\uFE0F  MANUAL_REVIEW:\
+          \ {manual_count}\")\n        logger.info(f\"\u2705 Total: {approve_count\
+          \ + deny_count + manual_count}\")\n        logger.info(f\"{'='*60}\")\n\n\
+          \        metrics.log_metric(\"test_approve\", approve_count)\n        metrics.log_metric(\"\
+          test_deny\", deny_count)\n        metrics.log_metric(\"test_manual_review\"\
+          , manual_count)\n\n    asyncio.run(process())\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-parse-historical-pdfs:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - parse_historical_pdfs
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'docling==2.18.0'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef parse_historical_pdfs(\n    workspace_path: dsl.InputPath(str),\n\
+          \    num_historical_claims: int,\n    postgres_host: str,\n    postgres_port:\
+          \ str,\n    metrics: Output[Metrics]\n):\n    \"\"\"Step 3: Parse PDFs with\
+          \ Docling for historical claims.\"\"\"\n    import logging\n    import os\n\
+          \    from docling.document_converter import DocumentConverter\n    from\
+          \ sqlalchemy import create_engine, text\n    from sqlalchemy.orm import\
+          \ sessionmaker\n\n    logging.basicConfig(level=logging.INFO)\n    logger\
+          \ = logging.getLogger(__name__)\n\n    # Get credentials from environment\
+          \ (injected from secret)\n    postgres_user = os.getenv('POSTGRES_USER',\
+          \ 'claims_user')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
+          \    postgres_db = os.getenv('POSTGRES_DATABASE', 'claims_db')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    with open(workspace_path, 'r') as f:\n        pdf_dir = f.read().strip()\n\
+          \n    engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n    SessionLocal\
+          \ = sessionmaker(bind=engine)\n\n    # Get historical claims\n    with SessionLocal()\
+          \ as session:\n        query = text(\"\"\"\n            SELECT CAST(id AS\
+          \ text) as id, claim_number, claim_type\n            FROM claims\n     \
+          \       WHERE status = 'pending'\n            ORDER BY claim_number\n  \
+          \          LIMIT :limit\n        \"\"\")\n        claims = session.execute(query,\
+          \ {\"limit\": num_historical_claims}).fetchall()\n\n    converter = DocumentConverter()\n\
+          \    parsed = 0\n\n    logger.info(f\"Parsing {len(claims)} PDFs with Docling...\"\
+          )\n\n    for claim_id, claim_num, claim_type in claims:\n        pdf_path\
+          \ = os.path.join(pdf_dir, f\"{claim_num}.pdf\")\n\n        if not os.path.exists(pdf_path):\n\
+          \            logger.warning(f\"  PDF not found: {claim_num}\")\n       \
+          \     continue\n\n        try:\n            result = converter.convert(pdf_path)\n\
+          \            ocr_text = result.document.export_to_markdown()\n         \
+          \   confidence = 0.95\n\n            with SessionLocal() as session:\n \
+          \               session.execute(text(\"\"\"\n                    INSERT\
+          \ INTO claim_documents\n                    (claim_id, document_type, file_path,\
+          \ raw_ocr_text, ocr_confidence, ocr_processed_at)\n                    VALUES\
+          \ (CAST(:claim_id AS uuid), :doc_type, :file_path, :ocr_text, :confidence,\
+          \ NOW())\n                \"\"\"), {\n                    \"claim_id\":\
+          \ claim_id,\n                    \"doc_type\": claim_type,\n           \
+          \         \"file_path\": pdf_path,\n                    \"ocr_text\": ocr_text,\n\
+          \                    \"confidence\": confidence\n                })\n  \
+          \              session.commit()\n\n            parsed += 1\n           \
+          \ logger.info(f\"  Parsed: {claim_num} ({parsed}/{len(claims)})\")\n\n \
+          \       except Exception as e:\n            logger.error(f\"  Error parsing\
+          \ {claim_num}: {e}\")\n\n    engine.dispose()\n    logger.info(f\"\u2705\
+          \ Parsed {parsed}/{len(claims)} PDFs\")\n    metrics.log_metric(\"pdfs_parsed\"\
+          , parsed)\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 2.0
+          memoryLimit: 8.589934592
+          resourceCpuLimit: '2'
+          resourceMemoryLimit: 8Gi
+pipelineInfo:
+  description: 'Complete data initialization: KB embeddings + historical claims +
+    test scenarios'
+  name: complete-data-initialization
+root:
+  dag:
+    tasks:
+      generate-historical-decisions:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-historical-decisions
+        dependentTasks:
+        - generate-historical-embeddings
+        inputs:
+          parameters:
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            llm_model:
+              componentInputParameter: llm_model
+            num_historical_claims:
+              componentInputParameter: num_historical_claims
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+        taskInfo:
+          name: 5. Generate Historical Decisions
+      generate-historical-embeddings:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-historical-embeddings
+        dependentTasks:
+        - parse-historical-pdfs
+        inputs:
+          parameters:
+            embedding_model:
+              componentInputParameter: embedding_model
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            num_historical_claims:
+              componentInputParameter: num_historical_claims
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+        taskInfo:
+          name: 4. Generate Historical Embeddings
+      generate-historical-pdfs:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-historical-pdfs
+        dependentTasks:
+        - generate-kb-embeddings
+        inputs:
+          parameters:
+            num_historical_claims:
+              componentInputParameter: num_historical_claims
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+        taskInfo:
+          name: 2. Generate Historical PDFs
+      generate-kb-embeddings:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-kb-embeddings
+        inputs:
+          parameters:
+            embedding_model:
+              componentInputParameter: embedding_model
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+        taskInfo:
+          name: 1. Generate KB Embeddings
+      generate-test-claims:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-test-claims
+        dependentTasks:
+        - generate-historical-decisions
+        inputs:
+          parameters:
+            embedding_model:
+              componentInputParameter: embedding_model
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            num_historical_claims:
+              componentInputParameter: num_historical_claims
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+        taskInfo:
+          name: 6. Generate Test Claims
+      parse-historical-pdfs:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-parse-historical-pdfs
+        dependentTasks:
+        - generate-historical-pdfs
+        inputs:
+          parameters:
+            num_historical_claims:
+              componentInputParameter: num_historical_claims
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_port:
+              componentInputParameter: postgres_port
+            workspace_path:
+              taskOutputParameter:
+                outputParameterKey: workspace_path
+                producerTask: generate-historical-pdfs
+        taskInfo:
+          name: 3. Parse PDFs with Docling
+  inputDefinitions:
+    parameters:
+      embedding_model:
+        defaultValue: vllm-embedding/embeddinggemma-300m
+        isOptional: true
+        parameterType: STRING
+      llamastack_endpoint:
+        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        isOptional: true
+        parameterType: STRING
+      llm_model:
+        defaultValue: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
+        isOptional: true
+        parameterType: STRING
+      num_historical_claims:
+        defaultValue: 60.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      postgres_host:
+        defaultValue: postgresql.claims-demo.svc.cluster.local
+        isOptional: true
+        parameterType: STRING
+      postgres_port:
+        defaultValue: '5432'
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.2
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-generate-historical-decisions:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-historical-embeddings:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-historical-pdfs:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-kb-embeddings:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-test-claims:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-parse-historical-pdfs:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret

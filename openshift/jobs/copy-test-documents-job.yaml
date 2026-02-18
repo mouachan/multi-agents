@@ -1,0 +1,102 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: copy-test-documents
+  namespace: claims-demo
+  labels:
+    app: claims-demo
+    component: data-seeder
+spec:
+  template:
+    spec:
+      containers:
+      - name: copy-documents
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+
+          echo "============================================"
+          echo "Copying test claim documents to PVC"
+          echo "============================================"
+
+          # GitHub repository details
+          REPO="mouachan/agentic-claim-demo"
+          BRANCH="main"
+          PDF_DIR="backend/test_data/claim_documents"
+
+          # Target directory in PVC
+          TARGET_DIR="/claim_documents"
+
+          # Create target directory
+          mkdir -p $TARGET_DIR
+
+          # Generate list of all PDF files (50 total)
+          PDF_FILES=()
+
+          # Auto claims (20 files: claim_auto_001 to claim_auto_020)
+          for i in {1..20}; do
+            PDF_FILES+=("claim_auto_$(printf "%03d" $i).pdf")
+          done
+
+          # Home claims (15 files: claim_home_001 to claim_home_015)
+          for i in {1..15}; do
+            PDF_FILES+=("claim_home_$(printf "%03d" $i).pdf")
+          done
+
+          # Medical claims (15 files: claim_medical_001 to claim_medical_015)
+          for i in {1..15}; do
+            PDF_FILES+=("claim_medical_$(printf "%03d" $i).pdf")
+          done
+
+          echo ""
+          echo "Downloading ${#PDF_FILES[@]} PDF files from GitHub..."
+          echo ""
+
+          # Download each PDF file
+          DOWNLOADED=0
+          FAILED=0
+
+          for PDF_FILE in "${PDF_FILES[@]}"; do
+            URL="https://raw.githubusercontent.com/$REPO/$BRANCH/$PDF_DIR/$PDF_FILE"
+            echo "Downloading: $PDF_FILE"
+
+            if curl -L -s -f -o "$TARGET_DIR/$PDF_FILE" "$URL"; then
+              echo "  ✓ Downloaded successfully"
+              DOWNLOADED=$((DOWNLOADED + 1))
+            else
+              echo "  ✗ Failed to download"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "============================================"
+          echo "Download summary: $DOWNLOADED successful, $FAILED failed"
+          echo "============================================"
+
+          if [ $FAILED -gt 0 ]; then
+            echo "WARNING: Some files failed to download"
+          fi
+
+          echo ""
+          echo "============================================"
+          echo "Verifying files in PVC..."
+          echo "============================================"
+          ls -lh $TARGET_DIR/*.pdf
+
+          echo ""
+          echo "============================================"
+          echo "✓ Successfully copied ${#PDF_FILES[@]} test documents"
+          echo "============================================"
+        volumeMounts:
+        - name: claim-documents
+          mountPath: /claim_documents
+      volumes:
+      - name: claim-documents
+        persistentVolumeClaim:
+          claimName: claim-documents
+      restartPolicy: Never
+  backoffLimit: 3

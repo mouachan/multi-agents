@@ -1,0 +1,781 @@
+# PIPELINE DEFINITION
+# Name: historical-claims-initialization
+# Description: 
+#                  Initialize historical claims data for RAG similarity search.
+#              
+#                  This pipeline demonstrates RHOAI Data Science Pipelines:
+#                  1. Generate realistic PDFs from existing claims
+#                  2. Parse PDFs with Docling (IBM advanced parsing)
+#                  3. Generate embeddings with LlamaStack (768D vectors)
+#                  4. Generate AI decisions with LlamaStack (realistic reasoning)
+#              
+#                  Complements real-time claim processing via MCP Servers.
+#              
+#                  PostgreSQL credentials are injected from postgresql-secret via environment variables.
+#                  
+# Inputs:
+#    batch_size: int [Default: 5.0]
+#    embedding_model: str [Default: 'vllm-embedding/embeddinggemma-300m']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    llm_model: str [Default: 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8']
+#    max_retries: int [Default: 30.0]
+#    num_claims: int [Default: 10.0]
+components:
+  comp-docling-parse-pdfs:
+    executorLabel: exec-docling-parse-pdfs
+    inputDefinitions:
+      parameters:
+        workspace_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-decisions:
+    executorLabel: exec-generate-decisions
+    inputDefinitions:
+      parameters:
+        llamastack_endpoint:
+          parameterType: STRING
+        llm_model:
+          parameterType: STRING
+        workspace_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-embeddings:
+    executorLabel: exec-generate-embeddings
+    inputDefinitions:
+      parameters:
+        batch_size:
+          parameterType: NUMBER_INTEGER
+        embedding_model:
+          parameterType: STRING
+        llamastack_endpoint:
+          parameterType: STRING
+        max_retries:
+          parameterType: NUMBER_INTEGER
+        workspace_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-generate-realistic-pdfs:
+    executorLabel: exec-generate-realistic-pdfs
+    inputDefinitions:
+      parameters:
+        num_claims:
+          parameterType: NUMBER_INTEGER
+        workspace_path:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-docling-parse-pdfs:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - docling_parse_pdfs
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'docling==2.18.0'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef docling_parse_pdfs(\n    workspace_path: str,\n    metrics: dsl.Output[dsl.Metrics]\n\
+          ):\n    \"\"\"\n    Parse PDFs using Docling and create claim_documents.\n\
+          \n    Uses IBM's Docling for advanced document parsing.\n    Creates claim_documents\
+          \ entries with raw_ocr_text.\n    \"\"\"\n    import logging\n    import\
+          \ os\n    import json\n    from pathlib import Path\n\n    from docling.document_converter\
+          \ import DocumentConverter\n    from sqlalchemy import create_engine, text\n\
+          \    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
+          \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
+          \n    # Database connection from environment variables\n    postgres_host\
+          \ = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
+          \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
+          \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    pdf_dir = Path(workspace_path) / \"pdfs\"\n    metadata_file = Path(workspace_path)\
+          \ / \"claims_metadata.json\"\n\n    logger.info(f\"Parsing PDFs from {pdf_dir}\"\
+          )\n\n    if not pdf_dir.exists():\n        logger.error(f\"PDF directory\
+          \ not found: {pdf_dir}\")\n        raise RuntimeError(f\"PDF directory not\
+          \ found: {pdf_dir}\")\n\n    # Load metadata\n    with open(metadata_file,\
+          \ 'r') as f:\n        claims_metadata = json.load(f)\n\n    logger.info(f\"\
+          Found {len(claims_metadata)} PDFs to parse\")\n\n    engine = create_engine(DATABASE_URL,\
+          \ pool_pre_ping=True)\n    SessionLocal = sessionmaker(bind=engine)\n\n\
+          \    converter = DocumentConverter()\n    parsed = 0\n    failed = 0\n\n\
+          \    for claim_meta in claims_metadata:\n        claim_id = claim_meta['claim_id']\n\
+          \        pdf_filename = claim_meta['pdf_filename']\n        pdf_file = pdf_dir\
+          \ / pdf_filename\n\n        if not pdf_file.exists():\n            logger.error(f\"\
+          PDF not found: {pdf_file}\")\n            failed += 1\n            continue\n\
+          \n        logger.info(f\"Parsing {claim_meta['claim_number']}...\")\n\n\
+          \        try:\n            # Parse PDF with Docling\n            result\
+          \ = converter.convert(str(pdf_file))\n            extracted_text = result.document.export_to_text().strip()\n\
+          \n            # Create claim_document entry\n            with SessionLocal()\
+          \ as session:\n                insert_query = text(\"\"\"\n            \
+          \        INSERT INTO claim_documents (\n                        claim_id,\n\
+          \                        document_type,\n                        file_path,\n\
+          \                        raw_ocr_text,\n                        ocr_confidence,\n\
+          \                        ocr_processed_at\n                    ) VALUES\
+          \ (\n                        CAST(:claim_id AS UUID),\n                \
+          \        'application/pdf',\n                        :file_path,\n     \
+          \                   :ocr_text,\n                        0.95,\n        \
+          \                NOW()\n                    )\n                    ON CONFLICT\
+          \ (claim_id) DO UPDATE\n                    SET raw_ocr_text = EXCLUDED.raw_ocr_text,\n\
+          \                        ocr_processed_at = EXCLUDED.ocr_processed_at\n\
+          \                \"\"\")\n                session.execute(insert_query,\
+          \ {\n                    \"claim_id\": claim_id,\n                    \"\
+          file_path\": f\"/claim_documents/{pdf_filename}\",\n                   \
+          \ \"ocr_text\": extracted_text\n                })\n                session.commit()\n\
+          \n            parsed += 1\n            logger.info(f\"  Parsed ({parsed}/{len(claims_metadata)})\"\
+          )\n\n            if parsed % 10 == 0:\n                logger.info(f\"Progress:\
+          \ {parsed}/{len(claims_metadata)}\")\n\n        except Exception as e:\n\
+          \            logger.error(f\"  Failed to parse {claim_meta['claim_number']}:\
+          \ {e}\")\n            failed += 1\n\n    logger.info(f\"Parsed: {parsed}/{len(claims_metadata)}\"\
+          )\n    logger.info(f\"Failed: {failed}/{len(claims_metadata)}\")\n    engine.dispose()\n\
+          \n    # Log metrics\n    metrics.log_metric(\"total_documents\", len(claims_metadata))\n\
+          \    metrics.log_metric(\"documents_parsed\", parsed)\n    metrics.log_metric(\"\
+          documents_failed\", failed)\n\n    if failed > 0:\n        raise RuntimeError(f\"\
+          {failed} documents failed to parse\")\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 2.0
+          memoryLimit: 8.589934592
+          resourceCpuLimit: '2'
+          resourceMemoryLimit: 8Gi
+    exec-generate-decisions:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_decisions
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.2'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_decisions(\n    workspace_path: str,\n    llamastack_endpoint:\
+          \ str,\n    llm_model: str,\n    metrics: dsl.Output[dsl.Metrics]\n):\n\
+          \    \"\"\"\n    Generate realistic AI decisions for historical claims.\n\
+          \n    Calls LlamaStack to analyze each claim and create a decision with\
+          \ reasoning.\n    Updates claims status and creates claim_decisions entries.\n\
+          \    \"\"\"\n    import asyncio\n    import logging\n    import os\n   \
+          \ import json\n    from pathlib import Path\n    from datetime import datetime,\
+          \ timezone\n\n    import httpx\n    from sqlalchemy import create_engine,\
+          \ text\n    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
+          \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
+          \n    # Database connection from environment variables\n    postgres_host\
+          \ = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
+          \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
+          \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    metadata_file = Path(workspace_path) / \"claims_metadata.json\"\n\
+          \n    async def generate_decision(claim_data: dict, client: httpx.AsyncClient)\
+          \ -> dict:\n        \"\"\"Generate decision for a claim using LlamaStack.\"\
+          \"\"\n        prompt = f\"\"\"Analyze this insurance claim and make a decision.\n\
+          \nClaim Number: {claim_data['claim_number']}\nClaim Type: {claim_data['claim_type']}\n\
+          Document Text: {claim_data['ocr_text'][:1000]}\n\nBased on the information\
+          \ provided, decide whether to APPROVE or DENY this claim.\nProvide clear\
+          \ reasoning for your decision.\n\nFormat your response as:\nDECISION: [APPROVE\
+          \ or DENY]\nCONFIDENCE: [0.0 to 1.0]\nREASONING: [Your detailed reasoning]\n\
+          \"\"\"\n\n        try:\n            response = await client.post(\n    \
+          \            f\"{llamastack_endpoint}/v1/chat/completions\",\n         \
+          \       json={\n                    \"model\": llm_model,\n            \
+          \        \"messages\": [{\"role\": \"user\", \"content\": prompt}],\n  \
+          \                  \"max_tokens\": 500,\n                    \"temperature\"\
+          : 0.7\n                },\n                timeout=60.0\n            )\n\
+          \n            if response.status_code == 200:\n                data = response.json()\n\
+          \                content = data['choices'][0]['message']['content']\n\n\
+          \                # Parse response\n                decision = \"manual_review\"\
+          \n                confidence = 0.5\n                reasoning = content\n\
+          \n                if \"APPROVE\" in content.upper():\n                 \
+          \   decision = \"approve\"\n                elif \"DENY\" in content.upper():\n\
+          \                    decision = \"deny\"\n\n                # Extract confidence\
+          \ if present\n                for line in content.split('\\n'):\n      \
+          \              if \"CONFIDENCE:\" in line.upper():\n                   \
+          \     try:\n                            confidence = float(line.split(':')[1].strip())\n\
+          \                        except:\n                            pass\n\n \
+          \               return {\n                    \"decision\": decision,\n\
+          \                    \"confidence\": confidence,\n                    \"\
+          reasoning\": content\n                }\n            else:\n           \
+          \     logger.error(f\"LLM API error {response.status_code}\")\n        \
+          \        return None\n\n        except Exception as e:\n            logger.error(f\"\
+          Error calling LLM: {e}\")\n            return None\n\n    async def process():\n\
+          \        logger.info(\"Generating decisions...\")\n        engine = create_engine(DATABASE_URL,\
+          \ pool_pre_ping=True)\n        SessionLocal = sessionmaker(bind=engine)\n\
+          \n        # Load metadata\n        with open(metadata_file, 'r') as f:\n\
+          \            claims_metadata = json.load(f)\n\n        # Get claims with\
+          \ embeddings but no decisions\n        with SessionLocal() as session:\n\
+          \            query = text(\"\"\"\n                SELECT\n             \
+          \       CAST(c.id AS text) as claim_id,\n                    c.claim_number,\n\
+          \                    c.claim_type,\n                    cd.raw_ocr_text\n\
+          \                FROM claims c\n                JOIN claim_documents cd\
+          \ ON cd.claim_id = c.id\n                LEFT JOIN claim_decisions cdec\
+          \ ON cdec.claim_id = c.id\n                WHERE cd.embedding IS NOT NULL\n\
+          \                  AND cdec.id IS NULL\n                  AND c.claim_number\
+          \ = ANY(:claim_numbers)\n                ORDER BY c.claim_number\n     \
+          \       \"\"\")\n            claim_numbers = [cm['claim_number'] for cm\
+          \ in claims_metadata]\n            claims = session.execute(query, {\"claim_numbers\"\
+          : claim_numbers}).fetchall()\n\n        if not claims:\n            logger.info(\"\
+          No claims need decisions\")\n            return {\"processed\": 0, \"failed\"\
+          : 0, \"total\": 0}\n\n        logger.info(f\"Found {len(claims)} claims\
+          \ to process\")\n        processed = 0\n        failed = 0\n\n        async\
+          \ with httpx.AsyncClient() as client:\n            for claim in claims:\n\
+          \                claim_id = claim.claim_id\n                claim_number\
+          \ = claim.claim_number\n\n                logger.info(f\"Generating decision\
+          \ for {claim_number}...\")\n\n                claim_data = {\n         \
+          \           \"claim_id\": claim_id,\n                    \"claim_number\"\
+          : claim_number,\n                    \"claim_type\": claim.claim_type,\n\
+          \                    \"ocr_text\": claim.raw_ocr_text\n                }\n\
+          \n                decision_result = await generate_decision(claim_data,\
+          \ client)\n\n                if decision_result:\n                    try:\n\
+          \                        with SessionLocal() as session:\n             \
+          \               # Insert decision\n                            insert_decision\
+          \ = text(\"\"\"\n                                INSERT INTO claim_decisions\
+          \ (\n                                    claim_id,\n                   \
+          \                 initial_decision,\n                                  \
+          \  initial_confidence,\n                                    initial_reasoning,\n\
+          \                                    initial_decided_at,\n             \
+          \                       decision,\n                                    confidence,\n\
+          \                                    reasoning,\n                      \
+          \              llm_model,\n                                    requires_manual_review\n\
+          \                                ) VALUES (\n                          \
+          \          CAST(:claim_id AS UUID),\n                                  \
+          \  :decision,\n                                    :confidence,\n      \
+          \                              :reasoning,\n                           \
+          \         NOW(),\n                                    :decision,\n     \
+          \                               :confidence,\n                         \
+          \           :reasoning,\n                                    :llm_model,\n\
+          \                                    :requires_review\n                \
+          \                )\n                            \"\"\")\n              \
+          \              session.execute(insert_decision, {\n                    \
+          \            \"claim_id\": claim_id,\n                                \"\
+          decision\": decision_result[\"decision\"],\n                           \
+          \     \"confidence\": decision_result[\"confidence\"],\n               \
+          \                 \"reasoning\": decision_result[\"reasoning\"],\n     \
+          \                           \"llm_model\": llm_model,\n                \
+          \                \"requires_review\": decision_result[\"decision\"] == \"\
+          manual_review\"\n                            })\n\n                    \
+          \        # Update claim status - all historical claims are completed\n \
+          \                           # (regardless of approve/deny decision - they're\
+          \ historical data for RAG)\n                            status_map = {\n\
+          \                                \"approve\": \"completed\",\n         \
+          \                       \"deny\": \"completed\",  # Historical claims marked\
+          \ completed even if denied\n                                \"manual_review\"\
+          : \"completed\"\n                            }\n\n                     \
+          \       update_claim = text(\"\"\"\n                                UPDATE\
+          \ claims\n                                SET status = :status,\n      \
+          \                              processed_at = NOW(),\n                 \
+          \                   total_processing_time_ms = 5000\n                  \
+          \              WHERE CAST(id AS text) = :claim_id\n                    \
+          \        \"\"\")\n                            session.execute(update_claim,\
+          \ {\n                                \"status\": status_map[decision_result[\"\
+          decision\"]],\n                                \"claim_id\": claim_id\n\
+          \                            })\n\n                            session.commit()\n\
+          \n                        processed += 1\n                        logger.info(f\"\
+          \  Decision: {decision_result['decision']} ({processed}/{len(claims)})\"\
+          )\n\n                    except Exception as e:\n                      \
+          \  logger.error(f\"  DB error: {e}\")\n                        failed +=\
+          \ 1\n                else:\n                    logger.error(\"  Decision\
+          \ generation failed\")\n                    failed += 1\n\n            \
+          \    # Small delay between requests\n                await asyncio.sleep(1)\n\
+          \n        logger.info(f\"Processed: {processed}/{len(claims)}\")\n     \
+          \   logger.info(f\"Failed: {failed}/{len(claims)}\")\n        engine.dispose()\n\
+          \n        if failed > 0:\n            raise RuntimeError(f\"{failed} decisions\
+          \ failed\")\n\n        logger.info(\"All decisions generated!\")\n     \
+          \   return {\"processed\": processed, \"failed\": failed, \"total\": len(claims)}\n\
+          \n    # Run async function\n    result = asyncio.run(process())\n\n    #\
+          \ Log metrics\n    metrics.log_metric(\"total_claims\", result[\"total\"\
+          ])\n    metrics.log_metric(\"decisions_processed\", result[\"processed\"\
+          ])\n    metrics.log_metric(\"decisions_failed\", result[\"failed\"])\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-embeddings:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_embeddings
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.2'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10' 'pgvector==0.3.6'  && \
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.2'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_embeddings(\n    workspace_path: str,\n    llamastack_endpoint:\
+          \ str,\n    embedding_model: str,\n    batch_size: int,\n    max_retries:\
+          \ int,\n    metrics: dsl.Output[dsl.Metrics]\n):\n    \"\"\"\n    Generate\
+          \ embeddings for claim documents using LlamaStack.\n\n    Creates 768D embeddings\
+          \ via LlamaStack API and updates PostgreSQL with pgvector format.\n    \"\
+          \"\"\n    import asyncio\n    import logging\n    import os\n    import\
+          \ json\n    from pathlib import Path\n    from typing import List, Optional\n\
+          \n    import httpx\n    from sqlalchemy import create_engine, text\n   \
+          \ from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
+          \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
+          \n    # Database connection from environment variables\n    postgres_host\
+          \ = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
+          \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
+          \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    metadata_file = Path(workspace_path) / \"claims_metadata.json\"\n\
+          \n    async def wait_for_llamastack():\n        \"\"\"Wait for LlamaStack\
+          \ to be ready.\"\"\"\n        logger.info(f\"Waiting for LlamaStack at {llamastack_endpoint}...\"\
+          )\n        for attempt in range(1, max_retries + 1):\n            try:\n\
+          \                async with httpx.AsyncClient(timeout=10.0) as client:\n\
+          \                    response = await client.get(f\"{llamastack_endpoint}/v1/health\"\
+          )\n                    if response.status_code == 200:\n               \
+          \         logger.info(\"LlamaStack is ready\")\n                       \
+          \ return True\n            except Exception as e:\n                logger.debug(f\"\
+          Attempt {attempt}/{max_retries}: {e}\")\n            if attempt < max_retries:\n\
+          \                await asyncio.sleep(10)\n        logger.error(\"LlamaStack\
+          \ not ready\")\n        return False\n\n    async def create_embedding(text:\
+          \ str, client: httpx.AsyncClient) -> Optional[List[float]]:\n        \"\"\
+          \"Create embedding via LlamaStack.\"\"\"\n        try:\n            response\
+          \ = await client.post(\n                f\"{llamastack_endpoint}/v1/embeddings\"\
+          ,\n                json={\"model\": embedding_model, \"input\": text},\n\
+          \                timeout=60.0\n            )\n            if response.status_code\
+          \ == 200:\n                data = response.json()\n                # LlamaStack\
+          \ returns: {\"data\": [{\"embedding\": [...]}]}\n                if 'data'\
+          \ in data and len(data['data']) > 0:\n                    return data['data'][0]['embedding']\n\
+          \                return None\n            else:\n                logger.error(f\"\
+          API error {response.status_code}\")\n                return None\n     \
+          \   except Exception as e:\n            logger.error(f\"Error: {e}\")\n\
+          \            return None\n\n    def format_embedding(embedding: List[float])\
+          \ -> str:\n        \"\"\"Format for pgvector.\"\"\"\n        return '['\
+          \ + ','.join(str(x) for x in embedding) + ']'\n\n    async def process():\n\
+          \        if not await wait_for_llamastack():\n            raise RuntimeError(\"\
+          LlamaStack not available\")\n\n        logger.info(\"Connecting to PostgreSQL...\"\
+          )\n        engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n  \
+          \      SessionLocal = sessionmaker(bind=engine)\n\n        # Load metadata\n\
+          \        with open(metadata_file, 'r') as f:\n            claims_metadata\
+          \ = json.load(f)\n\n        # Get claim_documents that need embeddings\n\
+          \        with SessionLocal() as session:\n            query = text(\"\"\"\
+          \n                SELECT CAST(cd.id AS text) as doc_id, cd.raw_ocr_text,\
+          \ c.claim_number\n                FROM claim_documents cd\n            \
+          \    JOIN claims c ON cd.claim_id = c.id\n                WHERE cd.embedding\
+          \ IS NULL\n                  AND cd.raw_ocr_text IS NOT NULL\n         \
+          \         AND c.claim_number = ANY(:claim_numbers)\n                ORDER\
+          \ BY c.claim_number\n            \"\"\")\n            claim_numbers = [cm['claim_number']\
+          \ for cm in claims_metadata]\n            documents = session.execute(query,\
+          \ {\"claim_numbers\": claim_numbers}).fetchall()\n\n        if not documents:\n\
+          \            logger.info(\"No documents need embeddings\")\n           \
+          \ return {\"processed\": 0, \"failed\": 0, \"total\": 0}\n\n        logger.info(f\"\
+          Found {len(documents)} documents\")\n        processed = 0\n        failed\
+          \ = 0\n\n        async with httpx.AsyncClient() as client:\n           \
+          \ for i in range(0, len(documents), batch_size):\n                batch\
+          \ = documents[i:i + batch_size]\n                batch_num = (i // batch_size)\
+          \ + 1\n                total_batches = (len(documents) + batch_size - 1)\
+          \ // batch_size\n                logger.info(f\"Batch {batch_num}/{total_batches}\
+          \ ({len(batch)} docs)\")\n\n                for row in batch:\n        \
+          \            ocr_text = row.raw_ocr_text[:2000] if len(row.raw_ocr_text)\
+          \ > 2000 else row.raw_ocr_text\n                    logger.info(f\"  Embedding\
+          \ {row.claim_number}...\")\n\n                    embedding = await create_embedding(ocr_text,\
+          \ client)\n                    if embedding:\n                        try:\n\
+          \                            with SessionLocal() as session:\n         \
+          \                       update_query = text(\"\"\"\n                   \
+          \                 UPDATE claim_documents\n                             \
+          \       SET embedding = CAST(:embedding AS vector)\n                   \
+          \                 WHERE CAST(id AS text) = :doc_id\n                   \
+          \             \"\"\")\n                                session.execute(update_query,\
+          \ {\n                                    \"embedding\": format_embedding(embedding),\n\
+          \                                    \"doc_id\": row.doc_id\n          \
+          \                      })\n                                session.commit()\n\
+          \                            processed += 1\n                          \
+          \  logger.info(f\"    Done ({processed}/{len(documents)})\")\n         \
+          \               except Exception as e:\n                            logger.error(f\"\
+          \    DB error: {e}\")\n                            failed += 1\n       \
+          \             else:\n                        logger.error(\"    Embedding\
+          \ failed\")\n                        failed += 1\n\n                if i\
+          \ + batch_size < len(documents):\n                    await asyncio.sleep(2)\n\
+          \n        logger.info(f\"Processed: {processed}/{len(documents)}\")\n  \
+          \      logger.info(f\"Failed: {failed}/{len(documents)}\")\n        engine.dispose()\n\
+          \n        if failed > 0:\n            raise RuntimeError(f\"{failed} embeddings\
+          \ failed\")\n\n        logger.info(\"All embeddings generated!\")\n    \
+          \    return {\"processed\": processed, \"failed\": failed, \"total\": len(documents)}\n\
+          \n    # Run async function\n    result = asyncio.run(process())\n\n    #\
+          \ Log metrics\n    metrics.log_metric(\"total_documents\", result[\"total\"\
+          ])\n    metrics.log_metric(\"embeddings_processed\", result[\"processed\"\
+          ])\n    metrics.log_metric(\"embeddings_failed\", result[\"failed\"])\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-generate-realistic-pdfs:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_realistic_pdfs
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'reportlab==4.2.5'\
+          \ 'sqlalchemy==2.0.36' 'psycopg2-binary==2.9.10'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_realistic_pdfs(\n    workspace_path: str,\n    num_claims:\
+          \ int,\n    metrics: dsl.Output[dsl.Metrics]\n):\n    \"\"\"\n    Generate\
+          \ realistic PDFs from existing claims.\n\n    Reads claims from PostgreSQL\
+          \ (num_claims parameter) and creates PDF files with ReportLab.\n    PDFs\
+          \ are saved to the workspace for the next step.\n    \"\"\"\n    import\
+          \ logging\n    import os\n    from datetime import datetime\n    from pathlib\
+          \ import Path\n    import json\n\n    from reportlab.lib.pagesizes import\
+          \ letter\n    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle\n\
+          \    from reportlab.lib.units import inch\n    from reportlab.platypus import\
+          \ SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle\n    from reportlab.lib\
+          \ import colors\n    from sqlalchemy import create_engine, text\n    from\
+          \ sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
+          \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
+          \n    # Database connection from environment variables (injected from secret)\n\
+          \    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
+          \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
+          \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
+          \ = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    # Output directory in workspace\n    output_dir = Path(workspace_path)\
+          \ / \"pdfs\"\n    output_dir.mkdir(parents=True, exist_ok=True)\n\n    #\
+          \ Metadata file for next steps\n    metadata_file = Path(workspace_path)\
+          \ / \"claims_metadata.json\"\n\n    logger.info(f\"Generating PDFs to {output_dir}\"\
+          )\n    engine = create_engine(DATABASE_URL, pool_pre_ping=True)\n    SessionLocal\
+          \ = sessionmaker(bind=engine)\n\n    # Query to get claims (not claim_documents\
+          \ - those don't exist yet!)\n    with SessionLocal() as session:\n     \
+          \   query = text(\"\"\"\n            SELECT\n                c.id::text\
+          \ as claim_id,\n                c.claim_number,\n                c.claim_type,\n\
+          \                c.user_id,\n                c.document_path\n         \
+          \   FROM claims c\n            WHERE c.status = 'pending'\n            ORDER\
+          \ BY c.submitted_at DESC\n            LIMIT :limit\n        \"\"\")\n  \
+          \      claims = session.execute(query, {\"limit\": num_claims}).fetchall()\n\
+          \n    logger.info(f\"Found {len(claims)} claims to process\")\n\n    generated\
+          \ = 0\n    failed = 0\n    claims_metadata = []\n\n    # Generate sample\
+          \ OCR text for each claim type\n    sample_texts = {\n        \"auto\":\
+          \ \"Vehicle Damage Report\\n\\nDate of Incident: 2025-12-15\\nLocation:\
+          \ Highway 101, Mile Marker 45\\n\\nDescription: Rear-end collision during\
+          \ heavy traffic. Front bumper damage, headlight broken. Airbags deployed.\
+          \ No injuries reported. Police report filed #2025-12345.\",\n        \"\
+          home\": \"Property Damage Claim\\n\\nDate of Loss: 2025-11-20\\nProperty\
+          \ Address: 123 Main Street\\n\\nDescription: Water damage from burst pipe\
+          \ in basement. Affected areas: laundry room, storage area. Damage to flooring,\
+          \ drywall, and personal property. Emergency plumber called. Estimated repair\
+          \ cost: $8,500.\",\n        \"health\": \"Medical Services Claim\\n\\nPatient\
+          \ Name: John Doe\\nDate of Service: 2025-10-05\\nProvider: City Medical\
+          \ Center\\n\\nServices Rendered: Emergency room visit for chest pain. EKG\
+          \ performed, blood tests completed. Diagnosis: Acute gastritis. Treatment:\
+          \ Medication prescribed. Total charges: $2,450.\"\n    }\n\n    def create_pdf(pdf_path,\
+          \ claim_number, claim_type, claim_text):\n        \"\"\"Create PDF from\
+          \ claim data.\"\"\"\n        doc = SimpleDocTemplate(pdf_path, pagesize=letter,\n\
+          \                               rightMargin=0.75*inch, leftMargin=0.75*inch,\n\
+          \                               topMargin=0.75*inch, bottomMargin=0.75*inch)\n\
+          \        elements = []\n        styles = getSampleStyleSheet()\n\n     \
+          \   # Title\n        title_style = ParagraphStyle('Title', parent=styles['Heading1'],\n\
+          \                                    fontSize=16, alignment=1, spaceAfter=12)\n\
+          \        elements.append(Paragraph(\"INSURANCE CLAIM DOCUMENT\", title_style))\n\
+          \        elements.append(Spacer(1, 0.2*inch))\n\n        # Claim info table\n\
+          \        claim_data = [\n            ['Claim Number:', claim_number],\n\
+          \            ['Claim Type:', claim_type.upper()],\n            ['Date:',\
+          \ datetime.now().strftime('%Y-%m-%d')]\n        ]\n        claim_table =\
+          \ Table(claim_data, colWidths=[2*inch, 4*inch])\n        claim_table.setStyle(TableStyle([\n\
+          \            ('BACKGROUND', (0,0), (0,-1), colors.lightgrey),\n        \
+          \    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),\n            ('FONTNAME',\
+          \ (0,0), (0,-1), 'Helvetica-Bold'),\n            ('PADDING', (0,0), (-1,-1),\
+          \ 6)\n        ]))\n        elements.append(claim_table)\n        elements.append(Spacer(1,\
+          \ 0.3*inch))\n\n        # Content\n        for line in claim_text.split('\\\
+          n'):\n            if line.strip():\n                escaped = line.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')\n\
+          \                elements.append(Paragraph(escaped, styles['Normal']))\n\
+          \            else:\n                elements.append(Spacer(1, 0.1*inch))\n\
+          \n        doc.build(elements)\n\n    # Generate PDFs for each claim\n  \
+          \  for claim in claims:\n        claim_id = claim.claim_id\n        claim_number\
+          \ = claim.claim_number\n        claim_type = claim.claim_type or 'auto'\n\
+          \n        # Use sample text for the claim type\n        claim_text = sample_texts.get(claim_type,\
+          \ sample_texts['auto'])\n\n        # Create PDF filename\n        pdf_filename\
+          \ = f\"{claim_number}.pdf\"\n        pdf_path = output_dir / pdf_filename\n\
+          \n        try:\n            create_pdf(str(pdf_path), claim_number, claim_type,\
+          \ claim_text)\n            generated += 1\n\n            # Save metadata\
+          \ for next steps\n            claims_metadata.append({\n               \
+          \ \"claim_id\": claim_id,\n                \"claim_number\": claim_number,\n\
+          \                \"claim_type\": claim_type,\n                \"user_id\"\
+          : claim.user_id,\n                \"pdf_filename\": pdf_filename\n     \
+          \       })\n\n            if generated % 10 == 0:\n                logger.info(f\"\
+          Progress: {generated}/{len(claims)} PDFs\")\n\n        except Exception\
+          \ as e:\n            logger.error(f\"Failed to generate PDF for {claim_number}:\
+          \ {e}\")\n            failed += 1\n\n    # Save metadata\n    with open(metadata_file,\
+          \ 'w') as f:\n        json.dump(claims_metadata, f)\n\n    logger.info(f\"\
+          Generated {generated}/{len(claims)} PDFs\")\n    logger.info(f\"Failed:\
+          \ {failed}/{len(claims)} PDFs\")\n    logger.info(f\"Metadata saved to {metadata_file}\"\
+          )\n\n    engine.dispose()\n\n    # Log metrics\n    metrics.log_metric(\"\
+          total_claims\", len(claims))\n    metrics.log_metric(\"pdfs_generated\"\
+          , generated)\n    metrics.log_metric(\"pdfs_failed\", failed)\n\n    if\
+          \ failed > 0:\n        raise RuntimeError(f\"{failed} PDFs failed to generate\"\
+          )\n\n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+pipelineInfo:
+  description: "\n    Initialize historical claims data for RAG similarity search.\n\
+    \n    This pipeline demonstrates RHOAI Data Science Pipelines:\n    1. Generate\
+    \ realistic PDFs from existing claims\n    2. Parse PDFs with Docling (IBM advanced\
+    \ parsing)\n    3. Generate embeddings with LlamaStack (768D vectors)\n    4.\
+    \ Generate AI decisions with LlamaStack (realistic reasoning)\n\n    Complements\
+    \ real-time claim processing via MCP Servers.\n\n    PostgreSQL credentials are\
+    \ injected from postgresql-secret via environment variables.\n    "
+  name: historical-claims-initialization
+root:
+  dag:
+    tasks:
+      docling-parse-pdfs:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-docling-parse-pdfs
+        dependentTasks:
+        - generate-realistic-pdfs
+        inputs:
+          parameters:
+            workspace_path:
+              runtimeValue:
+                constant: '{{$.workspace_path}}'
+        taskInfo:
+          name: Docling Parse PDFs
+      generate-decisions:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-decisions
+        dependentTasks:
+        - generate-embeddings
+        inputs:
+          parameters:
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            llm_model:
+              componentInputParameter: llm_model
+            workspace_path:
+              runtimeValue:
+                constant: '{{$.workspace_path}}'
+        taskInfo:
+          name: Generate AI Decisions
+      generate-embeddings:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-embeddings
+        dependentTasks:
+        - docling-parse-pdfs
+        inputs:
+          parameters:
+            batch_size:
+              componentInputParameter: batch_size
+            embedding_model:
+              componentInputParameter: embedding_model
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            max_retries:
+              componentInputParameter: max_retries
+            workspace_path:
+              runtimeValue:
+                constant: '{{$.workspace_path}}'
+        taskInfo:
+          name: Generate Embeddings
+      generate-realistic-pdfs:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-realistic-pdfs
+        inputs:
+          parameters:
+            num_claims:
+              componentInputParameter: num_claims
+            workspace_path:
+              runtimeValue:
+                constant: '{{$.workspace_path}}'
+        taskInfo:
+          name: Generate Realistic PDFs
+  inputDefinitions:
+    parameters:
+      batch_size:
+        defaultValue: 5.0
+        description: Documents per batch
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      embedding_model:
+        defaultValue: vllm-embedding/embeddinggemma-300m
+        description: Embedding model name
+        isOptional: true
+        parameterType: STRING
+      llamastack_endpoint:
+        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        description: LlamaStack API endpoint
+        isOptional: true
+        parameterType: STRING
+      llm_model:
+        defaultValue: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
+        description: LLM model for decisions
+        isOptional: true
+        parameterType: STRING
+      max_retries:
+        defaultValue: 30.0
+        description: Max retries for LlamaStack health check
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      num_claims:
+        defaultValue: 10.0
+        description: 'Number of claims to process (default: 10)'
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.2
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-docling-parse-pdfs:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-decisions:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-embeddings:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+        exec-generate-realistic-pdfs:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: POSTGRES_USER
+              secretKey: POSTGRES_USER
+            - envVar: POSTGRES_PASSWORD
+              secretKey: POSTGRES_PASSWORD
+            - envVar: POSTGRES_DATABASE
+              secretKey: POSTGRES_DATABASE
+            optional: false
+            secretName: postgresql-secret
+            secretNameParameter:
+              runtimeValue:
+                constant: postgresql-secret
+    pipelineConfig:
+      workspace:
+        kubernetes:
+          pvcSpecPatch:
+            accessModes:
+            - ReadWriteOnce
+        size: 20Gi

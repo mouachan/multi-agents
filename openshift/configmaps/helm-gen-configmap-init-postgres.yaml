@@ -1,0 +1,2592 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+  name: init-postgres
+  namespace: claims-demo
+data:
+  init-pg.sh: "#!/bin/bash\n\nPOSTGRESQL_ADMIN_PASSWORD=\"$(cat /cluster-secrets/POSTGRES_ADMIN_PASSWORD)\"\
+    \nPOSTGRESQL_DATABASE=\"$(cat /cluster-secrets/POSTGRES_DATABASE)\"\n# For pgvector\
+    \ image, use the same user that was created (not postgres)\nPOSTGRESQL_USER=\"\
+    $(cat /cluster-secrets/POSTGRES_USER)\"\nPOSTGRESQL_OWNER=\"$(cat /cluster-secrets/POSTGRES_USER)\"\
+    \n\n# LlamaStack database credentials\nLLAMASTACK_DATABASE=\"llamastack\"\nLLAMASTACK_USER=\"\
+    llamastack\"\nLLAMASTACK_PASSWORD=\"$(cat /cluster-secrets/LLAMASTACK_PASSWORD)\"\
+    \n\nif test -z \"$POSTGRESQL_DATABASE\" \\\n     -o -z \"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ \\\n     -o -z \"$POSTGRESQL_OWNER\" \\\n     -o -z \"$POSTGRESQL_USER\" \\\n\
+    \     -o -z \"$LLAMASTACK_PASSWORD\"; then\n    echo ERROR: missing postgres coordinates\n\
+    \    exit 1\nfi\n\necho Waiting for postgres ...\nwhile :\ndo\n    PGPASSWORD=\"\
+    $POSTGRESQL_ADMIN_PASSWORD\" psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql\
+    \ \"$POSTGRESQL_DATABASE\" -c \"\\\\l\" && break\n    sleep 5\ndone\n\n# =========================================================================\n\
+    # Initialize claims_db (functional database)\n# =========================================================================\n\
+    echo Checking for claims database ...\nif ! PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql \"$POSTGRESQL_DATABASE\"\
+    \ -c \"\\\\d\" 2>&1 \\\n        | grep \"Did not find any relations\" >/dev/null;\
+    \ then\n    echo \" => Database already includes tables, skipping init\"\nelse\n\
+    \    echo Initializing claims database ...\n    PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql \"$POSTGRESQL_DATABASE\"\
+    \ -f /scripts/init.sql\n    echo \" => Done\"\n\n    echo Injecting seed data\
+    \ ...\n    PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\" psql -U \"$POSTGRESQL_USER\"\
+    \ \\\n        --host postgresql \"$POSTGRESQL_DATABASE\" -f /scripts/seed.sql\n\
+    \    echo \" => Done\"\n\n    echo Fix Ownership ...\n    PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql \"$POSTGRESQL_DATABASE\"\
+    \ -qAt -c \\\n        \"SELECT tablename FROM pg_tables WHERE schemaname = 'public'\"\
+    \ \\\n        | while read -r tableName\n        do\n            PGPASSWORD=\"\
+    $POSTGRESQL_ADMIN_PASSWORD\" psql -U \"$POSTGRESQL_USER\" \\\n               \
+    \ --host postgresql \"$POSTGRESQL_DATABASE\" -c \\\n                \"ALTER TABLE\
+    \ \\\"$tableName\\\" OWNER TO $POSTGRESQL_OWNER\"\n        done\n    echo \" =>\
+    \ Done\"\nfi\n\n# =========================================================================\n\
+    # Initialize llamastack database (technical database for LlamaStack)\n# =========================================================================\n\
+    echo Checking if llamastack database exists ...\nif PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql -d \"$POSTGRESQL_DATABASE\"\
+    \ -lqt | cut -d \\| -f 1 | grep -qw \"$LLAMASTACK_DATABASE\"; then\n    echo \"\
+    \ => LlamaStack database already exists, skipping creation\"\nelse\n    echo Creating\
+    \ llamastack database ...\n    PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\" psql\
+    \ -U \"$POSTGRESQL_USER\" \\\n        --host postgresql -d \"$POSTGRESQL_DATABASE\"\
+    \ -c \"CREATE DATABASE $LLAMASTACK_DATABASE;\"\n    echo \" => Done\"\nfi\n\n\
+    echo Checking if llamastack user exists ...\nif PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n        --host postgresql -d \"$POSTGRESQL_DATABASE\"\
+    \ -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$LLAMASTACK_USER'\" | grep -q 1;\
+    \ then\n    echo \" => LlamaStack user already exists, updating password\"\n \
+    \   PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\" psql -U \"$POSTGRESQL_USER\" \\\n\
+    \        --host postgresql -d \"$POSTGRESQL_DATABASE\" -c \"ALTER ROLE $LLAMASTACK_USER\
+    \ WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';\"\nelse\n    echo Creating llamastack\
+    \ user ...\n    PGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\" psql -U \"$POSTGRESQL_USER\"\
+    \ \\\n        --host postgresql -d \"$POSTGRESQL_DATABASE\" -c \"CREATE ROLE $LLAMASTACK_USER\
+    \ WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';\"\n    echo \" => Done\"\nfi\n\n\
+    echo Granting privileges on llamastack database ...\nPGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n    --host postgresql -d \"$POSTGRESQL_DATABASE\"\
+    \ -c \"GRANT ALL PRIVILEGES ON DATABASE $LLAMASTACK_DATABASE TO $LLAMASTACK_USER;\"\
+    \n\necho Granting schema privileges ...\nPGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n    --host postgresql -d \"$LLAMASTACK_DATABASE\"\
+    \ -c \"GRANT USAGE, CREATE ON SCHEMA public TO $LLAMASTACK_USER;\"\n\necho Setting\
+    \ default privileges for future tables ...\nPGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n    --host postgresql -d \"$LLAMASTACK_DATABASE\"\
+    \ -c \\\n    \"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES\
+    \ ON TABLES TO $LLAMASTACK_USER;\"\necho \" => Done\"\n\necho Installing pgvector\
+    \ extension in llamastack database ...\nPGPASSWORD=\"$POSTGRESQL_ADMIN_PASSWORD\"\
+    \ psql -U \"$POSTGRESQL_USER\" \\\n    --host postgresql -d \"$LLAMASTACK_DATABASE\"\
+    \ -c \"CREATE EXTENSION IF NOT EXISTS vector;\"\necho \" => Done\"\n\nexit 0\n"
+  README.md: "# \u26A0\uFE0F  DO NOT EDIT FILES IN THIS DIRECTORY\n\nThis directory\
+    \ contains **symlinks** to the source SQL files:\n\n- `init.sql` \u2192 `../../../../database/init.sql`\n\
+    - `seed.sql` \u2192 `../../../../database/seed_data/001_sample_data.sql`\n\n##\
+    \ To modify database initialization:\n\n1. **Edit the source files** in `/database/`:\n\
+    \   - `/database/init.sql` for schema\n   - `/database/seed_data/001_sample_data.sql`\
+    \ for seed data\n\n2. Changes will **automatically be reflected** here via symlinks\n\
+    \n3. Test with: `helm template test agentic-claims-demo`\n\n## Why symlinks?\n\
+    \n- \u2705 **Single source of truth** in `/database/`\n- \u2705 **No duplication**\
+    \ = no sync errors\n- \u2705 Helm can still read files via `.Files.Glob`\n- \u2705\
+    \ Respects separation: code in `/database/`, deployment in `/helm/`\n"
+  init.sql: "-- Claims Demo Database Initialization Script\n-- PostgreSQL with pgvector\
+    \ extension for RAG capabilities\n\n-- First, enable vector extension in postgres\
+    \ database (required by LlamaStack)\n\\c postgres\nCREATE EXTENSION IF NOT EXISTS\
+    \ vector;\n\n-- Then switch to claims_db and enable extensions\n\\c claims_db\n\
+    CREATE EXTENSION IF NOT EXISTS vector;\nCREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"\
+    ;\n\n-- Create enum types\nCREATE TYPE claim_status AS ENUM ('pending', 'processing',\
+    \ 'completed', 'failed', 'manual_review', 'pending_info');\nCREATE TYPE processing_step\
+    \ AS ENUM ('ocr', 'guardrails', 'rag_retrieval', 'llm_decision', 'final_review');\n\
+    CREATE TYPE decision_type AS ENUM ('approve', 'deny', 'manual_review');\n\n--\
+    \ ============================================================================\n\
+    -- CLAIMS TABLE\n-- ============================================================================\n\
+    CREATE TABLE claims (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n \
+    \   user_id VARCHAR(255) NOT NULL,\n    claim_number VARCHAR(100) UNIQUE NOT NULL,\n\
+    \    claim_type VARCHAR(100),\n    document_path TEXT NOT NULL,\n    status claim_status\
+    \ DEFAULT 'pending',\n    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n\
+    \    processed_at TIMESTAMP,\n    total_processing_time_ms INTEGER,\n    is_archived\
+    \ BOOLEAN DEFAULT FALSE NOT NULL,\n    metadata JSONB DEFAULT '{}',\n    agent_logs\
+    \ JSONB DEFAULT '[]',\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n \
+    \   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE INDEX idx_claims_user_id\
+    \ ON claims(user_id);\nCREATE INDEX idx_claims_status ON claims(status);\nCREATE\
+    \ INDEX idx_claims_submitted_at ON claims(submitted_at);\nCREATE INDEX idx_claims_is_archived\
+    \ ON claims(is_archived);\nCREATE INDEX idx_claims_metadata ON claims USING GIN(metadata);\n\
+    \n-- ============================================================================\n\
+    -- CLAIM DOCUMENTS TABLE (with OCR results and embeddings)\n-- ============================================================================\n\
+    CREATE TABLE claim_documents (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,\n    document_type\
+    \ VARCHAR(100),\n    file_path TEXT NOT NULL,\n    file_size_bytes BIGINT,\n \
+    \   mime_type VARCHAR(100),\n\n    -- OCR Results\n    raw_ocr_text TEXT,\n  \
+    \  structured_data JSONB,\n    ocr_confidence FLOAT,\n    ocr_processed_at TIMESTAMP,\n\
+    \n    -- Vector embedding for semantic search (768 dimensions for all-mpnet-base-v2)\n\
+    \    embedding vector(768),\n\n    -- Metadata\n    page_count INTEGER,\n    language\
+    \ VARCHAR(10) DEFAULT 'eng',\n    metadata JSONB DEFAULT '{}',\n\n    created_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n\
+    );\n\nCREATE INDEX idx_claim_documents_claim_id ON claim_documents(claim_id);\n\
+    CREATE INDEX idx_claim_documents_embedding ON claim_documents USING ivfflat (embedding\
+    \ vector_cosine_ops);\nALTER TABLE claim_documents ADD CONSTRAINT claim_documents_claim_id_unique\
+    \ UNIQUE (claim_id);\n\n-- ============================================================================\n\
+    -- USER CONTRACTS TABLE (with embeddings for RAG)\n-- ============================================================================\n\
+    CREATE TABLE user_contracts (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    user_id VARCHAR(255) NOT NULL,\n    contract_number VARCHAR(100) UNIQUE NOT\
+    \ NULL,\n    contract_type VARCHAR(100),\n\n    -- Contract details\n    start_date\
+    \ DATE,\n    end_date DATE,\n    coverage_amount DECIMAL(15, 2),\n    premium_amount\
+    \ DECIMAL(15, 2),\n    payment_frequency VARCHAR(50),\n\n    -- Contract content\n\
+    \    full_text TEXT,\n    key_terms JSONB,\n    coverage_details JSONB,\n    exclusions\
+    \ JSONB,\n\n    -- Vector embedding for RAG retrieval\n    embedding vector(768),\n\
+    \n    -- Status\n    is_active BOOLEAN DEFAULT true,\n    metadata JSONB DEFAULT\
+    \ '{}',\n\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE INDEX idx_user_contracts_user_id\
+    \ ON user_contracts(user_id);\nCREATE INDEX idx_user_contracts_is_active ON user_contracts(is_active);\n\
+    CREATE INDEX idx_user_contracts_embedding ON user_contracts USING ivfflat (embedding\
+    \ vector_cosine_ops);\n\n-- ============================================================================\n\
+    -- PROCESSING LOGS TABLE\n-- ============================================================================\n\
+    CREATE TABLE processing_logs (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,\n    step\
+    \ processing_step NOT NULL,\n    agent_name VARCHAR(100),\n\n    -- Execution\
+    \ details\n    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    completed_at\
+    \ TIMESTAMP,\n    duration_ms INTEGER,\n    status VARCHAR(50),\n\n    -- Input/Output\n\
+    \    input_data JSONB,\n    output_data JSONB,\n    error_message TEXT,\n\n  \
+    \  -- Metrics\n    confidence_score FLOAT,\n    tokens_used INTEGER,\n\n    metadata\
+    \ JSONB DEFAULT '{}',\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\
+    \nCREATE INDEX idx_processing_logs_claim_id ON processing_logs(claim_id);\nCREATE\
+    \ INDEX idx_processing_logs_step ON processing_logs(step);\nCREATE INDEX idx_processing_logs_started_at\
+    \ ON processing_logs(started_at);\n\n-- ============================================================================\n\
+    -- GUARDRAILS DETECTIONS TABLE\n-- ============================================================================\n\
+    CREATE TABLE guardrails_detections (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,\n    detection_type\
+    \ VARCHAR(100) NOT NULL,  -- ssn, credit_card, email, etc.\n    severity VARCHAR(20),\
+    \  -- low, medium, high\n\n    -- Detection details\n    original_text TEXT, \
+    \ -- DO NOT store actual PII, only for audit\n    redacted_text TEXT,\n    text_span_start\
+    \ INTEGER,\n    text_span_end INTEGER,\n\n    -- Action taken\n    action_taken\
+    \ VARCHAR(50),  -- flag, redact, block\n    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n\
+    \n    metadata JSONB DEFAULT '{}',\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n\
+    );\n\nCREATE INDEX idx_guardrails_claim_id ON guardrails_detections(claim_id);\n\
+    CREATE INDEX idx_guardrails_detection_type ON guardrails_detections(detection_type);\n\
+    CREATE INDEX idx_guardrails_severity ON guardrails_detections(severity);\n\n--\
+    \ ============================================================================\n\
+    -- CLAIM DECISIONS TABLE (with system and reviewer decision history)\n-- ============================================================================\n\
+    CREATE TABLE claim_decisions (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,\n\n    --\
+    \ Initial System Decision (automated)\n    initial_decision decision_type NOT\
+    \ NULL,\n    initial_confidence FLOAT,\n    initial_reasoning TEXT,\n    initial_decided_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n\n    -- Final Reviewer Decision (manual\
+    \ override)\n    final_decision decision_type,\n    final_decision_by VARCHAR(255),\n\
+    \    final_decision_by_name VARCHAR(255),\n    final_decision_at TIMESTAMP,\n\
+    \    final_decision_notes TEXT,\n\n    -- Legacy fields for backwards compatibility\n\
+    \    decision decision_type NOT NULL,\n    confidence FLOAT,\n    reasoning TEXT,\n\
+    \n    -- Supporting evidence\n    relevant_policies JSONB,\n    similar_claims\
+    \ JSONB,\n    user_contract_info JSONB,\n\n    -- LLM Details\n    llm_model VARCHAR(100),\n\
+    \    llm_prompt TEXT,\n    llm_response TEXT,\n\n    -- Review\n    requires_manual_review\
+    \ BOOLEAN DEFAULT false,\n    manual_review_notes TEXT,\n    reviewed_by VARCHAR(255),\n\
+    \    reviewed_at TIMESTAMP,\n\n    decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n\
+    \    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP\
+    \ DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE INDEX idx_claim_decisions_claim_id ON\
+    \ claim_decisions(claim_id);\nCREATE INDEX idx_claim_decisions_decision ON claim_decisions(decision);\n\
+    CREATE INDEX idx_claim_decisions_initial_decision ON claim_decisions(initial_decision);\n\
+    CREATE INDEX idx_claim_decisions_final_decision ON claim_decisions(final_decision);\n\
+    CREATE INDEX idx_claim_decisions_decided_at ON claim_decisions(decided_at);\n\n\
+    -- ============================================================================\n\
+    -- KNOWLEDGE BASE TABLE (for policies, procedures, FAQs)\n-- ============================================================================\n\
+    CREATE TABLE knowledge_base (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n\
+    \    title VARCHAR(500) NOT NULL,\n    content TEXT NOT NULL,\n    category VARCHAR(100),\n\
+    \    tags TEXT[],\n\n    -- Vector embedding for semantic search\n    embedding\
+    \ vector(768),\n\n    -- Versioning\n    version INTEGER DEFAULT 1,\n    is_active\
+    \ BOOLEAN DEFAULT true,\n    effective_date DATE,\n    expiry_date DATE,\n\n \
+    \   -- Metadata\n    source VARCHAR(255),\n    author VARCHAR(255),\n    last_reviewed\
+    \ DATE,\n    metadata JSONB DEFAULT '{}',\n\n    created_at TIMESTAMP DEFAULT\
+    \ CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\
+    \nCREATE INDEX idx_knowledge_base_category ON knowledge_base(category);\nCREATE\
+    \ INDEX idx_knowledge_base_tags ON knowledge_base USING GIN(tags);\nCREATE INDEX\
+    \ idx_knowledge_base_is_active ON knowledge_base(is_active);\nCREATE INDEX idx_knowledge_base_embedding\
+    \ ON knowledge_base USING ivfflat (embedding vector_cosine_ops);\n\n-- ============================================================================\n\
+    -- USERS TABLE (basic user info)\n-- ============================================================================\n\
+    CREATE TABLE users (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n  \
+    \  user_id VARCHAR(255) UNIQUE NOT NULL,\n    email VARCHAR(255),\n    full_name\
+    \ VARCHAR(255),\n    date_of_birth DATE,\n    phone_number VARCHAR(50),\n    address\
+    \ JSONB,\n\n    -- Account status\n    is_active BOOLEAN DEFAULT true,\n    account_created_at\
+    \ TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    last_login_at TIMESTAMP,\n\n    metadata\
+    \ JSONB DEFAULT '{}',\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n \
+    \   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE INDEX idx_users_user_id\
+    \ ON users(user_id);\nCREATE INDEX idx_users_email ON users(email);\nCREATE INDEX\
+    \ idx_users_is_active ON users(is_active);\n\n-- ============================================================================\n\
+    -- TRIGGERS FOR UPDATED_AT\n-- ============================================================================\n\
+    CREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\n\
+    BEGIN\n    NEW.updated_at = CURRENT_TIMESTAMP;\n    RETURN NEW;\nEND;\n$$ language\
+    \ 'plpgsql';\n\nCREATE TRIGGER update_claims_updated_at BEFORE UPDATE ON claims\n\
+    \    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();\n\nCREATE TRIGGER\
+    \ update_claim_documents_updated_at BEFORE UPDATE ON claim_documents\n    FOR\
+    \ EACH ROW EXECUTE FUNCTION update_updated_at_column();\n\nCREATE TRIGGER update_user_contracts_updated_at\
+    \ BEFORE UPDATE ON user_contracts\n    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();\n\
+    \nCREATE TRIGGER update_claim_decisions_updated_at BEFORE UPDATE ON claim_decisions\n\
+    \    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();\n\nCREATE TRIGGER\
+    \ update_knowledge_base_updated_at BEFORE UPDATE ON knowledge_base\n    FOR EACH\
+    \ ROW EXECUTE FUNCTION update_updated_at_column();\n\nCREATE TRIGGER update_users_updated_at\
+    \ BEFORE UPDATE ON users\n    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();\n\
+    \n-- ============================================================================\n\
+    -- HELPER FUNCTIONS\n-- ============================================================================\n\
+    \n-- Function to search similar claims by embedding\nCREATE OR REPLACE FUNCTION\
+    \ search_similar_claims(\n    query_embedding vector(768),\n    similarity_threshold\
+    \ FLOAT DEFAULT 0.7,\n    max_results INTEGER DEFAULT 10\n)\nRETURNS TABLE (\n\
+    \    claim_id UUID,\n    claim_number VARCHAR,\n    similarity_score FLOAT,\n\
+    \    ocr_text TEXT\n) AS $$\nBEGIN\n    RETURN QUERY\n    SELECT\n        c.id,\n\
+    \        c.claim_number,\n        1 - (cd.embedding <=> query_embedding) AS similarity_score,\n\
+    \        cd.raw_ocr_text\n    FROM claim_documents cd\n    JOIN claims c ON cd.claim_id\
+    \ = c.id\n    WHERE 1 - (cd.embedding <=> query_embedding) >= similarity_threshold\n\
+    \    ORDER BY cd.embedding <=> query_embedding\n    LIMIT max_results;\nEND;\n\
+    $$ LANGUAGE plpgsql;\n\n-- Function to search knowledge base\nCREATE OR REPLACE\
+    \ FUNCTION search_knowledge_base(\n    query_embedding vector(768),\n    max_results\
+    \ INTEGER DEFAULT 5\n)\nRETURNS TABLE (\n    kb_id UUID,\n    title VARCHAR,\n\
+    \    content TEXT,\n    similarity_score FLOAT\n) AS $$\nBEGIN\n    RETURN QUERY\n\
+    \    SELECT\n        kb.id,\n        kb.title,\n        kb.content,\n        1\
+    \ - (kb.embedding <=> query_embedding) AS similarity_score\n    FROM knowledge_base\
+    \ kb\n    WHERE kb.is_active = true\n    ORDER BY kb.embedding <=> query_embedding\n\
+    \    LIMIT max_results;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- ============================================================================\n\
+    -- GRANTS (adjust based on your user setup)\n-- ============================================================================\n\
+    -- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO claims_user;\n-- GRANT\
+    \ ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO claims_user;\n-- GRANT EXECUTE\
+    \ ON ALL FUNCTIONS IN SCHEMA public TO claims_user;\n\n-- ============================================================================\n\
+    -- COMPLETION\n-- ============================================================================\n\
+    -- not sure why current_database() shows as a syntax error... looks legit AFAIU\n\
+    -- no big deal, can do without\n-- COMMENT ON DATABASE current_database() IS 'Claims\
+    \ Processing Demo Database with pgvector for RAG';\n"
+  seed.sql: '-- Realistic seed data for Claims Demo - 50 users, 100 claims
+
+    -- Generated automatically
+
+
+    -- Delete existing data
+
+    DELETE FROM processing_logs;
+
+    DELETE FROM claim_documents;
+
+    DELETE FROM claims;
+
+    DELETE FROM knowledge_base;
+
+    DELETE FROM user_contracts;
+
+    DELETE FROM users;
+
+
+    -- ============================================================================
+
+    -- 50 USERS
+
+    -- ============================================================================
+
+    INSERT INTO users (user_id, email, full_name, date_of_birth, phone_number, address,
+    is_active) VALUES
+
+    (''USR001'', ''michael.brown@email.com'', ''Michael Brown'', ''1998-11-25'', ''555-1000'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR002'', ''sarah.johnson@email.com'', ''Sarah Johnson'', ''1987-09-13'', ''555-1001'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR003'', ''david.garcia@email.com'', ''David Garcia'', ''1967-10-09'', ''555-1002'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR004'', ''jennifer.martinez@email.com'', ''Jennifer Martinez'', ''2002-02-17'',
+    ''555-1003'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR005'', ''robert.wilson@email.com'', ''Robert Wilson'', ''1985-03-02'', ''555-1004'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR006'', ''linda.anderson@email.com'', ''Linda Anderson'', ''1978-03-09'',
+    ''555-1005'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR007'', ''james.taylor@email.com'', ''James Taylor'', ''1977-10-01'', ''555-1006'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR008'', ''patricia.thomas@email.com'', ''Patricia Thomas'', ''1994-11-28'',
+    ''555-1007'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR009'', ''john.moore@email.com'', ''John Moore'', ''1975-10-25'', ''555-1008'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR010'', ''mary.jackson@email.com'', ''Mary Jackson'', ''1966-03-24'', ''555-1009'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR011'', ''william.white@email.com'', ''William White'', ''1969-05-21'', ''555-1010'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR012'', ''barbara.harris@email.com'', ''Barbara Harris'', ''1977-05-30'',
+    ''555-1011'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR013'', ''richard.martin@email.com'', ''Richard Martin'', ''1988-05-05'',
+    ''555-1012'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR014'', ''susan.thompson@email.com'', ''Susan Thompson'', ''1994-09-30'',
+    ''555-1013'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR015'', ''charles.lee@email.com'', ''Charles Lee'', ''1976-06-01'', ''555-1014'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR016'', ''jessica.walker@email.com'', ''Jessica Walker'', ''1991-01-13'',
+    ''555-1015'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR017'', ''thomas.hall@email.com'', ''Thomas Hall'', ''1991-02-03'', ''555-1016'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR018'', ''nancy.allen@email.com'', ''Nancy Allen'', ''1975-07-21'', ''555-1017'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR019'', ''daniel.young@email.com'', ''Daniel Young'', ''1990-07-17'', ''555-1018'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR020'', ''karen.king@email.com'', ''Karen King'', ''2000-10-23'', ''555-1019'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR021'', ''matthew.wright@email.com'', ''Matthew Wright'', ''1967-10-18'',
+    ''555-1020'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR022'', ''betty.lopez@email.com'', ''Betty Lopez'', ''1985-02-10'', ''555-1021'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR023'', ''steven.hill@email.com'', ''Steven Hill'', ''2002-09-27'', ''555-1022'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR024'', ''helen.scott@email.com'', ''Helen Scott'', ''1988-11-08'', ''555-1023'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR025'', ''joseph.green@email.com'', ''Joseph Green'', ''1993-07-10'', ''555-1024'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR026'', ''dorothy.adams@email.com'', ''Dorothy Adams'', ''1988-06-01'', ''555-1025'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR027'', ''kevin.baker@email.com'', ''Kevin Baker'', ''1972-10-01'', ''555-1026'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR028'', ''lisa.gonzalez@email.com'', ''Lisa Gonzalez'', ''1995-07-07'', ''555-1027'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR029'', ''brian.nelson@email.com'', ''Brian Nelson'', ''1988-07-04'', ''555-1028'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR030'', ''sandra.carter@email.com'', ''Sandra Carter'', ''1975-06-22'', ''555-1029'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR031'', ''george.mitchell@email.com'', ''George Mitchell'', ''1987-07-10'',
+    ''555-1030'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR032'', ''ashley.perez@email.com'', ''Ashley Perez'', ''1993-01-22'', ''555-1031'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR033'', ''kenneth.roberts@email.com'', ''Kenneth Roberts'', ''1998-04-21'',
+    ''555-1032'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR034'', ''donna.turner@email.com'', ''Donna Turner'', ''1992-01-28'', ''555-1033'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR035'', ''ronald.phillips@email.com'', ''Ronald Phillips'', ''1968-03-07'',
+    ''555-1034'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR036'', ''carol.campbell@email.com'', ''Carol Campbell'', ''1969-05-06'',
+    ''555-1035'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR037'', ''anthony.parker@email.com'', ''Anthony Parker'', ''1969-04-20'',
+    ''555-1036'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR038'', ''michelle.evans@email.com'', ''Michelle Evans'', ''2005-06-14'',
+    ''555-1037'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR039'', ''paul.edwards@email.com'', ''Paul Edwards'', ''2003-08-02'', ''555-1038'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR040'', ''deborah.collins@email.com'', ''Deborah Collins'', ''1983-04-11'',
+    ''555-1039'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR041'', ''mark.stewart@email.com'', ''Mark Stewart'', ''1966-08-30'', ''555-1040'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR042'', ''laura.sanchez@email.com'', ''Laura Sanchez'', ''1985-12-05'', ''555-1041'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR043'', ''jason.morris@email.com'', ''Jason Morris'', ''1996-01-29'', ''555-1042'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR044'', ''sharon.rogers@email.com'', ''Sharon Rogers'', ''1977-12-05'', ''555-1043'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR045'', ''christopher.reed@email.com'', ''Christopher Reed'', ''1990-08-01'',
+    ''555-1044'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR046'', ''amanda.cook@email.com'', ''Amanda Cook'', ''1980-12-18'', ''555-1045'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR047'', ''ryan.morgan@email.com'', ''Ryan Morgan'', ''1984-05-15'', ''555-1046'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR048'', ''kimberly.bell@email.com'', ''Kimberly Bell'', ''1977-08-25'', ''555-1047'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR049'', ''eric.murphy@email.com'', ''Eric Murphy'', ''2003-07-22'', ''555-1048'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR050'', ''cynthia.bailey@email.com'', ''Cynthia Bailey'', ''1996-01-06'',
+    ''555-1049'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR051'', ''gregory.rivera@email.com'', ''Gregory Rivera'', ''1979-05-14'',
+    ''555-1050'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR052'', ''rachel.torres@email.com'', ''Rachel Torres'', ''1986-09-19'', ''555-1051'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR053'', ''patrick.nguyen@email.com'', ''Patrick Nguyen'', ''1992-02-28'',
+    ''555-1052'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR054'', ''angela.ramirez@email.com'', ''Angela Ramirez'', ''1981-11-17'',
+    ''555-1053'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR055'', ''scott.foster@email.com'', ''Scott Foster'', ''1974-06-30'', ''555-1054'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR056'', ''diana.coleman@email.com'', ''Diana Coleman'', ''1997-12-11'', ''555-1055'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR057'', ''jerry.jenkins@email.com'', ''Jerry Jenkins'', ''1970-04-25'', ''555-1056'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR058'', ''theresa.perry@email.com'', ''Theresa Perry'', ''1999-08-16'', ''555-1057'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR059'', ''dennis.powell@email.com'', ''Dennis Powell'', ''1983-03-09'', ''555-1058'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR060'', ''julia.long@email.com'', ''Julia Long'', ''1989-10-05'', ''555-1059'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR061'', ''walter.patterson@email.com'', ''Walter Patterson'', ''1976-01-20'',
+    ''555-1060'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR062'', ''kathryn.hughes@email.com'', ''Kathryn Hughes'', ''1994-07-13'',
+    ''555-1061'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR063'', ''arthur.flores@email.com'', ''Arthur Flores'', ''1971-09-22'', ''555-1062'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR064'', ''marilyn.washington@email.com'', ''Marilyn Washington'', ''1987-05-08'',
+    ''555-1063'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true);
+
+
+    -- ============================================================================
+
+    -- CONTRACTS (2-3 per user)
+
+    -- ============================================================================
+
+    INSERT INTO user_contracts (user_id, contract_number, contract_type, start_date,
+    end_date, coverage_amount, premium_amount, payment_frequency, full_text, key_terms,
+    is_active) VALUES
+
+    (''USR001'', ''CNT-2024-0001'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR001'', ''CNT-2024-0002'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR002'', ''CNT-2024-0003'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR002'', ''CNT-2024-0004'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0005'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0006'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0007'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0008'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0009'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0010'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR005'', ''CNT-2024-0011'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR005'', ''CNT-2024-0012'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0013'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0014'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0015'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0016'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0017'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0018'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR008'', ''CNT-2024-0019'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR008'', ''CNT-2024-0020'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0021'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0022'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0023'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0024'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0025'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0026'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0027'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0028'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0029'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR012'', ''CNT-2024-0030'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR012'', ''CNT-2024-0031'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR013'', ''CNT-2024-0032'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR013'', ''CNT-2024-0033'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR014'', ''CNT-2024-0034'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR014'', ''CNT-2024-0035'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR015'', ''CNT-2024-0036'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR015'', ''CNT-2024-0037'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0038'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0039'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0040'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0041'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0042'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0043'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR018'', ''CNT-2024-0044'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR018'', ''CNT-2024-0045'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR019'', ''CNT-2024-0046'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR019'', ''CNT-2024-0047'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0048'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0049'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0050'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0051'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0052'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0053'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0054'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0055'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0056'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR023'', ''CNT-2024-0057'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR023'', ''CNT-2024-0058'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR024'', ''CNT-2024-0059'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR024'', ''CNT-2024-0060'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR025'', ''CNT-2024-0061'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR025'', ''CNT-2024-0062'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR026'', ''CNT-2024-0063'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR026'', ''CNT-2024-0064'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0065'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0066'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0067'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR028'', ''CNT-2024-0068'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR028'', ''CNT-2024-0069'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0070'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0071'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0072'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR030'', ''CNT-2024-0073'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR030'', ''CNT-2024-0074'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0075'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0076'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0077'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0078'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0079'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0080'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0081'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0082'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0083'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR034'', ''CNT-2024-0084'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR034'', ''CNT-2024-0085'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0086'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0087'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0088'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR036'', ''CNT-2024-0089'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR036'', ''CNT-2024-0090'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR037'', ''CNT-2024-0091'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR037'', ''CNT-2024-0092'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR038'', ''CNT-2024-0093'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR038'', ''CNT-2024-0094'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR039'', ''CNT-2024-0095'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR039'', ''CNT-2024-0096'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0097'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0098'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0099'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0100'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0101'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0102'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0103'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0104'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0105'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0106'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0107'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0108'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR044'', ''CNT-2024-0109'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR044'', ''CNT-2024-0110'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR045'', ''CNT-2024-0111'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR045'', ''CNT-2024-0112'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0113'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0114'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0115'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0116'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0117'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0118'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR048'', ''CNT-2024-0119'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR048'', ''CNT-2024-0120'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR049'', ''CNT-2024-0121'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR049'', ''CNT-2024-0122'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR050'', ''CNT-2024-0123'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR050'', ''CNT-2024-0124'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true);
+
+
+    -- ============================================================================
+
+    -- 100 CLAIMS WITH SIMILAR CASES
+
+    -- ============================================================================
+
+    INSERT INTO claims (user_id, claim_number, claim_type, document_path, status,
+    submitted_at) VALUES
+
+    (''USR001'', ''CLM-2024-0001'', ''Medical'', ''/claim_documents/claim_medical_001.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR048'', ''CLM-2024-0002'', ''Auto'', ''/claim_documents/claim_auto_001.pdf'',
+    ''pending'', ''2025-10-28 10:52:12''),
+
+    (''USR042'', ''CLM-2024-0003'', ''Auto'', ''/claim_documents/claim_auto_002.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR015'', ''CLM-2024-0004'', ''Home'', ''/claim_documents/claim_home_001.pdf'',
+    ''pending'', ''2025-11-20 10:52:12''),
+
+    (''USR064'', ''CLM-2024-0005'', ''Auto'', ''/claim_documents/claim_auto_003.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0006'', ''Medical'', ''/claim_documents/claim_medical_002.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR018'', ''CLM-2024-0007'', ''Home'', ''/claim_documents/claim_home_002.pdf'',
+    ''pending'', ''2026-01-10 10:52:12''),
+
+    (''USR060'', ''CLM-2024-0008'', ''Auto'', ''/claim_documents/claim_auto_004.pdf'',
+    ''pending'', ''2025-12-23 10:52:12''),
+
+    (''USR022'', ''CLM-2024-0009'', ''Medical'', ''/claim_documents/claim_medical_003.pdf'',
+    ''pending'', ''2025-11-01 10:52:12''),
+
+    (''USR052'', ''CLM-2024-0010'', ''Auto'', ''/claim_documents/claim_auto_005.pdf'',
+    ''pending'', ''2025-12-27 10:52:12''),
+
+    (''USR058'', ''CLM-2024-0011'', ''Auto'', ''/claim_documents/claim_auto_006.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0012'', ''Home'', ''/claim_documents/claim_home_003.pdf'',
+    ''pending'', ''2025-12-10 10:52:12''),
+
+    (''USR063'', ''CLM-2024-0013'', ''Auto'', ''/claim_documents/claim_auto_007.pdf'',
+    ''pending'', ''2025-11-30 10:52:12''),
+
+    (''USR050'', ''CLM-2024-0014'', ''Auto'', ''/claim_documents/claim_auto_008.pdf'',
+    ''pending'', ''2025-12-31 10:52:12''),
+
+    (''USR019'', ''CLM-2024-0015'', ''Medical'', ''/claim_documents/claim_medical_004.pdf'',
+    ''pending'', ''2025-12-09 10:52:12''),
+
+    (''USR047'', ''CLM-2024-0016'', ''Auto'', ''/claim_documents/claim_auto_009.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR019'', ''CLM-2024-0017'', ''Home'', ''/claim_documents/claim_home_004.pdf'',
+    ''pending'', ''2026-01-03 10:52:12''),
+
+    (''USR059'', ''CLM-2024-0018'', ''Auto'', ''/claim_documents/claim_auto_010.pdf'',
+    ''pending'', ''2025-12-14 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0019'', ''Home'', ''/claim_documents/claim_home_005.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0020'', ''Medical'', ''/claim_documents/claim_medical_005.pdf'',
+    ''pending'', ''2025-12-24 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0021'', ''Home'', ''/claim_documents/claim_home_006.pdf'',
+    ''pending'', ''2025-12-12 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0022'', ''Home'', ''/claim_documents/claim_home_007.pdf'',
+    ''pending'', ''2026-01-22 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0023'', ''Home'', ''/claim_documents/claim_home_008.pdf'',
+    ''pending'', ''2026-01-16 10:52:12''),
+
+    (''USR044'', ''CLM-2024-0024'', ''Auto'', ''/claim_documents/claim_auto_011.pdf'',
+    ''pending'', ''2026-01-11 10:52:12''),
+
+    (''USR049'', ''CLM-2024-0025'', ''Auto'', ''/claim_documents/claim_auto_012.pdf'',
+    ''pending'', ''2025-12-11 10:52:12''),
+
+    (''USR025'', ''CLM-2024-0026'', ''Medical'', ''/claim_documents/claim_medical_006.pdf'',
+    ''pending'', ''2025-11-15 10:52:12''),
+
+    (''USR011'', ''CLM-2024-0027'', ''Home'', ''/claim_documents/claim_home_009.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR037'', ''CLM-2024-0028'', ''Auto'', ''/claim_documents/claim_auto_013.pdf'',
+    ''pending'', ''2025-10-25 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0029'', ''Medical'', ''/claim_documents/claim_medical_007.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR035'', ''CLM-2024-0030'', ''Auto'', ''/claim_documents/claim_auto_014.pdf'',
+    ''pending'', ''2025-11-23 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0031'', ''Life'', ''/claim_documents/claim_home_001.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR028'', ''CLM-2024-0032'', ''Medical'', ''/claim_documents/claim_medical_008.pdf'',
+    ''pending'', ''2026-01-15 10:52:12''),
+
+    (''USR061'', ''CLM-2024-0033'', ''Auto'', ''/claim_documents/claim_auto_015.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0034'', ''Medical'', ''/claim_documents/claim_medical_009.pdf'',
+    ''pending'', ''2026-01-06 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0035'', ''Life'', ''/claim_documents/claim_home_002.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR043'', ''CLM-2024-0036'', ''Auto'', ''/claim_documents/claim_auto_016.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR053'', ''CLM-2024-0037'', ''Auto'', ''/claim_documents/claim_auto_017.pdf'',
+    ''pending'', ''2025-11-20 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0038'', ''Life'', ''/claim_documents/claim_home_003.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR016'', ''CLM-2024-0039'', ''Medical'', ''/claim_documents/claim_medical_010.pdf'',
+    ''pending'', ''2026-01-11 10:52:12''),
+
+    (''USR033'', ''CLM-2024-0040'', ''Medical'', ''/claim_documents/claim_medical_011.pdf'',
+    ''pending'', ''2025-12-20 10:52:12''),
+
+    (''USR013'', ''CLM-2024-0041'', ''Home'', ''/claim_documents/claim_home_010.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR026'', ''CLM-2024-0042'', ''Medical'', ''/claim_documents/claim_medical_012.pdf'',
+    ''pending'', ''2025-10-28 10:52:12''),
+
+    (''USR023'', ''CLM-2024-0043'', ''Home'', ''/claim_documents/claim_home_011.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0044'', ''Home'', ''/claim_documents/claim_home_012.pdf'',
+    ''pending'', ''2025-12-19 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0045'', ''Home'', ''/claim_documents/claim_home_013.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0046'', ''Life'', ''/claim_documents/claim_home_004.pdf'',
+    ''pending'', ''2025-12-26 10:52:12''),
+
+    (''USR021'', ''CLM-2024-0047'', ''Home'', ''/claim_documents/claim_home_014.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR013'', ''CLM-2024-0048'', ''Medical'', ''/claim_documents/claim_medical_013.pdf'',
+    ''pending'', ''2025-11-26 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0049'', ''Medical'', ''/claim_documents/claim_medical_014.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0050'', ''Home'', ''/claim_documents/claim_home_015.pdf'',
+    ''pending'', ''2025-10-30 10:52:12''),
+
+    (''USR014'', ''CLM-2024-0051'', ''Medical'', ''/claim_documents/claim_medical_015.pdf'',
+    ''pending'', ''2026-01-17 10:52:12''),
+
+    (''USR015'', ''CLM-2024-0052'', ''Medical'', ''/claim_documents/claim_medical_001.pdf'',
+    ''pending'', ''2025-12-29 10:52:12''),
+
+    (''USR057'', ''CLM-2024-0053'', ''Auto'', ''/claim_documents/claim_auto_018.pdf'',
+    ''pending'', ''2025-11-19 10:52:12''),
+
+    (''USR040'', ''CLM-2024-0054'', ''Auto'', ''/claim_documents/claim_auto_019.pdf'',
+    ''pending'', ''2026-01-14 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0055'', ''Medical'', ''/claim_documents/claim_medical_002.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR017'', ''CLM-2024-0056'', ''Medical'', ''/claim_documents/claim_medical_003.pdf'',
+    ''pending'', ''2026-01-15 10:52:12''),
+
+    (''USR024'', ''CLM-2024-0057'', ''Medical'', ''/claim_documents/claim_medical_004.pdf'',
+    ''pending'', ''2025-11-24 10:52:12''),
+
+    (''USR056'', ''CLM-2024-0058'', ''Auto'', ''/claim_documents/claim_auto_020.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR029'', ''CLM-2024-0059'', ''Medical'', ''/claim_documents/claim_medical_005.pdf'',
+    ''pending'', ''2025-12-15 10:52:12''),
+
+    (''USR051'', ''CLM-2024-0060'', ''Auto'', ''/claim_documents/claim_auto_001.pdf'',
+    ''pending'', ''2026-01-03 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0061'', ''Medical'', ''/claim_documents/claim_medical_006.pdf'',
+    ''pending'', ''2025-12-05 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0062'', ''Medical'', ''/claim_documents/claim_medical_007.pdf'',
+    ''pending'', ''2025-12-01 10:52:12''),
+
+    (''USR001'', ''CLM-2024-0063'', ''Life'', ''/claim_documents/claim_home_005.pdf'',
+    ''pending'', ''2025-12-12 10:52:12''),
+
+    (''USR041'', ''CLM-2024-0064'', ''Auto'', ''/claim_documents/claim_auto_002.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR039'', ''CLM-2024-0065'', ''Auto'', ''/claim_documents/claim_auto_003.pdf'',
+    ''pending'', ''2025-11-23 10:52:12''),
+
+    (''USR020'', ''CLM-2024-0066'', ''Medical'', ''/claim_documents/claim_medical_008.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR032'', ''CLM-2024-0067'', ''Medical'', ''/claim_documents/claim_medical_009.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR022'', ''CLM-2024-0068'', ''Home'', ''/claim_documents/claim_home_001.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0069'', ''Life'', ''/claim_documents/claim_home_006.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0070'', ''Life'', ''/claim_documents/claim_home_007.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR011'', ''CLM-2024-0071'', ''Medical'', ''/claim_documents/claim_medical_010.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR054'', ''CLM-2024-0072'', ''Auto'', ''/claim_documents/claim_auto_004.pdf'',
+    ''pending'', ''2025-12-03 10:52:12''),
+
+    (''USR045'', ''CLM-2024-0073'', ''Auto'', ''/claim_documents/claim_auto_005.pdf'',
+    ''pending'', ''2025-12-07 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0074'', ''Medical'', ''/claim_documents/claim_medical_011.pdf'',
+    ''pending'', ''2025-11-06 10:52:12''),
+
+    (''USR031'', ''CLM-2024-0075'', ''Medical'', ''/claim_documents/claim_medical_012.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR023'', ''CLM-2024-0076'', ''Medical'', ''/claim_documents/claim_medical_013.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0077'', ''Life'', ''/claim_documents/claim_home_008.pdf'',
+    ''pending'', ''2025-11-25 10:52:12''),
+
+    (''USR018'', ''CLM-2024-0078'', ''Medical'', ''/claim_documents/claim_medical_014.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR046'', ''CLM-2024-0079'', ''Auto'', ''/claim_documents/claim_auto_006.pdf'',
+    ''pending'', ''2025-11-19 10:52:12''),
+
+    (''USR062'', ''CLM-2024-0080'', ''Auto'', ''/claim_documents/claim_auto_007.pdf'',
+    ''pending'', ''2025-11-07 10:52:12''),
+
+    (''USR014'', ''CLM-2024-0081'', ''Home'', ''/claim_documents/claim_home_002.pdf'',
+    ''pending'', ''2025-11-24 10:52:12''),
+
+    (''USR017'', ''CLM-2024-0082'', ''Home'', ''/claim_documents/claim_home_003.pdf'',
+    ''pending'', ''2025-11-16 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0083'', ''Life'', ''/claim_documents/claim_home_009.pdf'',
+    ''pending'', ''2025-11-09 10:52:12''),
+
+    (''USR034'', ''CLM-2024-0084'', ''Medical'', ''/claim_documents/claim_medical_015.pdf'',
+    ''pending'', ''2025-12-03 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0085'', ''Life'', ''/claim_documents/claim_home_010.pdf'',
+    ''pending'', ''2025-12-20 10:52:12''),
+
+    (''USR024'', ''CLM-2024-0086'', ''Home'', ''/claim_documents/claim_home_004.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR055'', ''CLM-2024-0087'', ''Auto'', ''/claim_documents/claim_auto_008.pdf'',
+    ''pending'', ''2025-11-09 10:52:12''),
+
+    (''USR012'', ''CLM-2024-0088'', ''Home'', ''/claim_documents/claim_home_005.pdf'',
+    ''pending'', ''2025-12-22 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0089'', ''Medical'', ''/claim_documents/claim_medical_001.pdf'',
+    ''pending'', ''2025-11-06 10:52:12''),
+
+    (''USR016'', ''CLM-2024-0090'', ''Home'', ''/claim_documents/claim_home_006.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR020'', ''CLM-2024-0091'', ''Home'', ''/claim_documents/claim_home_007.pdf'',
+    ''pending'', ''2026-01-19 10:52:12''),
+
+    (''USR038'', ''CLM-2024-0092'', ''Auto'', ''/claim_documents/claim_auto_009.pdf'',
+    ''pending'', ''2026-01-10 10:52:12''),
+
+    (''USR030'', ''CLM-2024-0093'', ''Medical'', ''/claim_documents/claim_medical_002.pdf'',
+    ''pending'', ''2026-01-14 10:52:12''),
+
+    (''USR012'', ''CLM-2024-0094'', ''Medical'', ''/claim_documents/claim_medical_003.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR001'', ''CLM-2024-0095'', ''Home'', ''/claim_documents/claim_home_008.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR025'', ''CLM-2024-0096'', ''Home'', ''/claim_documents/claim_home_009.pdf'',
+    ''pending'', ''2025-12-22 10:52:12''),
+
+    (''USR036'', ''CLM-2024-0097'', ''Auto'', ''/claim_documents/claim_auto_010.pdf'',
+    ''pending'', ''2025-12-15 10:52:12''),
+
+    (''USR021'', ''CLM-2024-0098'', ''Medical'', ''/claim_documents/claim_medical_004.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR027'', ''CLM-2024-0099'', ''Medical'', ''/claim_documents/claim_medical_005.pdf'',
+    ''pending'', ''2025-11-12 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0100'', ''Home'', ''/claim_documents/claim_home_010.pdf'',
+    ''pending'', ''2025-12-24 10:52:12'');
+
+
+    -- ============================================================================
+
+    -- KNOWLEDGE BASE ARTICLES
+
+    -- ============================================================================
+
+    INSERT INTO knowledge_base (title, content, category, tags, is_active, effective_date)
+    VALUES
+
+    (''Medical Claim Submission Guidelines'', ''All medical claims must be submitted
+    within 90 days. Required: itemized bill, ICD-10 codes, proof of payment. Claims
+    over $5000 need prior authorization.'', ''Claims Processing'', ARRAY[''medical'',
+    ''submission''], true, ''2024-01-01''),
+
+    (''Covered Medical Services'', ''Covered: primary care, specialists, ER, hospitalization,
+    surgery, prescriptions, preventive care, diagnostics. Excluded: cosmetic, experimental.'',
+    ''Coverage'', ARRAY[''medical'', ''coverage''], true, ''2024-01-01''),
+
+    (''Auto Insurance Claim Process'', ''Steps: 1) Report immediately, 2) Gather evidence
+    (photos, police report), 3) Submit within 30 days, 4) Vehicle inspection, 5) Approval
+    and payment.'', ''Claims Processing'', ARRAY[''auto'', ''process''], true, ''2024-01-01''),
+
+    (''Deductible and Co-payment Policy'', ''Deductible is paid before coverage begins.
+    Co-payments are $15-$50 depending on service. Deductible resets January 1st.'',
+    ''Policy Terms'', ARRAY[''deductible'', ''copay''], true, ''2024-01-01''),
+
+    (''Prior Authorization Requirements'', ''Required for: MRI/CT scans, surgeries,
+    specialist referrals, DME, home health, medications >$500. Submit 10 days before
+    service.'', ''Authorization'', ARRAY[''prior auth'', ''approval''], true, ''2024-01-01''),
+
+    (''Home Insurance Coverage'', ''Covers: dwelling, personal property, liability,
+    additional living expenses. Deductible applies per claim. Flood requires separate
+    policy.'', ''Coverage'', ARRAY[''home'', ''coverage''], true, ''2024-01-01''),
+
+    (''Life Insurance Death Benefit'', ''Death benefit paid to beneficiary upon insured
+    death. Requires death certificate and claim form. Payment within 30 days of approval.'',
+    ''Claims Processing'', ARRAY[''life'', ''death benefit''], true, ''2024-01-01''),
+
+    (''Auto Theft Claims'', ''Report to police immediately. Provide keys, title, police
+    report. Waiting period 30 days. Actual cash value paid if not recovered.'', ''Claims
+    Processing'', ARRAY[''auto'', ''theft''], true, ''2024-01-01''),
+
+    (''Water Damage Coverage'', ''Sudden and accidental water damage covered. Excludes
+    flood, gradual leaks, maintenance issues. Immediate reporting required.'', ''Coverage'',
+    ARRAY[''home'', ''water damage''], true, ''2024-01-01''),
+
+    (''Appendicitis Coverage'', ''Emergency appendectomy fully covered after deductible.
+    Includes hospital stay, surgeon fees, anesthesia. Prior auth not required for
+    emergency.'', ''Coverage'', ARRAY[''medical'', ''surgery''], true, ''2024-01-01''),
+
+    (''Prescription Drug Formulary'', ''Tier 1 (generic): $10, Tier 2 (preferred brand):
+    $30, Tier 3 (non-preferred): $60. 90-day mail order available.'', ''Coverage'',
+    ARRAY[''prescription'', ''drugs''], true, ''2024-01-01''),
+
+    (''Burglary and Theft Claims'', ''Police report required within 24 hours. Provide
+    receipts/proof of ownership. Replace locks covered. Depreciation may apply.'',
+    ''Claims Processing'', ARRAY[''home'', ''theft''], true, ''2024-01-01''),
+
+    (''Collision Coverage'', ''Covers damage from collision regardless of fault. Deductible
+    applies. Includes rental car reimbursement up to $50/day for 30 days.'', ''Coverage'',
+    ARRAY[''auto'', ''collision''], true, ''2024-01-01''),
+
+    (''Specialist Referral Policy'', ''Primary care referral required. Specialist
+    must be in-network. Co-pay $35. Prior auth for certain procedures.'', ''Policy
+    Terms'', ARRAY[''medical'', ''specialist''], true, ''2024-01-01''),
+
+    (''Maximum Claim Limits'', ''Medical: $1M lifetime max. Auto: $100K property damage.
+    Home: coverage amount on policy. Life: policy face value.'', ''Policy Terms'',
+    ARRAY[''limits'', ''maximum''], true, ''2024-01-01'');
+
+    '
+  seed.sql.original: '-- Realistic seed data for Claims Demo - 50 users, 100 claims
+
+    -- Generated automatically
+
+
+    -- Delete existing data
+
+    DELETE FROM processing_logs;
+
+    DELETE FROM claim_documents;
+
+    DELETE FROM claims;
+
+    DELETE FROM knowledge_base;
+
+    DELETE FROM user_contracts;
+
+    DELETE FROM users;
+
+
+    -- ============================================================================
+
+    -- 50 USERS
+
+    -- ============================================================================
+
+    INSERT INTO users (user_id, email, full_name, date_of_birth, phone_number, address,
+    is_active) VALUES
+
+    (''USR001'', ''michael.brown@email.com'', ''Michael Brown'', ''1998-11-25'', ''555-1000'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR002'', ''sarah.johnson@email.com'', ''Sarah Johnson'', ''1987-09-13'', ''555-1001'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR003'', ''david.garcia@email.com'', ''David Garcia'', ''1967-10-09'', ''555-1002'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR004'', ''jennifer.martinez@email.com'', ''Jennifer Martinez'', ''2002-02-17'',
+    ''555-1003'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR005'', ''robert.wilson@email.com'', ''Robert Wilson'', ''1985-03-02'', ''555-1004'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR006'', ''linda.anderson@email.com'', ''Linda Anderson'', ''1978-03-09'',
+    ''555-1005'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR007'', ''james.taylor@email.com'', ''James Taylor'', ''1977-10-01'', ''555-1006'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR008'', ''patricia.thomas@email.com'', ''Patricia Thomas'', ''1994-11-28'',
+    ''555-1007'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR009'', ''john.moore@email.com'', ''John Moore'', ''1975-10-25'', ''555-1008'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR010'', ''mary.jackson@email.com'', ''Mary Jackson'', ''1966-03-24'', ''555-1009'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR011'', ''william.white@email.com'', ''William White'', ''1969-05-21'', ''555-1010'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR012'', ''barbara.harris@email.com'', ''Barbara Harris'', ''1977-05-30'',
+    ''555-1011'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR013'', ''richard.martin@email.com'', ''Richard Martin'', ''1988-05-05'',
+    ''555-1012'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR014'', ''susan.thompson@email.com'', ''Susan Thompson'', ''1994-09-30'',
+    ''555-1013'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR015'', ''charles.lee@email.com'', ''Charles Lee'', ''1976-06-01'', ''555-1014'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR016'', ''jessica.walker@email.com'', ''Jessica Walker'', ''1991-01-13'',
+    ''555-1015'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR017'', ''thomas.hall@email.com'', ''Thomas Hall'', ''1991-02-03'', ''555-1016'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR018'', ''nancy.allen@email.com'', ''Nancy Allen'', ''1975-07-21'', ''555-1017'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR019'', ''daniel.young@email.com'', ''Daniel Young'', ''1990-07-17'', ''555-1018'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR020'', ''karen.king@email.com'', ''Karen King'', ''2000-10-23'', ''555-1019'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR021'', ''matthew.wright@email.com'', ''Matthew Wright'', ''1967-10-18'',
+    ''555-1020'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR022'', ''betty.lopez@email.com'', ''Betty Lopez'', ''1985-02-10'', ''555-1021'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR023'', ''steven.hill@email.com'', ''Steven Hill'', ''2002-09-27'', ''555-1022'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR024'', ''helen.scott@email.com'', ''Helen Scott'', ''1988-11-08'', ''555-1023'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR025'', ''joseph.green@email.com'', ''Joseph Green'', ''1993-07-10'', ''555-1024'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR026'', ''dorothy.adams@email.com'', ''Dorothy Adams'', ''1988-06-01'', ''555-1025'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR027'', ''kevin.baker@email.com'', ''Kevin Baker'', ''1972-10-01'', ''555-1026'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR028'', ''lisa.gonzalez@email.com'', ''Lisa Gonzalez'', ''1995-07-07'', ''555-1027'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR029'', ''brian.nelson@email.com'', ''Brian Nelson'', ''1988-07-04'', ''555-1028'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR030'', ''sandra.carter@email.com'', ''Sandra Carter'', ''1975-06-22'', ''555-1029'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR031'', ''george.mitchell@email.com'', ''George Mitchell'', ''1987-07-10'',
+    ''555-1030'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR032'', ''ashley.perez@email.com'', ''Ashley Perez'', ''1993-01-22'', ''555-1031'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR033'', ''kenneth.roberts@email.com'', ''Kenneth Roberts'', ''1998-04-21'',
+    ''555-1032'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR034'', ''donna.turner@email.com'', ''Donna Turner'', ''1992-01-28'', ''555-1033'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR035'', ''ronald.phillips@email.com'', ''Ronald Phillips'', ''1968-03-07'',
+    ''555-1034'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR036'', ''carol.campbell@email.com'', ''Carol Campbell'', ''1969-05-06'',
+    ''555-1035'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR037'', ''anthony.parker@email.com'', ''Anthony Parker'', ''1969-04-20'',
+    ''555-1036'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR038'', ''michelle.evans@email.com'', ''Michelle Evans'', ''2005-06-14'',
+    ''555-1037'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR039'', ''paul.edwards@email.com'', ''Paul Edwards'', ''2003-08-02'', ''555-1038'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR040'', ''deborah.collins@email.com'', ''Deborah Collins'', ''1983-04-11'',
+    ''555-1039'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR041'', ''mark.stewart@email.com'', ''Mark Stewart'', ''1966-08-30'', ''555-1040'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR042'', ''laura.sanchez@email.com'', ''Laura Sanchez'', ''1985-12-05'', ''555-1041'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR043'', ''jason.morris@email.com'', ''Jason Morris'', ''1996-01-29'', ''555-1042'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR044'', ''sharon.rogers@email.com'', ''Sharon Rogers'', ''1977-12-05'', ''555-1043'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR045'', ''christopher.reed@email.com'', ''Christopher Reed'', ''1990-08-01'',
+    ''555-1044'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR046'', ''amanda.cook@email.com'', ''Amanda Cook'', ''1980-12-18'', ''555-1045'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR047'', ''ryan.morgan@email.com'', ''Ryan Morgan'', ''1984-05-15'', ''555-1046'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR048'', ''kimberly.bell@email.com'', ''Kimberly Bell'', ''1977-08-25'', ''555-1047'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR049'', ''eric.murphy@email.com'', ''Eric Murphy'', ''2003-07-22'', ''555-1048'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR050'', ''cynthia.bailey@email.com'', ''Cynthia Bailey'', ''1996-01-06'',
+    ''555-1049'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR051'', ''gregory.rivera@email.com'', ''Gregory Rivera'', ''1979-05-14'',
+    ''555-1050'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR052'', ''rachel.torres@email.com'', ''Rachel Torres'', ''1986-09-19'', ''555-1051'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR053'', ''patrick.nguyen@email.com'', ''Patrick Nguyen'', ''1992-02-28'',
+    ''555-1052'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR054'', ''angela.ramirez@email.com'', ''Angela Ramirez'', ''1981-11-17'',
+    ''555-1053'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR055'', ''scott.foster@email.com'', ''Scott Foster'', ''1974-06-30'', ''555-1054'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR056'', ''diana.coleman@email.com'', ''Diana Coleman'', ''1997-12-11'', ''555-1055'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR057'', ''jerry.jenkins@email.com'', ''Jerry Jenkins'', ''1970-04-25'', ''555-1056'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR058'', ''theresa.perry@email.com'', ''Theresa Perry'', ''1999-08-16'', ''555-1057'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR059'', ''dennis.powell@email.com'', ''Dennis Powell'', ''1983-03-09'', ''555-1058'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR060'', ''julia.long@email.com'', ''Julia Long'', ''1989-10-05'', ''555-1059'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR061'', ''walter.patterson@email.com'', ''Walter Patterson'', ''1976-01-20'',
+    ''555-1060'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR062'', ''kathryn.hughes@email.com'', ''Kathryn Hughes'', ''1994-07-13'',
+    ''555-1061'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true),
+
+    (''USR063'', ''arthur.flores@email.com'', ''Arthur Flores'', ''1971-09-22'', ''555-1062'',
+    ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip": "60601"}''::jsonb,
+    true),
+
+    (''USR064'', ''marilyn.washington@email.com'', ''Marilyn Washington'', ''1987-05-08'',
+    ''555-1063'', ''{"street": "123 Main St", "city": "Chicago", "state": "IL", "zip":
+    "60601"}''::jsonb, true);
+
+
+    -- ============================================================================
+
+    -- CONTRACTS (2-3 per user)
+
+    -- ============================================================================
+
+    INSERT INTO user_contracts (user_id, contract_number, contract_type, start_date,
+    end_date, coverage_amount, premium_amount, payment_frequency, full_text, key_terms,
+    is_active) VALUES
+
+    (''USR001'', ''CNT-2024-0001'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR001'', ''CNT-2024-0002'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR002'', ''CNT-2024-0003'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR002'', ''CNT-2024-0004'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0005'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0006'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR003'', ''CNT-2024-0007'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0008'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0009'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR004'', ''CNT-2024-0010'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR005'', ''CNT-2024-0011'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR005'', ''CNT-2024-0012'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0013'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0014'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR006'', ''CNT-2024-0015'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0016'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0017'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR007'', ''CNT-2024-0018'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR008'', ''CNT-2024-0019'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR008'', ''CNT-2024-0020'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0021'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0022'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR009'', ''CNT-2024-0023'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0024'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0025'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR010'', ''CNT-2024-0026'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0027'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0028'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR011'', ''CNT-2024-0029'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR012'', ''CNT-2024-0030'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR012'', ''CNT-2024-0031'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR013'', ''CNT-2024-0032'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR013'', ''CNT-2024-0033'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR014'', ''CNT-2024-0034'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR014'', ''CNT-2024-0035'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR015'', ''CNT-2024-0036'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR015'', ''CNT-2024-0037'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0038'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0039'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR016'', ''CNT-2024-0040'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0041'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0042'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR017'', ''CNT-2024-0043'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR018'', ''CNT-2024-0044'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR018'', ''CNT-2024-0045'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR019'', ''CNT-2024-0046'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR019'', ''CNT-2024-0047'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0048'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0049'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR020'', ''CNT-2024-0050'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0051'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0052'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR021'', ''CNT-2024-0053'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0054'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0055'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR022'', ''CNT-2024-0056'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR023'', ''CNT-2024-0057'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR023'', ''CNT-2024-0058'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR024'', ''CNT-2024-0059'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR024'', ''CNT-2024-0060'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR025'', ''CNT-2024-0061'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR025'', ''CNT-2024-0062'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR026'', ''CNT-2024-0063'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR026'', ''CNT-2024-0064'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0065'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0066'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR027'', ''CNT-2024-0067'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR028'', ''CNT-2024-0068'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR028'', ''CNT-2024-0069'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0070'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0071'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR029'', ''CNT-2024-0072'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR030'', ''CNT-2024-0073'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR030'', ''CNT-2024-0074'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0075'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0076'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR031'', ''CNT-2024-0077'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0078'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0079'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR032'', ''CNT-2024-0080'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0081'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0082'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR033'', ''CNT-2024-0083'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR034'', ''CNT-2024-0084'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR034'', ''CNT-2024-0085'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0086'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0087'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR035'', ''CNT-2024-0088'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR036'', ''CNT-2024-0089'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR036'', ''CNT-2024-0090'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR037'', ''CNT-2024-0091'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR037'', ''CNT-2024-0092'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR038'', ''CNT-2024-0093'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR038'', ''CNT-2024-0094'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR039'', ''CNT-2024-0095'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR039'', ''CNT-2024-0096'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0097'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0098'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR040'', ''CNT-2024-0099'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0100'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0101'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR041'', ''CNT-2024-0102'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0103'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0104'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR042'', ''CNT-2024-0105'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0106'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0107'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR043'', ''CNT-2024-0108'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR044'', ''CNT-2024-0109'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR044'', ''CNT-2024-0110'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR045'', ''CNT-2024-0111'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR045'', ''CNT-2024-0112'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0113'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0114'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR046'', ''CNT-2024-0115'', ''Auto Insurance'', ''2024-01-01'', ''2024-12-31'',
+    30000.00, 120.00, ''monthly'', ''Comprehensive auto coverage. Deductible $500.'',
+    ''{"deductible": 500, "liability": 100000}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0116'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0117'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR047'', ''CNT-2024-0118'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR048'', ''CNT-2024-0119'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR048'', ''CNT-2024-0120'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true),
+
+    (''USR049'', ''CNT-2024-0121'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR049'', ''CNT-2024-0122'', ''Health Insurance'', ''2024-01-01'', ''2024-12-31'',
+    50000.00, 250.00, ''monthly'', ''Covers medical expenses, hospitalization, surgery.
+    Deductible $500.'', ''{"deductible": 500, "copay": 20}''::jsonb, true),
+
+    (''USR050'', ''CNT-2024-0123'', ''Life Insurance'', ''2024-01-01'', ''2024-12-31'',
+    500000.00, 350.00, ''monthly'', ''Term life insurance policy.'', ''{"term": "20
+    years", "beneficiary": "spouse"}''::jsonb, true),
+
+    (''USR050'', ''CNT-2024-0124'', ''Home Insurance'', ''2024-01-01'', ''2024-12-31'',
+    200000.00, 180.00, ''monthly'', ''Homeowners coverage for dwelling and property.
+    Deductible $1000.'', ''{"deductible": 1000, "dwelling": 200000}''::jsonb, true);
+
+
+    -- ============================================================================
+
+    -- 100 CLAIMS WITH SIMILAR CASES
+
+    -- ============================================================================
+
+    INSERT INTO claims (user_id, claim_number, claim_type, document_path, status,
+    submitted_at) VALUES
+
+    (''USR001'', ''CLM-2024-0001'', ''Medical'', ''/claim_documents/clm-2024-0001.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR048'', ''CLM-2024-0002'', ''Auto'', ''/claim_documents/clm-2024-0002.pdf'',
+    ''pending'', ''2025-10-28 10:52:12''),
+
+    (''USR042'', ''CLM-2024-0003'', ''Auto'', ''/claim_documents/clm-2024-0003.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR015'', ''CLM-2024-0004'', ''Home'', ''/claim_documents/clm-2024-0004.pdf'',
+    ''pending'', ''2025-11-20 10:52:12''),
+
+    (''USR064'', ''CLM-2024-0005'', ''Auto'', ''/claim_documents/clm-2024-0005.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0006'', ''Medical'', ''/claim_documents/clm-2024-0006.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR018'', ''CLM-2024-0007'', ''Home'', ''/claim_documents/clm-2024-0007.pdf'',
+    ''pending'', ''2026-01-10 10:52:12''),
+
+    (''USR060'', ''CLM-2024-0008'', ''Auto'', ''/claim_documents/clm-2024-0008.pdf'',
+    ''pending'', ''2025-12-23 10:52:12''),
+
+    (''USR022'', ''CLM-2024-0009'', ''Medical'', ''/claim_documents/clm-2024-0009.pdf'',
+    ''pending'', ''2025-11-01 10:52:12''),
+
+    (''USR052'', ''CLM-2024-0010'', ''Auto'', ''/claim_documents/clm-2024-0010.pdf'',
+    ''pending'', ''2025-12-27 10:52:12''),
+
+    (''USR058'', ''CLM-2024-0011'', ''Auto'', ''/claim_documents/clm-2024-0011.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0012'', ''Home'', ''/claim_documents/clm-2024-0012.pdf'',
+    ''pending'', ''2025-12-10 10:52:12''),
+
+    (''USR063'', ''CLM-2024-0013'', ''Auto'', ''/claim_documents/clm-2024-0013.pdf'',
+    ''pending'', ''2025-11-30 10:52:12''),
+
+    (''USR050'', ''CLM-2024-0014'', ''Auto'', ''/claim_documents/clm-2024-0014.pdf'',
+    ''pending'', ''2025-12-31 10:52:12''),
+
+    (''USR019'', ''CLM-2024-0015'', ''Medical'', ''/claim_documents/clm-2024-0015.pdf'',
+    ''pending'', ''2025-12-09 10:52:12''),
+
+    (''USR047'', ''CLM-2024-0016'', ''Auto'', ''/claim_documents/clm-2024-0016.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR019'', ''CLM-2024-0017'', ''Home'', ''/claim_documents/clm-2024-0017.pdf'',
+    ''pending'', ''2026-01-03 10:52:12''),
+
+    (''USR059'', ''CLM-2024-0018'', ''Auto'', ''/claim_documents/clm-2024-0018.pdf'',
+    ''pending'', ''2025-12-14 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0019'', ''Home'', ''/claim_documents/clm-2024-0019.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0020'', ''Medical'', ''/claim_documents/clm-2024-0020.pdf'',
+    ''pending'', ''2025-12-24 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0021'', ''Home'', ''/claim_documents/clm-2024-0021.pdf'',
+    ''pending'', ''2025-12-12 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0022'', ''Home'', ''/claim_documents/clm-2024-0022.pdf'',
+    ''pending'', ''2026-01-22 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0023'', ''Home'', ''/claim_documents/clm-2024-0023.pdf'',
+    ''pending'', ''2026-01-16 10:52:12''),
+
+    (''USR044'', ''CLM-2024-0024'', ''Auto'', ''/claim_documents/clm-2024-0024.pdf'',
+    ''pending'', ''2026-01-11 10:52:12''),
+
+    (''USR049'', ''CLM-2024-0025'', ''Auto'', ''/claim_documents/clm-2024-0025.pdf'',
+    ''pending'', ''2025-12-11 10:52:12''),
+
+    (''USR025'', ''CLM-2024-0026'', ''Medical'', ''/claim_documents/clm-2024-0026.pdf'',
+    ''pending'', ''2025-11-15 10:52:12''),
+
+    (''USR011'', ''CLM-2024-0027'', ''Home'', ''/claim_documents/clm-2024-0027.pdf'',
+    ''pending'', ''2025-12-06 10:52:12''),
+
+    (''USR037'', ''CLM-2024-0028'', ''Auto'', ''/claim_documents/clm-2024-0028.pdf'',
+    ''pending'', ''2025-10-25 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0029'', ''Medical'', ''/claim_documents/clm-2024-0029.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR035'', ''CLM-2024-0030'', ''Auto'', ''/claim_documents/clm-2024-0030.pdf'',
+    ''pending'', ''2025-11-23 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0031'', ''Life'', ''/claim_documents/clm-2024-0031.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR028'', ''CLM-2024-0032'', ''Medical'', ''/claim_documents/clm-2024-0032.pdf'',
+    ''pending'', ''2026-01-15 10:52:12''),
+
+    (''USR061'', ''CLM-2024-0033'', ''Auto'', ''/claim_documents/clm-2024-0033.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0034'', ''Medical'', ''/claim_documents/clm-2024-0034.pdf'',
+    ''pending'', ''2026-01-06 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0035'', ''Life'', ''/claim_documents/clm-2024-0035.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR043'', ''CLM-2024-0036'', ''Auto'', ''/claim_documents/clm-2024-0036.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR053'', ''CLM-2024-0037'', ''Auto'', ''/claim_documents/clm-2024-0037.pdf'',
+    ''pending'', ''2025-11-20 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0038'', ''Life'', ''/claim_documents/clm-2024-0038.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR016'', ''CLM-2024-0039'', ''Medical'', ''/claim_documents/clm-2024-0039.pdf'',
+    ''pending'', ''2026-01-11 10:52:12''),
+
+    (''USR033'', ''CLM-2024-0040'', ''Medical'', ''/claim_documents/clm-2024-0040.pdf'',
+    ''pending'', ''2025-12-20 10:52:12''),
+
+    (''USR013'', ''CLM-2024-0041'', ''Home'', ''/claim_documents/clm-2024-0041.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR026'', ''CLM-2024-0042'', ''Medical'', ''/claim_documents/clm-2024-0042.pdf'',
+    ''pending'', ''2025-10-28 10:52:12''),
+
+    (''USR023'', ''CLM-2024-0043'', ''Home'', ''/claim_documents/clm-2024-0043.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0044'', ''Home'', ''/claim_documents/clm-2024-0044.pdf'',
+    ''pending'', ''2025-12-19 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0045'', ''Home'', ''/claim_documents/clm-2024-0045.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0046'', ''Life'', ''/claim_documents/clm-2024-0046.pdf'',
+    ''pending'', ''2025-12-26 10:52:12''),
+
+    (''USR021'', ''CLM-2024-0047'', ''Home'', ''/claim_documents/clm-2024-0047.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR013'', ''CLM-2024-0048'', ''Medical'', ''/claim_documents/clm-2024-0048.pdf'',
+    ''pending'', ''2025-11-26 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0049'', ''Medical'', ''/claim_documents/clm-2024-0049.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR002'', ''CLM-2024-0050'', ''Home'', ''/claim_documents/clm-2024-0050.pdf'',
+    ''pending'', ''2025-10-30 10:52:12''),
+
+    (''USR014'', ''CLM-2024-0051'', ''Medical'', ''/claim_documents/clm-2024-0051.pdf'',
+    ''pending'', ''2026-01-17 10:52:12''),
+
+    (''USR015'', ''CLM-2024-0052'', ''Medical'', ''/claim_documents/clm-2024-0052.pdf'',
+    ''pending'', ''2025-12-29 10:52:12''),
+
+    (''USR057'', ''CLM-2024-0053'', ''Auto'', ''/claim_documents/clm-2024-0053.pdf'',
+    ''pending'', ''2025-11-19 10:52:12''),
+
+    (''USR040'', ''CLM-2024-0054'', ''Auto'', ''/claim_documents/clm-2024-0054.pdf'',
+    ''pending'', ''2026-01-14 10:52:12''),
+
+    (''USR003'', ''CLM-2024-0055'', ''Medical'', ''/claim_documents/clm-2024-0055.pdf'',
+    ''pending'', ''2026-01-08 10:52:12''),
+
+    (''USR017'', ''CLM-2024-0056'', ''Medical'', ''/claim_documents/clm-2024-0056.pdf'',
+    ''pending'', ''2026-01-15 10:52:12''),
+
+    (''USR024'', ''CLM-2024-0057'', ''Medical'', ''/claim_documents/clm-2024-0057.pdf'',
+    ''pending'', ''2025-11-24 10:52:12''),
+
+    (''USR056'', ''CLM-2024-0058'', ''Auto'', ''/claim_documents/clm-2024-0058.pdf'',
+    ''pending'', ''2026-01-05 10:52:12''),
+
+    (''USR029'', ''CLM-2024-0059'', ''Medical'', ''/claim_documents/clm-2024-0059.pdf'',
+    ''pending'', ''2025-12-15 10:52:12''),
+
+    (''USR051'', ''CLM-2024-0060'', ''Auto'', ''/claim_documents/clm-2024-0060.pdf'',
+    ''pending'', ''2026-01-03 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0061'', ''Medical'', ''/claim_documents/clm-2024-0061.pdf'',
+    ''pending'', ''2025-12-05 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0062'', ''Medical'', ''/claim_documents/clm-2024-0062.pdf'',
+    ''pending'', ''2025-12-01 10:52:12''),
+
+    (''USR001'', ''CLM-2024-0063'', ''Life'', ''/claim_documents/clm-2024-0063.pdf'',
+    ''pending'', ''2025-12-12 10:52:12''),
+
+    (''USR041'', ''CLM-2024-0064'', ''Auto'', ''/claim_documents/clm-2024-0064.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR039'', ''CLM-2024-0065'', ''Auto'', ''/claim_documents/clm-2024-0065.pdf'',
+    ''pending'', ''2025-11-23 10:52:12''),
+
+    (''USR020'', ''CLM-2024-0066'', ''Medical'', ''/claim_documents/clm-2024-0066.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR032'', ''CLM-2024-0067'', ''Medical'', ''/claim_documents/clm-2024-0067.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR022'', ''CLM-2024-0068'', ''Home'', ''/claim_documents/clm-2024-0068.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR004'', ''CLM-2024-0069'', ''Life'', ''/claim_documents/clm-2024-0069.pdf'',
+    ''pending'', ''2026-01-07 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0070'', ''Life'', ''/claim_documents/clm-2024-0070.pdf'',
+    ''pending'', ''2025-12-18 10:52:12''),
+
+    (''USR011'', ''CLM-2024-0071'', ''Medical'', ''/claim_documents/clm-2024-0071.pdf'',
+    ''pending'', ''2026-01-09 10:52:12''),
+
+    (''USR054'', ''CLM-2024-0072'', ''Auto'', ''/claim_documents/clm-2024-0072.pdf'',
+    ''pending'', ''2025-12-03 10:52:12''),
+
+    (''USR045'', ''CLM-2024-0073'', ''Auto'', ''/claim_documents/clm-2024-0073.pdf'',
+    ''pending'', ''2025-12-07 10:52:12''),
+
+    (''USR009'', ''CLM-2024-0074'', ''Medical'', ''/claim_documents/clm-2024-0074.pdf'',
+    ''pending'', ''2025-11-06 10:52:12''),
+
+    (''USR031'', ''CLM-2024-0075'', ''Medical'', ''/claim_documents/clm-2024-0075.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR023'', ''CLM-2024-0076'', ''Medical'', ''/claim_documents/clm-2024-0076.pdf'',
+    ''pending'', ''2025-11-29 10:52:12''),
+
+    (''USR010'', ''CLM-2024-0077'', ''Life'', ''/claim_documents/clm-2024-0077.pdf'',
+    ''pending'', ''2025-11-25 10:52:12''),
+
+    (''USR018'', ''CLM-2024-0078'', ''Medical'', ''/claim_documents/clm-2024-0078.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR046'', ''CLM-2024-0079'', ''Auto'', ''/claim_documents/clm-2024-0079.pdf'',
+    ''pending'', ''2025-11-19 10:52:12''),
+
+    (''USR062'', ''CLM-2024-0080'', ''Auto'', ''/claim_documents/clm-2024-0080.pdf'',
+    ''pending'', ''2025-11-07 10:52:12''),
+
+    (''USR014'', ''CLM-2024-0081'', ''Home'', ''/claim_documents/clm-2024-0081.pdf'',
+    ''pending'', ''2025-11-24 10:52:12''),
+
+    (''USR017'', ''CLM-2024-0082'', ''Home'', ''/claim_documents/clm-2024-0082.pdf'',
+    ''pending'', ''2025-11-16 10:52:12''),
+
+    (''USR008'', ''CLM-2024-0083'', ''Life'', ''/claim_documents/clm-2024-0083.pdf'',
+    ''pending'', ''2025-11-09 10:52:12''),
+
+    (''USR034'', ''CLM-2024-0084'', ''Medical'', ''/claim_documents/clm-2024-0084.pdf'',
+    ''pending'', ''2025-12-03 10:52:12''),
+
+    (''USR007'', ''CLM-2024-0085'', ''Life'', ''/claim_documents/clm-2024-0085.pdf'',
+    ''pending'', ''2025-12-20 10:52:12''),
+
+    (''USR024'', ''CLM-2024-0086'', ''Home'', ''/claim_documents/clm-2024-0086.pdf'',
+    ''pending'', ''2025-12-08 10:52:12''),
+
+    (''USR055'', ''CLM-2024-0087'', ''Auto'', ''/claim_documents/clm-2024-0087.pdf'',
+    ''pending'', ''2025-11-09 10:52:12''),
+
+    (''USR012'', ''CLM-2024-0088'', ''Home'', ''/claim_documents/clm-2024-0088.pdf'',
+    ''pending'', ''2025-12-22 10:52:12''),
+
+    (''USR006'', ''CLM-2024-0089'', ''Medical'', ''/claim_documents/clm-2024-0089.pdf'',
+    ''pending'', ''2025-11-06 10:52:12''),
+
+    (''USR016'', ''CLM-2024-0090'', ''Home'', ''/claim_documents/clm-2024-0090.pdf'',
+    ''pending'', ''2026-01-04 10:52:12''),
+
+    (''USR020'', ''CLM-2024-0091'', ''Home'', ''/claim_documents/clm-2024-0091.pdf'',
+    ''pending'', ''2026-01-19 10:52:12''),
+
+    (''USR038'', ''CLM-2024-0092'', ''Auto'', ''/claim_documents/clm-2024-0092.pdf'',
+    ''pending'', ''2026-01-10 10:52:12''),
+
+    (''USR030'', ''CLM-2024-0093'', ''Medical'', ''/claim_documents/clm-2024-0093.pdf'',
+    ''pending'', ''2026-01-14 10:52:12''),
+
+    (''USR012'', ''CLM-2024-0094'', ''Medical'', ''/claim_documents/clm-2024-0094.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR001'', ''CLM-2024-0095'', ''Home'', ''/claim_documents/clm-2024-0095.pdf'',
+    ''pending'', ''2025-12-16 10:52:12''),
+
+    (''USR025'', ''CLM-2024-0096'', ''Home'', ''/claim_documents/clm-2024-0096.pdf'',
+    ''pending'', ''2025-12-22 10:52:12''),
+
+    (''USR036'', ''CLM-2024-0097'', ''Auto'', ''/claim_documents/clm-2024-0097.pdf'',
+    ''pending'', ''2025-12-15 10:52:12''),
+
+    (''USR021'', ''CLM-2024-0098'', ''Medical'', ''/claim_documents/clm-2024-0098.pdf'',
+    ''pending'', ''2025-12-02 10:52:12''),
+
+    (''USR027'', ''CLM-2024-0099'', ''Medical'', ''/claim_documents/clm-2024-0099.pdf'',
+    ''pending'', ''2025-11-12 10:52:12''),
+
+    (''USR005'', ''CLM-2024-0100'', ''Home'', ''/claim_documents/clm-2024-0100.pdf'',
+    ''pending'', ''2025-12-24 10:52:12'');
+
+
+    -- ============================================================================
+
+    -- KNOWLEDGE BASE ARTICLES
+
+    -- ============================================================================
+
+    INSERT INTO knowledge_base (title, content, category, tags, is_active, effective_date)
+    VALUES
+
+    (''Medical Claim Submission Guidelines'', ''All medical claims must be submitted
+    within 90 days. Required: itemized bill, ICD-10 codes, proof of payment. Claims
+    over $5000 need prior authorization.'', ''Claims Processing'', ARRAY[''medical'',
+    ''submission''], true, ''2024-01-01''),
+
+    (''Covered Medical Services'', ''Covered: primary care, specialists, ER, hospitalization,
+    surgery, prescriptions, preventive care, diagnostics. Excluded: cosmetic, experimental.'',
+    ''Coverage'', ARRAY[''medical'', ''coverage''], true, ''2024-01-01''),
+
+    (''Auto Insurance Claim Process'', ''Steps: 1) Report immediately, 2) Gather evidence
+    (photos, police report), 3) Submit within 30 days, 4) Vehicle inspection, 5) Approval
+    and payment.'', ''Claims Processing'', ARRAY[''auto'', ''process''], true, ''2024-01-01''),
+
+    (''Deductible and Co-payment Policy'', ''Deductible is paid before coverage begins.
+    Co-payments are $15-$50 depending on service. Deductible resets January 1st.'',
+    ''Policy Terms'', ARRAY[''deductible'', ''copay''], true, ''2024-01-01''),
+
+    (''Prior Authorization Requirements'', ''Required for: MRI/CT scans, surgeries,
+    specialist referrals, DME, home health, medications >$500. Submit 10 days before
+    service.'', ''Authorization'', ARRAY[''prior auth'', ''approval''], true, ''2024-01-01''),
+
+    (''Home Insurance Coverage'', ''Covers: dwelling, personal property, liability,
+    additional living expenses. Deductible applies per claim. Flood requires separate
+    policy.'', ''Coverage'', ARRAY[''home'', ''coverage''], true, ''2024-01-01''),
+
+    (''Life Insurance Death Benefit'', ''Death benefit paid to beneficiary upon insured
+    death. Requires death certificate and claim form. Payment within 30 days of approval.'',
+    ''Claims Processing'', ARRAY[''life'', ''death benefit''], true, ''2024-01-01''),
+
+    (''Auto Theft Claims'', ''Report to police immediately. Provide keys, title, police
+    report. Waiting period 30 days. Actual cash value paid if not recovered.'', ''Claims
+    Processing'', ARRAY[''auto'', ''theft''], true, ''2024-01-01''),
+
+    (''Water Damage Coverage'', ''Sudden and accidental water damage covered. Excludes
+    flood, gradual leaks, maintenance issues. Immediate reporting required.'', ''Coverage'',
+    ARRAY[''home'', ''water damage''], true, ''2024-01-01''),
+
+    (''Appendicitis Coverage'', ''Emergency appendectomy fully covered after deductible.
+    Includes hospital stay, surgeon fees, anesthesia. Prior auth not required for
+    emergency.'', ''Coverage'', ARRAY[''medical'', ''surgery''], true, ''2024-01-01''),
+
+    (''Prescription Drug Formulary'', ''Tier 1 (generic): $10, Tier 2 (preferred brand):
+    $30, Tier 3 (non-preferred): $60. 90-day mail order available.'', ''Coverage'',
+    ARRAY[''prescription'', ''drugs''], true, ''2024-01-01''),
+
+    (''Burglary and Theft Claims'', ''Police report required within 24 hours. Provide
+    receipts/proof of ownership. Replace locks covered. Depreciation may apply.'',
+    ''Claims Processing'', ARRAY[''home'', ''theft''], true, ''2024-01-01''),
+
+    (''Collision Coverage'', ''Covers damage from collision regardless of fault. Deductible
+    applies. Includes rental car reimbursement up to $50/day for 30 days.'', ''Coverage'',
+    ARRAY[''auto'', ''collision''], true, ''2024-01-01''),
+
+    (''Specialist Referral Policy'', ''Primary care referral required. Specialist
+    must be in-network. Co-pay $35. Prior auth for certain procedures.'', ''Policy
+    Terms'', ARRAY[''medical'', ''specialist''], true, ''2024-01-01''),
+
+    (''Maximum Claim Limits'', ''Medical: $1M lifetime max. Auto: $100K property damage.
+    Home: coverage amount on policy. Life: policy face value.'', ''Policy Terms'',
+    ARRAY[''limits'', ''maximum''], true, ''2024-01-01'');
+
+    '

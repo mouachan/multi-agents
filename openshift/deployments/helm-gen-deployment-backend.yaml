@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '4'
+  name: backend
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: quay.io/your-org/backend:v1.3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        env:
+        - name: POSTGRES_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_DATABASE
+        - name: POSTGRES_HOST
+          value: postgresql
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_PORT
+          value: '5432'
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_USER
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /claim_documents
+          name: claim-documents
+          readOnly: true
+        - mountPath: /app/prompts
+          name: prompts
+          readOnly: true
+      - name: ocr-server
+        image: quay.io/your-org/ocr-server:v1.3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+          name: http
+          protocol: TCP
+        env:
+        - name: OCR_GPU_ENABLED
+          value: 'true'
+        - name: OCR_LANGUAGES
+          value: en,fr
+        - name: LOG_LEVEL
+          value: INFO
+        - name: LLAMASTACK_ENDPOINT
+          value: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        - name: HOST
+          value: 0.0.0.0
+        - name: PORT
+          value: '8081'
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: 500m
+            memory: 2Gi
+            nvidia.com/gpu: '1'
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: claim-documents
+          mountPath: /claim_documents
+      volumes:
+      - name: claim-documents
+        persistentVolumeClaim:
+          claimName: claim-documents
+      - name: prompts
+        configMap:
+          name: claims-prompts

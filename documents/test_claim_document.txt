@@ -1,0 +1,31 @@
+MEDICAL CLAIM FORM
+
+Claim Number: CLM-2024-TEST-001
+Patient Name: John Doe
+Date of Birth: 01/15/1980
+Policy Number: POL-12345
+
+Service Details:
+Date of Service: 12/15/2024
+Provider: Dr. Sarah Johnson
+Provider NPI: 1234567890
+Diagnosis: Lower back pain (ICD-10: M54.5)
+Procedure: Physical therapy consultation
+Procedure Code: CPT 97110
+
+Billing Information:
+Service Fee: $250.00
+Insurance Coverage: 80%
+Patient Responsibility: $50.00
+Total Claim Amount: $200.00
+
+Provider Information:
+Clinic Name: HealthFirst Medical Center
+Address: 123 Main Street, Suite 100
+City: San Francisco, CA 94102
+Phone: (415) 555-1234
+
+Patient Signature: John Doe
+Date: 12/20/2024
+
+This is a test document for the agentic claims processing demo.

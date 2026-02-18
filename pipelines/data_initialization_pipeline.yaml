@@ -1,0 +1,242 @@
+# PIPELINE DEFINITION
+# Name: data-initialization
+# Description: Generate embeddings for knowledge base and claims after database init
+# Inputs:
+#    embedding_model: str [Default: 'gemma-300m']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    postgres_db: str [Default: 'claims_db']
+#    postgres_host: str [Default: 'postgresql.claims-demo.svc.cluster.local']
+#    postgres_password: str [Default: '']
+#    postgres_port: str [Default: '5432']
+#    postgres_user: str [Default: 'claims_user']
+components:
+  comp-generate-embeddings:
+    executorLabel: exec-generate-embeddings
+    inputDefinitions:
+      parameters:
+        embedding_model:
+          parameterType: STRING
+        llamastack_endpoint:
+          parameterType: STRING
+        postgres_db:
+          parameterType: STRING
+        postgres_host:
+          parameterType: STRING
+        postgres_password:
+          parameterType: STRING
+        postgres_port:
+          parameterType: STRING
+        postgres_user:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-generate-embeddings:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_embeddings
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'httpx==0.27.0'\
+          \ 'sqlalchemy==2.0.25' 'psycopg2-binary==2.9.9'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_embeddings(\n    postgres_host: str,\n    postgres_port:\
+          \ str,\n    postgres_db: str,\n    postgres_user: str,\n    postgres_password:\
+          \ str,\n    llamastack_endpoint: str,\n    embedding_model: str,\n    metrics:\
+          \ Output[Metrics]\n):\n    \"\"\"Generate embeddings for knowledge_base\
+          \ and claim_documents.\"\"\"\n    import asyncio\n    import logging\n \
+          \   from typing import List, Optional\n    import httpx\n    from sqlalchemy\
+          \ import create_engine, text\n    from sqlalchemy.orm import sessionmaker\n\
+          \n    logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    DATABASE_URL = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
+          \n\n    # OCR templates for claims\n    OCR_TEMPLATES = {\n        \"Auto\"\
+          : [\n            \"Vehicle damage claim. Accident date: 2025-11-15. Driver:\
+          \ {name}. Vehicle: 2020 Toyota Camry. Damage: Front bumper and hood. Estimated\
+          \ repair: $4,500. Police report #: 2025-11-15-0042.\",\n            \"Auto\
+          \ insurance claim for collision. Date of incident: 2025-10-20. Insured:\
+          \ {name}. Vehicle: Honda Accord 2019. Damage assessment: $6,200.\",\n  \
+          \          \"Car accident claim filed 2025-12-01. Policyholder: {name}.\
+          \ Vehicle: Ford F-150 2021. Est. repair cost: $3,800.\",\n        ],\n \
+          \       \"Home\": [\n            \"Home insurance claim for water damage.\
+          \ Property owner: {name}. Date of loss: 2025-11-10. Cause: Burst pipe. Estimated\
+          \ damages: $12,000.\",\n            \"Property damage claim. Homeowner:\
+          \ {name}. Incident: Wind damage to roof. Estimate: $8,500.\",\n        \
+          \    \"Residential claim. Owner: {name}. Damage: Fire in kitchen. Loss estimate:\
+          \ $25,000.\",\n        ],\n        \"Medical\": [\n            \"Medical\
+          \ insurance claim. Patient: {name}. Service: Appendectomy. Total charges:\
+          \ $18,500. Hospital stay: 2 days.\",\n            \"Healthcare claim. Insured:\
+          \ {name}. Treatment: MRI scan and consultation. Billed: $3,200.\",\n   \
+          \         \"Health insurance claim for ER visit. Patient: {name}. Treatment:\
+          \ CT scan, pain management. Charges: $5,600.\",\n        ]\n    }\n\n  \
+          \  SHORT_OCR_TEMPLATE = \"Claim document for {name}. Date: {date}. Damage\
+          \ noted.\"\n\n    async def create_embedding(text: str, client: httpx.AsyncClient)\
+          \ -> Optional[List[float]]:\n        \"\"\"Create embedding using LlamaStack.\"\
+          \"\"\n        try:\n            response = await client.post(\n        \
+          \        f\"{llamastack_endpoint}/v1/embeddings\",\n                json={\"\
+          model\": embedding_model, \"input\": text.strip()},\n                timeout=60.0\n\
+          \            )\n            response.raise_for_status()\n            result\
+          \ = response.json()\n\n            if \"data\" in result and len(result[\"\
+          data\"]) > 0:\n                return result[\"data\"][0].get(\"embedding\"\
+          )\n            return None\n        except Exception as e:\n           \
+          \ logger.error(f\"Error creating embedding: {e}\")\n            return None\n\
+          \n    def format_embedding(embedding: List[float]) -> str:\n        \"\"\
+          \"Format for PostgreSQL pgvector.\"\"\"\n        return '[' + ','.join(str(x)\
+          \ for x in embedding) + ']'\n\n    async def process():\n        engine\
+          \ = create_engine(DATABASE_URL, pool_pre_ping=True)\n        SessionLocal\
+          \ = sessionmaker(bind=engine)\n\n        kb_count = 0\n        claim_full\
+          \ = 0\n        claim_short = 0\n\n        # Short OCR claims for MANUAL_REVIEW\n\
+          \        short_claims = [\n            \"CLM-2024-0020\", \"CLM-2024-0044\"\
+          , \"CLM-2024-0057\",\n            \"CLM-2024-0074\", \"CLM-2024-0075\",\
+          \ \"CLM-2024-0076\",\n            \"CLM-2024-0088\", \"CLM-2024-0089\",\
+          \ \"CLM-2024-0096\",\n            \"CLM-2024-0098\"\n        ]\n\n     \
+          \   async with httpx.AsyncClient() as client:\n            # 1. Knowledge\
+          \ Base embeddings\n            logger.info(\"=== Generating Knowledge Base\
+          \ Embeddings ===\")\n            with SessionLocal() as session:\n     \
+          \           query = text(\"SELECT CAST(id AS text) as id, title, content\
+          \ FROM knowledge_base WHERE embedding IS NULL\")\n                kb_entries\
+          \ = [(r.id, r.title, r.content) for r in session.execute(query).fetchall()]\n\
+          \n            for kb_id, title, content in kb_entries:\n               \
+          \ text_to_embed = f\"{title}\\n\\n{content}\"[:2000]\n                logger.info(f\"\
+          \  KB: {title}\")\n\n                embedding = await create_embedding(text_to_embed,\
+          \ client)\n                if embedding:\n                    with SessionLocal()\
+          \ as session:\n                        session.execute(\n              \
+          \              text(\"UPDATE knowledge_base SET embedding = CAST(:emb AS\
+          \ vector) WHERE CAST(id AS text) = :id\"),\n                           \
+          \ {\"emb\": format_embedding(embedding), \"id\": kb_id}\n              \
+          \          )\n                        session.commit()\n               \
+          \         kb_count += 1\n\n                await asyncio.sleep(0.5)\n\n\
+          \            # 2. Claim Documents\n            logger.info(\"=== Generating\
+          \ Claim Documents ===\")\n            with SessionLocal() as session:\n\
+          \                query = text(\"\"\"\n                    SELECT CAST(c.id\
+          \ AS text) as claim_id, c.claim_number, c.claim_type,\n                \
+          \           c.document_path, u.full_name\n                    FROM claims\
+          \ c\n                    LEFT JOIN claim_documents cd ON c.id = cd.claim_id\n\
+          \                    JOIN users u ON c.user_id = u.user_id\n           \
+          \         WHERE cd.id IS NULL\n                    ORDER BY c.claim_number\n\
+          \                \"\"\")\n                claims = [(r.claim_id, r.claim_number,\
+          \ r.claim_type, r.document_path, r.full_name)\n                        \
+          \ for r in session.execute(query).fetchall()]\n\n            for claim_id,\
+          \ claim_num, claim_type, doc_path, full_name in claims:\n              \
+          \  is_short = claim_num in short_claims\n\n                if is_short:\n\
+          \                    ocr_text = SHORT_OCR_TEMPLATE.format(name=full_name,\
+          \ date=\"2025-12\")\n                    claim_short += 1\n            \
+          \    else:\n                    import random\n                    template\
+          \ = random.choice(OCR_TEMPLATES.get(claim_type, OCR_TEMPLATES[\"Auto\"]))\n\
+          \                    ocr_text = template.format(name=full_name)\n      \
+          \              claim_full += 1\n\n                logger.info(f\"  Claim:\
+          \ {claim_num} ({'SHORT' if is_short else 'FULL'})\")\n\n               \
+          \ embedding = await create_embedding(ocr_text, client)\n               \
+          \ if embedding:\n                    with SessionLocal() as session:\n \
+          \                       session.execute(text(\"\"\"\n                  \
+          \          INSERT INTO claim_documents\n                            (claim_id,\
+          \ document_type, file_path, raw_ocr_text, ocr_confidence, embedding)\n \
+          \                           VALUES (CAST(:claim_id AS uuid), :doc_type,\
+          \ :file_path, :ocr_text, :confidence, CAST(:emb AS vector))\n          \
+          \              \"\"\"), {\n                            \"claim_id\": claim_id,\n\
+          \                            \"doc_type\": claim_type,\n               \
+          \             \"file_path\": doc_path,\n                            \"ocr_text\"\
+          : ocr_text,\n                            \"confidence\": 0.95 if not is_short\
+          \ else 0.60,\n                            \"emb\": format_embedding(embedding)\n\
+          \                        })\n                        session.commit()\n\n\
+          \                await asyncio.sleep(0.3)\n\n        engine.dispose()\n\n\
+          \        # Log metrics\n        logger.info(f\"\\n{'='*60}\")\n        logger.info(f\"\
+          SUMMARY\")\n        logger.info(f\"{'='*60}\")\n        logger.info(f\"\u2705\
+          \ Knowledge Base embeddings: {kb_count}\")\n        logger.info(f\"\u2705\
+          \ Claim docs (full OCR): {claim_full}\")\n        logger.info(f\"\u26A0\uFE0F\
+          \  Claim docs (short OCR): {claim_short}\")\n        logger.info(f\"\u2705\
+          \ Total: {kb_count + claim_full + claim_short}\")\n        logger.info(f\"\
+          {'='*60}\")\n\n        # Report to KFP\n        metrics.log_metric(\"kb_embeddings\"\
+          , kb_count)\n        metrics.log_metric(\"claim_full_ocr\", claim_full)\n\
+          \        metrics.log_metric(\"claim_short_ocr\", claim_short)\n        metrics.log_metric(\"\
+          total_embeddings\", kb_count + claim_full + claim_short)\n\n    asyncio.run(process())\n\
+          \n"
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        resources:
+          cpuLimit: 2.0
+          memoryLimit: 4.294967296
+          resourceCpuLimit: '2'
+          resourceMemoryLimit: 4Gi
+pipelineInfo:
+  description: Generate embeddings for knowledge base and claims after database init
+  name: data-initialization
+root:
+  dag:
+    tasks:
+      generate-embeddings:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-embeddings
+        inputs:
+          parameters:
+            embedding_model:
+              componentInputParameter: embedding_model
+            llamastack_endpoint:
+              componentInputParameter: llamastack_endpoint
+            postgres_db:
+              componentInputParameter: postgres_db
+            postgres_host:
+              componentInputParameter: postgres_host
+            postgres_password:
+              componentInputParameter: postgres_password
+            postgres_port:
+              componentInputParameter: postgres_port
+            postgres_user:
+              componentInputParameter: postgres_user
+        taskInfo:
+          name: generate-embeddings
+  inputDefinitions:
+    parameters:
+      embedding_model:
+        defaultValue: gemma-300m
+        isOptional: true
+        parameterType: STRING
+      llamastack_endpoint:
+        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        isOptional: true
+        parameterType: STRING
+      postgres_db:
+        defaultValue: claims_db
+        isOptional: true
+        parameterType: STRING
+      postgres_host:
+        defaultValue: postgresql.claims-demo.svc.cluster.local
+        isOptional: true
+        parameterType: STRING
+      postgres_password:
+        defaultValue: ''
+        isOptional: true
+        parameterType: STRING
+      postgres_port:
+        defaultValue: '5432'
+        isOptional: true
+        parameterType: STRING
+      postgres_user:
+        defaultValue: claims_user
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.2

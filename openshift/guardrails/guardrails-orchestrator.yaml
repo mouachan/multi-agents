@@ -1,0 +1,31 @@
+# GuardrailsOrchestrator CRD for Claims Demo
+# Using autoConfig with detector InferenceService per OpenShift AI 3.0 docs
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: GuardrailsOrchestrator
+metadata:
+  name: claims-guardrails
+  namespace: claims-demo
+  labels:
+    app: claims-processing
+    component: guardrails
+spec:
+  # Manual configuration - no autoConfig (LlamaStack is not a KServe InferenceService)
+  # Use orchestratorConfig for manual detector configuration
+  orchestratorConfig: "claims-guardrails-config"
+
+  # Enable built-in TrustyAI detectors (HAP, PII, etc.) as sidecars
+  enableBuiltInDetectors: true
+
+  # Disable guardrails gateway - using LlamaStack Shields approach instead
+  # See GUARDRAILS_WORK_IN_PROGRESS.md for details
+  enableGuardrailsGateway: false
+
+  # Number of replicas
+  replicas: 1
+
+  # Log level
+  logLevel: "info"
+
+  # Disable TLS for easier testing
+  tls:
+    enabled: false

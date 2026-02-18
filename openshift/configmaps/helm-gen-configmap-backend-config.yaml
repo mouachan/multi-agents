@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '4'
+  name: backend-config
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    app: backend
+data:
+  APP_NAME: Claims Processing Demo
+  APP_VERSION: 1.0.0
+  ENVIRONMENT: production
+  DEBUG: 'false'
+  API_V1_PREFIX: /api/v1
+  API_HOST: 0.0.0.0
+  API_PORT: '8000'
+  DATABASE_POOL_SIZE: '10'
+  DATABASE_MAX_OVERFLOW: '20'
+  LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+  LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
+  LLAMASTACK_EMBEDDING_MODEL: vllm-embedding/embeddinggemma-300m
+  LLAMASTACK_EMBEDDING_DIMENSION: '768'
+  LLAMASTACK_TIMEOUT: '300'
+  LLAMASTACK_MAX_RETRIES: '3'
+  LLAMASTACK_MAX_TOKENS: '4096'
+  OCR_SERVER_URL: http://ocr-server.claims-demo.svc.cluster.local:8080
+  RAG_SERVER_URL: http://rag-server.claims-demo.svc.cluster.local:8080
+  GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.claims-demo.svc.cluster.local:8032
+  ENABLE_PII_DETECTION: 'true'
+  PII_SHIELD_ID: pii_detector
+  CORS_ALLOW_CREDENTIALS: 'true'
+  ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: '30'
+  DOCUMENTS_STORAGE_PATH: /claim_documents
+  MAX_UPLOAD_SIZE_MB: '10'
+  MAX_PROCESSING_TIME_SECONDS: '300'
+  DEFAULT_WORKFLOW_TYPE: standard
+  ENABLE_ASYNC_PROCESSING: 'true'
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  ENABLE_METRICS: 'true'
+  METRICS_PORT: '9090'
+  PROMPTS_DIR: /app/prompts
+  TOOL_AGENT_MAPPING: ocr_extract_claim_info:ocr-agent,ocr_document:ocr-agent,retrieve_user_info:rag-agent,retrieve_similar_claims:rag-agent,search_knowledge_base:rag-agent
+  SEED_DATA_URL: https://raw.githubusercontent.com/mouachan/agentic-claim-demo/refactor/v1.5-architecture/database/seed_data/001_sample_data.sql

@@ -1,0 +1,14 @@
+FROM registry.redhat.io/ubi10/nginx-126:latest
+
+USER 0
+
+# Copy built dist files
+COPY dist /opt/app-root/src
+
+# Copy nginx configuration
+COPY nginx-http.conf /opt/app-root/etc/nginx.d/agentic.conf
+COPY nginx-server.conf /opt/app-root/etc/nginx.default.d/agentic.conf
+
+USER 1001
+
+CMD ["/usr/libexec/s2i/run"]

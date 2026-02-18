@@ -1,0 +1,40 @@
+{{- if and .Values.guardrails.enabled .Values.guardrails.detectors.llamaGuard.enabled }}
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: guardrails-detector
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    trustyai/detector: "true"  # CRITICAL: Label for GuardrailsOrchestrator auto-discovery
+    app: claims-processing
+    component: guardrails-detector
+  annotations:
+    argocd.argoproj.io/sync-wave: "3" # after inference models, before orchestrator
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.knative.openshift.io/enablePassthrough: "true"
+    sidecar.istio.io/inject: "true"
+    sidecar.istio.io/rewriteAppHTTPProbers: "true"
+    openshift.io/display-name: "Claims Guardrails Detector (Llama Guard 3 1B)"
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: {{ .Values.guardrails.detectors.llamaGuard.minReplicas }}
+    maxReplicas: {{ .Values.guardrails.detectors.llamaGuard.maxReplicas }}
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: llama-guard-3-1b
+      # Using OCI modelcar from Red Hat AI Services
+      storageUri: {{ .Values.guardrails.detectors.llamaGuard.storageUri | quote }}
+      resources:
+        {{- toYaml .Values.guardrails.detectors.llamaGuard.resources | nindent 8 }}
+{{- with .Values.guardrails.detectors.llamaGuard.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+{{- end }}
+{{- with .Values.guardrails.detectors.llamaGuard.placement }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- end }}

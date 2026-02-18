@@ -1,0 +1,61 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-label-namespaces
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: namespace-setup
+  annotations:
+    # Helm hooks
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-90"
+    "helm.sh/hook-delete-policy": hook-succeeded
+    # ArgoCD GitOps
+    "argocd.argoproj.io/hook": PostSync
+    "argocd.argoproj.io/hook-delete-policy": HookSucceeded
+    "argocd.argoproj.io/sync-wave": "-90"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: namespace-setup
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "agentic-claims-demo.fullname" . }}-namespace-labeler
+      containers:
+        - name: label-namespaces
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Adding OpenShift AI labels to namespaces ==="
+
+              # Label main namespace
+              oc label namespace {{ .Values.global.namespace }} \
+                opendatahub.io/dashboard=true --overwrite
+              echo "✓ Labeled {{ .Values.global.namespace }}"
+
+              {{- if and .Values.inference.enabled .Values.inference.namespace }}
+              # Label inference namespace (if different from main)
+              if [ "{{ .Values.inference.namespace }}" != "{{ .Values.global.namespace }}" ]; then
+                oc label namespace {{ .Values.inference.namespace }} \
+                  opendatahub.io/dashboard=true --overwrite
+                echo "✓ Labeled {{ .Values.inference.namespace }}"
+              fi
+              {{- end }}
+
+              {{- if and .Values.embedding.enabled .Values.embedding.namespace }}
+              # Label embedding namespace (if different from main)
+              if [ "{{ .Values.embedding.namespace }}" != "{{ .Values.global.namespace }}" ]; then
+                oc label namespace {{ .Values.embedding.namespace }} \
+                  opendatahub.io/dashboard=true --overwrite
+                echo "✓ Labeled {{ .Values.embedding.namespace }}"
+              fi
+              {{- end }}
+
+              echo "=== ✓ All namespaces labeled successfully ==="

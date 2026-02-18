@@ -1,0 +1,24 @@
+# why are we missing those from ubi9-minimal images?!
+[rhel-10-for-aarch64-appstream-rpms]
+name=Red Hat Enterprise Linux 10 for aarch64 - AppStream (RPMs)
+baseurl=https://cdn.redhat.com/content/dist/rhel10/$releasever/aarch64/appstream/os
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+gpgcheck=true
+metadata_expire=86400
+sslclientcert=/etc/pki/entitlement/entitlement.pem
+sslclientkey=/etc/pki/entitlement/entitlement-key.pem
+sslcacert=/etc/rhsm/ca/redhat-uep.pem
+sslverify=true
+
+[rhel-10-for-aarch64-baseos-rpms]
+name=Red Hat Enterprise Linux 10 for aarch64 - BaseOS (RPMs)
+baseurl=https://cdn.redhat.com/content/dist/rhel10/$releasever/aarch64/baseos/os
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+gpgcheck=true
+metadata_expire=86400
+sslclientcert=/etc/pki/entitlement/entitlement.pem
+sslclientkey=/etc/pki/entitlement/entitlement-key.pem
+sslcacert=/etc/rhsm/ca/redhat-uep.pem
+sslverify=true

@@ -1,0 +1,52 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen-vl-7b
+  namespace: multimodal-demo  # PLACEHOLDER: Change to your namespace
+  annotations:
+    opendatahub.io/genai-use-case: multimodal
+    opendatahub.io/model-type: generative
+    openshift.io/display-name: qwen-vl-7b
+    security.opendatahub.io/enable-auth: "false"
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
+    networking.kserve.io/visibility: exposed
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: qwen-vl-7b
+      storageUri: pvc://pvc-qwen-model
+      args:
+      - --trust-remote-code
+      - --limit-mm-per-prompt
+      - '{"image": 1}'
+      - --max-model-len
+      - "8192"  # Context window for Qwen-VL 7B
+      - --gpu-memory-utilization
+      - "0.85"  # Use 85% of GPU memory
+      - --dtype
+      - auto
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"  # Requires 1 GPU (L40 or similar)
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+    # PLACEHOLDER: Adjust tolerations and nodeSelector for your cluster
+    tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: NVIDIA-L40-PRIVATE  # PLACEHOLDER: Change to your GPU node label
+      effect: NoSchedule
+    nodeSelector:
+      topology.kubernetes.io/zone: eu-central-1a  # PLACEHOLDER: Change to your zone

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+  name: init-backend
+  namespace: claims-demo
+data:
+  init-back.sh: "#!/bin/bash\n\nset -e\n\necho ============================================\n\
+    echo Copying test claim documents to PVC\necho ============================================\n\
+    \n# GitHub repository details\nREPO=mouachan/agentic-claim-demo\nBRANCH=main\n\
+    PDF_DIR=backend/test_data/claim_documents\n\n# Target directory in PVC\nTARGET_DIR=/claim_documents\n\
+    \n# Create target directory\nmkdir -p $TARGET_DIR\n\n# Generate list of all PDF\
+    \ files (50 total)\nPDF_FILES=()\n\n# Auto claims (20 files: claim_auto_001 to\
+    \ claim_auto_020)\nfor i in {1..20}; do\n  PDF_FILES+=(\"claim_auto_$(printf \"\
+    %03d\" \"$i\").pdf\")\ndone\n\n# Home claims (15 files: claim_home_001 to claim_home_015)\n\
+    for i in {1..15}; do\n  PDF_FILES+=(\"claim_home_$(printf \"%03d\" \"$i\").pdf\"\
+    )\ndone\n\n# Medical claims (15 files: claim_medical_001 to claim_medical_015)\n\
+    for i in {1..15}; do\n  PDF_FILES+=(\"claim_medical_$(printf \"%03d\" \"$i\").pdf\"\
+    )\ndone\n\necho \"\"\necho \"Downloading ${#PDF_FILES[@]} PDF files from GitHub...\"\
+    \necho \"\"\n\n# Download each PDF file\nDOWNLOADED=0\nFAILED=0\n\nfor PDF_FILE\
+    \ in \"${PDF_FILES[@]}\"; do\n  URL=\"https://raw.githubusercontent.com/$REPO/$BRANCH/$PDF_DIR/$PDF_FILE\"\
+    \n  echo \"Downloading: $PDF_FILE\"\n\n  if curl -L -s -f -o \"$TARGET_DIR/$PDF_FILE\"\
+    \ \"$URL\"; then\n    echo \"  \u2713 Downloaded successfully\"\n    DOWNLOADED=$((DOWNLOADED\
+    \ + 1))\n  else\n    echo \"  \u2717 Failed to download\"\n    FAILED=$((FAILED\
+    \ + 1))\n  fi\ndone\n\necho \"\"\necho ============================================\n\
+    echo \"Download summary: $DOWNLOADED successful, $FAILED failed\"\necho ============================================\n\
+    \nif [ \"$FAILED\" -gt 0 ]; then\n  echo WARNING: Some files failed to download\n\
+    fi\n\necho \"\"\necho ============================================\necho Verifying\
+    \ files in PVC...\necho ============================================\nls -lh \"\
+    $TARGET_DIR\"/*.pdf\n\necho \"\"\necho ============================================\n\
+    echo \"\u2713 Successfully copied ${#PDF_FILES[@]} test documents\"\necho ============================================\n"

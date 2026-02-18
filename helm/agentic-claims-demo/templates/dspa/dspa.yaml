@@ -1,0 +1,77 @@
+{{- if and .Values.minio.enabled .Values.dataSciencePipelines.enabled }}
+apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+kind: DataSciencePipelinesApplication
+metadata:
+  name: dspa
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-science-pipelines
+spec:
+  apiServer:
+    deploy: true
+    enableSamplePipeline: {{ .Values.dataSciencePipelines.apiServer.enableSamplePipeline }}
+    enableOauth: {{ .Values.dataSciencePipelines.apiServer.enableOauth }}
+    cacheEnabled: {{ .Values.dataSciencePipelines.apiServer.cacheEnabled | default true }}
+    pipelineStore: {{ .Values.dataSciencePipelines.apiServer.pipelineStore | default "kubernetes" }}
+    {{- if .Values.dataSciencePipelines.apiServer.resources }}
+    resources:
+      {{- toYaml .Values.dataSciencePipelines.apiServer.resources | nindent 6 }}
+    {{- end }}
+
+  database:
+    disableHealthCheck: false
+    # Use internal MariaDB (recommended)
+    mariaDB:
+      deploy: true
+      pipelineDBName: {{ .Values.dataSciencePipelines.database.mariaDB.pipelineDBName | default "mlpipeline" }}
+      pvcSize: {{ .Values.dataSciencePipelines.database.mariaDB.pvcSize | default "10Gi" }}
+      username: {{ .Values.dataSciencePipelines.database.mariaDB.username | default "mlpipeline" }}
+      {{- if .Values.dataSciencePipelines.database.mariaDB.resources }}
+      resources:
+        {{- toYaml .Values.dataSciencePipelines.database.mariaDB.resources | nindent 8 }}
+      {{- end }}
+
+  dspVersion: {{ .Values.dataSciencePipelines.dspVersion }}
+
+  objectStorage:
+    disableHealthCheck: false
+    enableExternalRoute: {{ .Values.dataSciencePipelines.objectStorage.enableExternalRoute }}
+    externalStorage:
+      basePath: {{ .Values.dataSciencePipelines.objectStorage.basePath | quote }}
+      bucket: {{ .Values.dataSciencePipelines.objectStorage.bucket }}
+      {{- if .Values.dataSciencePipelines.objectStorage.useInternalMinio }}
+      host: {{ include "agentic-claims-demo.fullname" . }}-minio.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.minio.service.apiPort }}
+      {{- else }}
+      host: {{ .Values.dataSciencePipelines.objectStorage.host | quote }}
+      {{- end }}
+      port: {{ .Values.dataSciencePipelines.objectStorage.port | quote }}
+      region: {{ .Values.dataSciencePipelines.objectStorage.region }}
+      s3CredentialsSecret:
+        accessKey: {{ .Values.dataSciencePipelines.objectStorage.s3CredentialsSecret.accessKey }}
+        secretKey: {{ .Values.dataSciencePipelines.objectStorage.s3CredentialsSecret.secretKey }}
+        {{- if .Values.dataSciencePipelines.objectStorage.useInternalMinio }}
+        secretName: {{ include "agentic-claims-demo.fullname" . }}-s3-credentials
+        {{- else }}
+        secretName: {{ .Values.dataSciencePipelines.objectStorage.s3CredentialsSecret.secretName }}
+        {{- end }}
+      scheme: {{ .Values.dataSciencePipelines.objectStorage.scheme | default "http" }}
+
+  persistenceAgent:
+    deploy: true
+    numWorkers: {{ .Values.dataSciencePipelines.persistenceAgent.numWorkers }}
+    {{- if .Values.dataSciencePipelines.persistenceAgent.resources }}
+    resources:
+      {{- toYaml .Values.dataSciencePipelines.persistenceAgent.resources | nindent 6 }}
+    {{- end }}
+
+  podToPodTLS: {{ .Values.dataSciencePipelines.podToPodTLS }}
+
+  scheduledWorkflow:
+    cronScheduleTimezone: {{ .Values.dataSciencePipelines.scheduledWorkflow.cronScheduleTimezone }}
+    deploy: true
+    {{- if .Values.dataSciencePipelines.scheduledWorkflow.resources }}
+    resources:
+      {{- toYaml .Values.dataSciencePipelines.scheduledWorkflow.resources | nindent 6 }}
+    {{- end }}
+{{- end }}

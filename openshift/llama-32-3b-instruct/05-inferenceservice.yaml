@@ -1,0 +1,62 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: llama-instruct-32-3b
+  namespace: llama-instruct-32-3b-demo
+  annotations:
+    opendatahub.io/genai-use-case: chat, natural language processing, text generation, question answering
+    opendatahub.io/hardware-profile-name: nvidia-gpu-l40
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    opendatahub.io/model-type: generative
+    openshift.io/description: "Llama 3.2 3B Instruct model with tool calling enabled"
+    openshift.io/display-name: llama-instruct-32-3b
+    security.opendatahub.io/enable-auth: "false"
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.kserve.io/stop: "false"
+  labels:
+    networking.kserve.io/visibility: exposed
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: llama-instruct-32-3b
+      storageUri: pvc://pvc-llama32-3b-instruct
+      args:
+      - --model
+      - /mnt/models/llama32-3b-instruct
+      - --gpu-memory-utilization
+      - "0.95"
+      - --max-model-len
+      - "16384"
+      - --dtype=half
+      - --served-model-name
+      - llama-instruct-32-3b
+      # Tool calling configuration - IMPORTANT!
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - llama3_json
+      - --chat-template=/opt/app-root/template/tool_chat_template_llama3.2_json.jinja
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+    # Node selector to target GPU nodes in eu-central-1a zone
+    nodeSelector:
+      topology.kubernetes.io/zone: eu-central-1a
+    # Tolerations for NVIDIA GPU nodes
+    tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: NVIDIA-L40-PRIVATE
+      effect: NoSchedule

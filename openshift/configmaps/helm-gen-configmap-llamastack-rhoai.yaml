@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+  name: llamastack-rhoai
+  namespace: claims-demo
+data:
+  run.yaml: "version: 2\nimage_name: rh-dev\n\napis:\n- agents\n- batches\n- datasetio\n\
+    - eval\n- files\n- inference\n- safety\n- scoring\n- tool_runtime\n- vector_io\n\
+    \nproviders:\n  inference:\n  - provider_id: vllm-inference\n    provider_type:\
+    \ remote::vllm\n    config:\n      url: ${env.VLLM_URL:=http://localhost:8000/v1}\n\
+    \      max_tokens: ${env.VLLM_MAX_TOKENS:=4096}\n      api_token: ${env.VLLM_API_TOKEN:=fake}\n\
+    \      tls_verify: ${env.VLLM_TLS_VERIFY:=true}\n  - provider_id: vllm-embedding\n\
+    \    provider_type: remote::vllm\n    config:\n      url: ${env.VLLM_EMBEDDING_URL:=http://localhost:8001/v1}\n\
+    \      max_tokens: ${env.VLLM_EMBEDDING_MAX_TOKENS:=512}\n      api_token: ${env.VLLM_EMBEDDING_API_TOKEN:=fake}\n\
+    \      tls_verify: ${env.VLLM_EMBEDDING_TLS_VERIFY:=true}\n\n  vector_io:\n  -\
+    \ provider_id: ${env.ENABLE_PGVECTOR:+pgvector}\n    provider_type: remote::pgvector\n\
+    \    config:\n      host: ${env.POSTGRES_HOST}\n      port: ${env.POSTGRES_PORT}\n\
+    \      db: ${env.POSTGRES_DB}\n      user: ${env.POSTGRES_USER}\n      password:\
+    \ ${env.POSTGRES_PASSWORD}\n      persistence:\n        backend: kv_default\n\
+    \        namespace: vector_io::pgvector\n\n  safety:\n  - provider_id: trustyai_fms\n\
+    \    provider_type: remote::trustyai_fms\n    module: llama_stack_provider_trustyai_fms\n\
+    \    config:\n      orchestrator_url: ${env.FMS_ORCHESTRATOR_URL}\n      verify_ssl:\
+    \ false\n\n  agents:\n  - provider_id: meta-reference\n    provider_type: inline::meta-reference\n\
+    \    config:\n      persistence:\n        agent_state:\n          backend: kv_default\n\
+    \          namespace: agents::meta_reference\n        responses:\n          backend:\
+    \ sql_default\n          table_name: agents_responses\n          max_write_queue_size:\
+    \ 10000\n          num_writers: 4\n\n  eval:\n  - provider_id: meta-reference-eval\n\
+    \    provider_type: inline::meta-reference\n    config:\n      kvstore:\n    \
+    \    backend: kv_default\n        namespace: eval\n\n  datasetio:\n  - provider_id:\
+    \ huggingface\n    provider_type: remote::huggingface\n    config:\n      kvstore:\n\
+    \        backend: kv_default\n        namespace: datasetio::huggingface\n\n  scoring:\n\
+    \  - provider_id: basic\n    provider_type: inline::basic\n    config: {}\n  -\
+    \ provider_id: llm-as-judge\n    provider_type: inline::llm-as-judge\n    config:\
+    \ {}\n\n  tool_runtime:\n  - provider_id: rag-runtime\n    provider_type: inline::rag-runtime\n\
+    \    config: {}\n  - provider_id: model-context-protocol\n    provider_type: remote::model-context-protocol\n\
+    \    config: {}\n\n  files:\n  - provider_id: meta-reference-files\n    provider_type:\
+    \ inline::localfs\n    config:\n      storage_dir: /opt/app-root/src/.llama/distributions/rh/files\n\
+    \      metadata_store:\n        backend: sql_default\n        table_name: files_metadata\n\
+    \n  batches:\n  - provider_id: reference\n    provider_type: inline::reference\n\
+    \    config:\n      kvstore:\n        namespace: batches\n        backend: kv_default\n\
+    \nstorage:\n  backends:\n    kv_default:\n      type: kv_postgres\n      host:\
+    \ ${env.POSTGRES_HOST}\n      port: ${env.POSTGRES_PORT}\n      db: ${env.POSTGRES_DB}\n\
+    \      user: ${env.POSTGRES_USER}\n      password: ${env.POSTGRES_PASSWORD}\n\
+    \      table_name: llamastack_kvstore\n    sql_default:\n      type: sql_postgres\n\
+    \      host: ${env.POSTGRES_HOST}\n      port: ${env.POSTGRES_PORT}\n      db:\
+    \ ${env.POSTGRES_DB}\n      user: ${env.POSTGRES_USER}\n      password: ${env.POSTGRES_PASSWORD}\n\
+    \  stores:\n    metadata:\n      backend: kv_default\n      namespace: registry\n\
+    \    inference:\n      table_name: inference_store\n      backend: sql_default\n\
+    \      max_write_queue_size: 10000\n      num_writers: 4\n    conversations:\n\
+    \      table_name: openai_conversations\n      backend: sql_default\n    prompts:\n\
+    \      namespace: prompts\n      backend: kv_default\n\nregistered_resources:\n\
+    \  models:\n  - metadata: {}\n    model_id: ${env.INFERENCE_MODEL}\n    provider_id:\
+    \ vllm-inference\n    model_type: llm\n  - metadata:\n      embedding_dimension:\
+    \ 768\n    model_id: ${env.EMBEDDING_MODEL}\n    provider_id: vllm-embedding\n\
+    \    model_type: embedding\n\n  shields:\n  # PII Detection Shield using regex\
+    \ detector\n  - shield_id: pii_detector\n    provider_shield_id: pii_detector\n\
+    \    provider_id: trustyai_fms\n    params:\n      type: content\n      confidence_threshold:\
+    \ 0.5\n      message_types:\n        - system\n        - user\n      verify_ssl:\
+    \ false\n      detectors:\n        regex:\n          detector_params:\n      \
+    \      regex:\n              - email\n              - us-social-security-number\n\
+    \              - credit-card\n              - phone\n  vector_dbs: []\n  datasets:\
+    \ []\n  scoring_fns: []\n  benchmarks: []\n\n  tool_groups:\n  - toolgroup_id:\
+    \ mcp::ocr-server\n    provider_id: model-context-protocol\n    mcp_endpoint:\n\
+    \      uri: http://ocr-server.claims-demo.svc.cluster.local:8080/sse\n  - toolgroup_id:\
+    \ mcp::rag-server\n    provider_id: model-context-protocol\n    mcp_endpoint:\n\
+    \      uri: http://rag-server.claims-demo.svc.cluster.local:8080/sse\n  - toolgroup_id:\
+    \ builtin::rag\n    provider_id: rag-runtime\n\ntelemetry:\n  enabled: true\n\n\
+    server:\n  port: 8321\n"

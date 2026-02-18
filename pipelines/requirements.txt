@@ -1,0 +1,7 @@
+# Kubeflow Pipelines SDK for RHOAI 3.x
+# RHOAI 3.0+ requires kfp >= 2.14.3
+# Based on Kubeflow Pipelines 2.4.x
+kfp>=2.14.3
+
+# Optional: for local development and testing
+# pyyaml>=6.0

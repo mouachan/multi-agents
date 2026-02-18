@@ -1,0 +1,234 @@
+# =============================================================================
+# Values Override Template for Cluster Deployment
+# =============================================================================
+# Copy this file to your local config directory and customize
+# Example: cp values-cluster.yaml.template ~/my-cluster/values-cluster-prod.yaml
+
+# =============================================================================
+# Global Configuration
+# =============================================================================
+global:
+  clusterDomain: "apps.cluster-xxxxx.xxxxx.sandboxXXXX.opentlc.com"  # Replace with your cluster domain
+  namespace: claims-demo
+  imageRegistry: quay.io/your-org  # Replace with your registry
+  imagePullPolicy: IfNotPresent
+
+# =============================================================================
+# Inference Model (Llama 3.3 70B)
+# =============================================================================
+inference:
+  enabled: true
+  namespace: llama-3-3-70b  # Dedicated namespace for inference model
+
+  model:
+    pvc:
+      size: 100Gi
+      storageClass: gp3-csi  # Replace with your storage class
+    source: oci
+    address: registry.redhat.io/rhelai1/modelcar-llama-3-3-70b-instruct-quantized-w8a8:1.5
+    name: llama-3-3-70b-instruct-quantized-w8a8
+
+  resources:
+    limits:
+      cpu: "8"
+      memory: 16Gi
+      nvidia.com/gpu: "4"
+    requests:
+      cpu: "8"
+      memory: 16Gi
+      nvidia.com/gpu: "4"
+
+  placement:
+    nodeSelector:
+      node-role.kubernetes.io/gpu: ""
+    tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+# =============================================================================
+# Embedding Model (Gemma 300m)
+# =============================================================================
+embedding:
+  enabled: true
+  namespace: embeddinggemma-300m  # Dedicated namespace for embedding model
+
+  model:
+    pvc:
+      size: 10Gi
+      storageClass: gp3-csi  # Replace with your storage class
+    source: huggingface
+    address: google/embeddinggemma-300m
+    name: embeddinggemma-300m
+
+  resources:
+    limits:
+      cpu: "2"
+      memory: 8Gi
+      nvidia.com/gpu: "1"
+    requests:
+      cpu: "1"
+      memory: 8Gi
+      nvidia.com/gpu: "1"
+
+  placement:
+    nodeSelector:
+      node-role.kubernetes.io/gpu: ""
+    tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+# =============================================================================
+# PostgreSQL Database
+# =============================================================================
+postgresql:
+  enabled: true
+  replicas: 1
+
+  auth:
+    username: claims_user
+    database: claims_db
+    existingSecret: postgresql-secret
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: gp3-csi  # Replace with your storage class
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  image:
+    repository: agentic-claims-demo/postgresql
+    tag: latest
+
+# =============================================================================
+# LlamaStack
+# =============================================================================
+llamastack:
+  enabled: true
+
+  route:
+    enabled: true
+    tls:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+# =============================================================================
+# MCP Servers
+# =============================================================================
+mcp:
+  ocr:
+    enabled: true
+    replicas: 1
+    image:
+      repository: agentic-claims-demo/ocr-server
+      tag: latest
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+  rag:
+    enabled: true
+    replicas: 1
+    image:
+      repository: agentic-claims-demo/rag-server
+      tag: latest
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 6Gi
+      limits:
+        cpu: 2000m
+        memory: 6Gi
+
+# =============================================================================
+# Backend API
+# =============================================================================
+backend:
+  enabled: true
+  replicas: 1
+
+  image:
+    repository: agentic-claims-demo/backend
+    tag: latest  # Or responses-api for Responses API version
+
+  route:
+    enabled: true
+    tls:
+      enabled: false
+
+  pvc:
+    accessMode: ReadWriteOnce
+    initPvc: true
+    size: 5Gi
+    storageClass: gp3-csi  # Replace with your storage class
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# =============================================================================
+# Frontend
+# =============================================================================
+frontend:
+  enabled: true
+  replicas: 2
+
+  image:
+    repository: agentic-claims-demo/frontend
+    tag: latest
+
+  route:
+    enabled: true
+    tls:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# Hugging Face CLI
+# =============================================================================
+hfcli:
+  image:
+    repository: agentic-claims-demo/hfcli
+    tag: latest
+
+# =============================================================================
+# Guardrails (Disabled)
+# =============================================================================
+guardrails:
+  enabled: false
+
+# =============================================================================
+# Hibernate (Disabled)
+# =============================================================================
+hibernate:
+  enabled: false

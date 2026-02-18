@@ -1,0 +1,71 @@
+{{- if and .Values.inference.enabled (eq .Values.inference.model.source "huggingface") }}
+{{- if and .Values.global.hfcli (ne .Values.hfcli.token "hf_<your-token>") }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+  name: download-llama-inf
+  namespace: {{ include "inference.namespace" . }}
+spec:
+  template:
+    metadata:
+      name: download-llama-inf
+    spec:
+      containers:
+        - name: download
+          # image: quay.io/opendatahub/huggingface-downloader:stable
+          # getting 403s. image is NOT public!
+          image: {{ include "agentic-claims-demo.imageRegistry" . }}/{{ .Values.hfcli.image.repository }}:{{ .Values.hfcli.image.tag }}
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            - name: MODEL_NAME
+              value: {{ .Values.inference.model.address }}
+            - name: DOWNLOAD_PATH
+              value: /mnt/models/{{ .Values.inference.model.name }}
+{{- if .Values.global.proxies.HTTP_PROXY }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxies.HTTP_PROXY }}
+{{- end }}
+          command:
+            - hf
+            - download
+            - $(MODEL_NAME)
+            - --local-dir
+            - $(DOWNLOAD_PATH)
+            - --token
+            - $(HF_TOKEN)
+          resources:
+            {{- toYaml .Values.hfcli.resources | nindent 12 }}
+          volumeMounts:
+            - name: model-storage
+              mountPath: /mnt/models
+            - name: temp
+              mountPath: /tmp
+      restartPolicy: Never
+      volumes:
+        - emptyDir:
+            # made sense with smaller models
+            # sizeLimit: {{ .Values.inference.model.pvc.size }}
+            # with larger ones: we won't download all segments at once: just keep it "large" enough ...
+            sizeLimit: 25Gi
+          name: temp
+        # how to make sure that job only run once?
+        # we won't be able to re-attach PVC ... unless scheduler places us on
+        # the one GPU node where inference is running ...
+        # maybe don't use hooks?
+        # but even then, there's no guarantee job would remain present ...
+        # and any change to chart affecting that job: we can't apply
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: inference-model
+  backoffLimit: 3
+{{- end }}
+{{- end }}

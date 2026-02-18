@@ -1,0 +1,151 @@
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+  name: init-postgres
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+data:
+  init-pg.sh: |
+    #!/bin/bash
+
+    POSTGRESQL_ADMIN_PASSWORD="$(cat /cluster-secrets/POSTGRES_ADMIN_PASSWORD)"
+    POSTGRESQL_DATABASE="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.databaseKey }})"
+    # For pgvector image, use the same user that was created (not postgres)
+    POSTGRESQL_USER="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userNameKey }})"
+    POSTGRESQL_OWNER="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userNameKey }})"
+
+    # LlamaStack database credentials
+    LLAMASTACK_DATABASE="{{ .Values.llamastack.database.name | default "llamastack" }}"
+    LLAMASTACK_USER="{{ .Values.llamastack.database.user | default "llamastack" }}"
+    LLAMASTACK_PASSWORD="$(cat /cluster-secrets/LLAMASTACK_PASSWORD)"
+
+    if test -z "$POSTGRESQL_DATABASE" \
+         -o -z "$POSTGRESQL_ADMIN_PASSWORD" \
+         -o -z "$POSTGRESQL_OWNER" \
+         -o -z "$POSTGRESQL_USER" \
+         -o -z "$LLAMASTACK_PASSWORD"; then
+        echo ERROR: missing postgres coordinates
+        exit 1
+    fi
+
+    echo Waiting for postgres ...
+    while :
+    do
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -c "\\l" && break
+        sleep 5
+    done
+
+    # =========================================================================
+    # Initialize claims_db (functional database)
+    # =========================================================================
+    echo Checking for claims database ...
+    if ! PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -c "\\d" 2>&1 \
+            | grep "Did not find any relations" >/dev/null; then
+        echo " => Database already includes tables, skipping init"
+    else
+        echo Initializing claims database ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/init.sql
+        echo " => Done"
+
+        echo Injecting seed data ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/seed.sql
+        echo " => Done"
+
+        echo Fix Ownership ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -qAt -c \
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'" \
+            | while read -r tableName
+            do
+                PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+                    --host postgresql "$POSTGRESQL_DATABASE" -c \
+                    "ALTER TABLE \"$tableName\" OWNER TO $POSTGRESQL_OWNER"
+            done
+        echo " => Done"
+    fi
+
+    # =========================================================================
+    # Apply tender tables migration (IF NOT EXISTS - safe to re-run)
+    # =========================================================================
+    if [ -f /scripts/migration-002-tenders.sql ]; then
+        echo Applying tender tables migration ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/migration-002-tenders.sql
+        echo " => Done"
+
+        if [ -f /scripts/seed-tenders.sql ]; then
+            echo Injecting tender seed data ...
+            PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+                --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/seed-tenders.sql
+            echo " => Done"
+        fi
+
+        echo Fix Ownership for tender tables ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql "$POSTGRESQL_DATABASE" -qAt -c \
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'" \
+            | while read -r tableName
+            do
+                PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+                    --host postgresql "$POSTGRESQL_DATABASE" -c \
+                    "ALTER TABLE \"$tableName\" OWNER TO $POSTGRESQL_OWNER"
+            done
+        echo " => Done"
+    fi
+
+    # =========================================================================
+    # Initialize llamastack database (technical database for LlamaStack)
+    # =========================================================================
+    echo Checking if llamastack database exists ...
+    if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql -d "$POSTGRESQL_DATABASE" -lqt | cut -d \| -f 1 | grep -qw "$LLAMASTACK_DATABASE"; then
+        echo " => LlamaStack database already exists, skipping creation"
+    else
+        echo Creating llamastack database ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE DATABASE $LLAMASTACK_DATABASE;"
+        echo " => Done"
+    fi
+
+    echo Checking if llamastack user exists ...
+    if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql -d "$POSTGRESQL_DATABASE" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$LLAMASTACK_USER'" | grep -q 1; then
+        echo " => LlamaStack user already exists, updating password"
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "ALTER ROLE $LLAMASTACK_USER WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';"
+    else
+        echo Creating llamastack user ...
+        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE ROLE $LLAMASTACK_USER WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';"
+        echo " => Done"
+    fi
+
+    echo Granting privileges on llamastack database ...
+    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql -d "$POSTGRESQL_DATABASE" -c "GRANT ALL PRIVILEGES ON DATABASE $LLAMASTACK_DATABASE TO $LLAMASTACK_USER;"
+
+    echo Granting schema privileges ...
+    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql -d "$LLAMASTACK_DATABASE" -c "GRANT USAGE, CREATE ON SCHEMA public TO $LLAMASTACK_USER;"
+
+    echo Setting default privileges for future tables ...
+    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql -d "$LLAMASTACK_DATABASE" -c \
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO $LLAMASTACK_USER;"
+    echo " => Done"
+
+    echo Installing pgvector extension in llamastack database ...
+    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql -d "$LLAMASTACK_DATABASE" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    echo " => Done"
+
+    exit 0
+{{ (.Files.Glob "files/cm.init-postgres/*").AsConfig | indent 2 }}
+{{- end }}

@@ -1,0 +1,33 @@
+# Llama Guard InferenceService for TrustyAI Guardrails Detection
+# This detector will be auto-discovered by GuardrailsOrchestrator
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: llama-guard-detector
+  namespace: claims-demo
+  labels:
+    trustyai/detector: "true"  # Label for auto-discovery
+    app: claims-processing
+    component: guardrails-detector
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.knative.openshift.io/enablePassthrough: "true"
+    sidecar.istio.io/inject: "true"
+    sidecar.istio.io/rewriteAppHTTPProbers: "true"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: pytorch
+      runtime: llama-guard-runtime
+      # Using vLLM runtime for Llama Guard 3.1B
+      storageUri: "pvc://models-cache/llama-guard-3-1b"
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "2"
+          memory: 8Gi

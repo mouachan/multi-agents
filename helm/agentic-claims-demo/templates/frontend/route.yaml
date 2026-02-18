@@ -1,0 +1,35 @@
+{{- if and .Values.frontend.enabled .Values.frontend.route.enabled }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "5" # after frontend
+    # processing claims always takes over 30s. usually less than 50s
+    # if we don't want to end up with the "failed to start processing claim" page, Route
+    # timeout should allow for a response to come back. 120s is "large". fail-safe.
+    haproxy.router.openshift.io/timeout: 120s
+  name: frontend
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: frontend
+spec:
+  {{- if .Values.frontend.route.host }}
+  host: {{ .Values.frontend.route.host }}
+  {{- else }}
+  host: {{ include "frontend_route_prefix" . }}.{{ .Values.global.clusterDomain }}
+  {{- end }}
+  to:
+    kind: Service
+    name: frontend
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.frontend.route.tls.enabled }}
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}

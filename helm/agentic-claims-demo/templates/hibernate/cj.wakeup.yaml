@@ -1,0 +1,65 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: wakeup
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            parent: wakeup
+        spec:
+          affinity:
+{{- include "multiarch_node_affinity" . | nindent 12 }}
+          automountServiceAccountToken: true
+          containers:
+            - name: wakeup
+              command:
+                - /scripts/wakeup.sh
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: NAMESPACE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              image: image-registry.openshift-image-registry.svc:5000/openpaas/ose-cli:release
+              imagePullPolicy: IfNotPresent
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 768Mi
+                requests:
+                  cpu: 100m
+                  memory: 768Mi
+              securityContext:
+                readOnlyRootFilesystem: true
+              terminationMessagePath: /dev/termination-log
+              terminationMessagePolicy: File
+              volumeMounts:
+                - mountPath: /scripts
+                  name: helpers
+                - mountPath: /tmp
+                  name: temp
+          restartPolicy: OnFailure
+          schedulerName: default-scheduler
+          serviceAccount: hibernate
+          serviceAccountName: hibernate
+          terminationGracePeriodSeconds: 30
+          volumes:
+            - emptyDir: {}
+              name: temp
+            - configMap:
+                name: job-hibernate
+                defaultMode: 0777
+              name: helpers
+  schedule: "0 13 * * *"
+  successfulJobsHistoryLimit: 2
+  suspend: true

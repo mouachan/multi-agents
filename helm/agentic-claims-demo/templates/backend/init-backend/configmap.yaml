@@ -1,0 +1,14 @@
+{{- if and .Values.backend.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+  name: init-backend
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+data:
+{{ (.Files.Glob "files/cm.init-backend/*").AsConfig | indent 2 }}
+{{- end }}

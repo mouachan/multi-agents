@@ -1,0 +1,15 @@
+{{- if .Values.backend.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+  name: claims-prompts
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: backend
+data:
+{{ (.Files.Glob "files/cm.claims-prompts/*").AsConfig | indent 2 }}
+{{- end }}

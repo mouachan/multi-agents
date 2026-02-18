@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llama-3-3-70b
+  labels:
+    app: llama-3-3-70b
+    opendatahub.io/dashboard: "true"

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-qwen-model
+  namespace: multimodal-demo  # PLACEHOLDER: Change to your namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi  # Qwen-VL 7B requires ~30GB, 50GB provides buffer
+  storageClassName: gp3-csi  # PLACEHOLDER: Change to your storage class
+  volumeMode: Filesystem

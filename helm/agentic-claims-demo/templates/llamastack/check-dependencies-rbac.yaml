@@ -1,0 +1,117 @@
+{{- if .Values.llamastack.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks - must be created before the job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-95"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # ArgoCD GitOps
+    "argocd.argoproj.io/sync-wave": "-95"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks - must be created before the job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-95"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # ArgoCD GitOps
+    "argocd.argoproj.io/sync-wave": "-95"
+rules:
+  # Permissions to check StatefulSets
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+  # Permissions to check Pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Permissions to exec into PostgreSQL pod for pg_isready
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks - must be created before the job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-95"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # ArgoCD GitOps
+    "argocd.argoproj.io/sync-wave": "-95"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+    namespace: {{ .Values.global.namespace }}
+{{- if or .Values.inference.enabled .Values.embedding.enabled }}
+---
+# ClusterRole for checking InferenceServices in other namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps-inference
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks - must be created before the job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-95"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # ArgoCD GitOps
+    "argocd.argoproj.io/sync-wave": "-95"
+rules:
+  # Permissions to check InferenceServices (KServe CRD)
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps-inference
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llamastack-init
+  annotations:
+    # Helm hooks - must be created before the job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-95"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # ArgoCD GitOps
+    "argocd.argoproj.io/sync-wave": "-95"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agentic-claims-demo.fullname" . }}-check-deps-inference
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agentic-claims-demo.fullname" . }}-check-deps
+    namespace: {{ .Values.global.namespace }}
+{{- end }}
+{{- end }}

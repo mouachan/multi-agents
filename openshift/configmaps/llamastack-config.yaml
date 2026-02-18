@@ -1,0 +1,183 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llama-stack-config
+  namespace: claims-demo
+  labels:
+    llamastack.io/distribution: claims-llamastack
+    opendatahub.io/dashboard: "true"
+data:
+  run.yaml: |
+    # Llama Stack Configuration for Claims Demo - Using OpenShift AI Models
+    version: "2"
+    image_name: rh
+
+    apis:
+    - agents
+    - datasetio
+    - files
+    - inference
+    - safety
+    - eval
+    - scoring
+    - tool_runtime
+    - vector_io
+
+    providers:
+      inference:
+        - provider_id: sentence-transformers
+          provider_type: inline::sentence-transformers
+          config: {}
+
+        - provider_id: vllm-inference-1
+          provider_type: remote::vllm
+          config:
+            api_token: ${env.VLLM_API_TOKEN_1:=fake}
+            max_tokens: ${env.VLLM_MAX_TOKENS:=20000}
+            tls_verify: ${env.VLLM_TLS_VERIFY:=false}
+            url: https://llama-3-3-70b-llama-3-3-70b.apps.CLUSTER_DOMAIN/v1
+
+        - provider_id: gemma-embedding
+          provider_type: remote::vllm
+          config:
+            api_token: ${env.GEMMA_API_TOKEN:=fake}
+            max_tokens: ${env.GEMMA_MAX_TOKENS:=512}
+            tls_verify: ${env.GEMMA_TLS_VERIFY:=false}
+            url: https://embeddinggemma-300m-edg-demo.apps.CLUSTER_DOMAIN/v1
+
+      vector_io:
+        - provider_id: pgvector
+          provider_type: remote::pgvector
+          config:
+            host: postgresql.claims-demo.svc.cluster.local
+            port: 5432
+            database: claims_db
+            user: ${env.POSTGRES_USER:=claims_user}
+            password: ${env.POSTGRES_PASSWORD:=claims_pass}
+            collection_name: llama_vectors
+            kvstore:
+              type: sqlite
+              db_path: /opt/app-root/src/.llama/distributions/rh/pgvector_metadata.db
+              namespace: null
+
+      safety:
+        # NOTE: TrustyAI GuardrailsOrchestrator integration with LlamaStack
+        # is Technology Preview in OpenShift AI 3.0.
+        # For now, TrustyAI is deployed separately
+        []
+
+      agents:
+        - provider_id: meta-reference
+          provider_type: inline::meta-reference
+          config:
+            persistence_store:
+              db_path: /opt/app-root/src/.llama/distributions/rh/agents_store.db
+              namespace: null
+              type: sqlite
+            responses_store:
+              db_path: /opt/app-root/src/.llama/distributions/rh/responses_store.db
+              type: sqlite
+
+      eval:
+        - provider_id: meta-reference-eval
+          provider_type: inline::meta-reference
+          config:
+            kvstore:
+              db_path: /opt/app-root/src/.llama/distributions/rh/eval_store.db
+              namespace: null
+              type: sqlite
+
+      files:
+        - provider_id: meta-reference-files
+          provider_type: inline::localfs
+          config:
+            metadata_store:
+              db_path: /opt/app-root/src/.llama/distributions/rh/files_metadata.db
+              type: sqlite
+            storage_dir: /opt/app-root/src/.llama/distributions/rh/files
+
+      datasetio:
+        - provider_id: huggingface
+          provider_type: remote::huggingface
+          config:
+            kvstore:
+              db_path: /opt/app-root/src/.llama/distributions/rh/huggingface_datasetio.db
+              namespace: null
+              type: sqlite
+
+      scoring:
+        - provider_id: basic
+          provider_type: inline::basic
+          config: {}
+
+        - provider_id: llm-as-judge
+          provider_type: inline::llm-as-judge
+          config: {}
+
+      tool_runtime:
+        - provider_id: rag-runtime
+          provider_type: inline::rag-runtime
+          config:
+            vector_db_ids:
+              - claims_vector_db
+
+        - provider_id: model-context-protocol
+          provider_type: remote::model-context-protocol
+          config: {}
+
+    metadata_store:
+      type: sqlite
+      db_path: /opt/app-root/src/.llama/distributions/rh/inference_store.db
+
+    models:
+      - provider_id: sentence-transformers
+        model_id: granite-embedding-125m
+        provider_model_id: ibm-granite/granite-embedding-125m-english
+        model_type: embedding
+        metadata:
+          embedding_dimension: 768
+
+      - provider_id: gemma-embedding
+        model_id: gemma-300m
+        provider_model_id: gemma-300m
+        model_type: embedding
+        metadata:
+          embedding_dimension: 768
+          description: "Gemma 300M embedding model from OpenShift AI"
+          display_name: gemma-300m
+
+      - provider_id: vllm-inference-1
+        model_id: llama-3-3-70b
+        provider_model_id: llama-3-3-70b
+        model_type: llm
+        metadata:
+          description: "Llama 3.3 70B INT8 Instruct with 20K context from OpenShift AI"
+          display_name: llama-3-3-70b
+
+    shields: []
+
+    vector_dbs:
+      - vector_db_id: claims_vector_db
+        provider_id: pgvector
+        provider_vector_db_id: claims_db
+        embedding_model: gemma-300m
+        embedding_dimension: 768
+
+    datasets: []
+    scoring_fns: []
+    benchmarks: []
+
+    tool_groups:
+      - toolgroup_id: builtin::rag
+        provider_id: rag-runtime
+      - toolgroup_id: mcp::ocr-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://ocr-server.claims-demo.svc.cluster.local:8080/sse
+      - toolgroup_id: mcp::rag-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://rag-server.claims-demo.svc.cluster.local:8080/sse
+
+    server:
+      port: 8321

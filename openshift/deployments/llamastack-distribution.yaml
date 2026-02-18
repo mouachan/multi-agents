@@ -1,0 +1,83 @@
+---
+# LlamaStackDistribution - Managed by OpenShift AI 3.0 Operator
+#
+# This custom resource is managed by the OpenShift AI LlamaStack Operator.
+# The operator automatically creates:
+#   - Deployment for the LlamaStack server
+#   - Service for API access (port 8321)
+#   - ConfigMap mount from 'llama-stack-config'
+#
+# Configuration:
+#   - The 'userConfig' section references the ConfigMap containing run.yaml
+#   - The ConfigMap is mounted to /etc/llama-stack/run.yaml in the pod
+#   - LlamaStack loads this configuration at startup
+#
+# To update configuration:
+#   1. Update the ConfigMap: oc edit configmap llama-stack-config
+#   2. Delete the pod to restart: oc delete pod -l app=llama-stack
+#   3. The operator will recreate the pod with new config
+#
+# Documentation:
+#   https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.0/html-single/working_with_llama_stack/
+#
+apiVersion: llamastack.io/v1alpha1
+kind: LlamaStackDistribution
+metadata:
+  name: claims-llamastack
+  namespace: claims-demo
+  labels:
+    app: claims-processing
+    component: llama-stack
+    opendatahub.io/dashboard: "true"
+spec:
+  replicas: 1
+
+  server:
+    containerSpec:
+      name: llama-stack
+      port: 8321
+      command:
+      - /bin/sh
+      - -c
+      - llama stack run /etc/llama-stack/run.yaml
+
+      # Variables d'environnement
+      env:
+        - name: VLLM_TLS_VERIFY
+          value: "false"
+        - name: MILVUS_DB_PATH
+          value: ~/.llama/milvus.db
+        - name: VLLM_MAX_TOKENS
+          value: "20000"
+        - name: VLLM_API_TOKEN_1
+          value: "fake"
+        - name: VLLM_API_TOKEN_2
+          value: "fake"
+        - name: LLAMA_STACK_CONFIG_DIR
+          value: /opt/app-root/src/.llama/distributions/rh/
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: POSTGRES_PASSWORD
+
+      resources:
+        requests:
+          cpu: 250m
+          memory: 500Mi
+        limits:
+          cpu: "2"
+          memory: 12Gi
+
+    # Utiliser la distribution rh-dev (résolu par l'opérateur)
+    distribution:
+      name: rh-dev
+
+    # Référence au ConfigMap avec la configuration complète
+    userConfig:
+      configMapName: llama-stack-config

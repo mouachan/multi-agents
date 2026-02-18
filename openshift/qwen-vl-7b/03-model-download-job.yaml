@@ -1,0 +1,95 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-qwen-model
+  namespace: multimodal-demo  # PLACEHOLDER: Change to your namespace
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: download-model
+        image: python:3.11-slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          export HOME=/tmp/home
+          export PYTHONUSERBASE=/tmp/home/.local
+          mkdir -p $HOME/.local
+          echo "Installation de huggingface-hub..."
+          pip install --user --no-cache-dir -q huggingface-hub
+          export PATH="$HOME/.local/bin:$PATH"
+
+          echo "Téléchargement du modèle RedHatAI/Qwen2.5-VL-7B-Instruct-FP8-Dynamic..."
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import sys
+          from huggingface_hub import snapshot_download
+
+          # Modèle multimodal Qwen2.5-VL-7B-Instruct-FP8-Dynamic
+          model_id = "RedHatAI/Qwen2.5-VL-7B-Instruct-FP8-Dynamic"
+          local_dir = "/mnt/models"
+          token = os.environ.get('HF_TOKEN')
+
+          if not token:
+              print("ERROR: HF_TOKEN environment variable is not set", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"Téléchargement de {model_id} vers {local_dir}")
+          print(f"Token présent: {'Oui' if token else 'Non'}")
+
+          try:
+              os.makedirs(local_dir, exist_ok=True)
+              print(f"Répertoire créé: {local_dir}")
+
+              snapshot_download(
+                  repo_id=model_id,
+                  local_dir=local_dir,
+                  token=token,
+                  resume_download=True
+              )
+
+              print("Téléchargement terminé avec succès!")
+
+              # Vérifier le contenu
+              import os
+              files = os.listdir(local_dir)
+              print(f"Fichiers téléchargés: {len(files)}")
+              for f in files[:10]:  # Afficher les 10 premiers
+                  path = os.path.join(local_dir, f)
+                  size = os.path.getsize(path) if os.path.isfile(path) else 0
+                  print(f"  - {f}: {size} bytes")
+
+          except Exception as e:
+              print(f"ERROR lors du téléchargement: {e}", file=sys.stderr)
+              import traceback
+              traceback.print_exc()
+              sys.exit(1)
+          PYTHON_SCRIPT
+
+          echo "Vérification des fichiers téléchargés..."
+          ls -lah /mnt/models
+          du -sh /mnt/models
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: token
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+        - name: model-storage
+          mountPath: /mnt/models
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: pvc-qwen-model

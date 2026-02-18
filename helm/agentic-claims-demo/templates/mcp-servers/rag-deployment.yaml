@@ -1,0 +1,63 @@
+{{- if .Values.mcp.rag.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    # after llamastackdistribution?!
+    # healthchecks from that controller would query llamastack's /v1/embedding
+    # need gemma embedding and llamastackdistribution to be up and running before starting this
+    argocd.argoproj.io/sync-wave: "4"
+  name: rag-server
+  namespace: {{ include "agentic-claims-demo.namespace" . }}
+  labels:
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+    app: rag-server
+    component: mcp-server
+spec:
+  replicas: {{ .Values.mcp.rag.replicas }}
+  selector:
+    matchLabels:
+      app: rag-server
+  template:
+    metadata:
+      labels:
+        app: rag-server
+        component: mcp-server
+    spec:
+      containers:
+      - name: rag-server
+        image: {{ include "agentic-claims-demo.imageRegistry" . }}/{{ .Values.mcp.rag.image.repository }}:{{ .Values.mcp.rag.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        {{- include "postgres.env" . | nindent 8 }}
+        - name: LLAMASTACK_ENDPOINT
+          value: {{ quote (include "llamastack.endpoint" .) }}
+        - name: EMBEDDING_MODEL
+          value: vllm-embedding/{{ .Values.embedding.model.name }}
+        - name: LOG_LEVEL
+          value: {{ .Values.mcp.rag.env.LOG_LEVEL | quote }}
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          {{- toYaml .Values.mcp.rag.resources | nindent 10 }}
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 2
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          # default (1s) will fail as we're processing claims. if service becomes unavailable
+          # (even with no pod restart), processing will get stuck
+          timeoutSeconds: 10
+{{- end }}

@@ -1,0 +1,11 @@
+# Development and testing dependencies
+-r requirements.txt
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+
+# Code quality
+black
+flake8
+mypy

@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-llama32-3b-instruct-hf
+  namespace: llama-instruct-32-3b-demo
+spec:
+  template:
+    metadata:
+      name: download-llama32-3b-instruct-hf
+    spec:
+      containers:
+      - name: download
+        image: quay.io/opendatahub/huggingface-downloader:stable
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+        - name: MODEL_NAME
+          value: "meta-llama/Llama-3.2-3B-Instruct"
+        - name: DOWNLOAD_PATH
+          value: "/mnt/models/llama32-3b-instruct"
+        command:
+        - huggingface-cli
+        - download
+        - $(MODEL_NAME)
+        - --local-dir
+        - $(DOWNLOAD_PATH)
+        - --token
+        - $(HF_TOKEN)
+        volumeMounts:
+        - name: model-storage
+          mountPath: /mnt/models
+      restartPolicy: Never
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: llama32-3b-instruct-model
+  backoffLimit: 3

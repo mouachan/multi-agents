@@ -1,0 +1,43 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: guardrails-detector
+  namespace: claims-demo
+  labels:
+    helm.sh/chart: agentic-claims-demo-1.0.0
+    app.kubernetes.io/name: agentic-claims-demo
+    app.kubernetes.io/instance: agentic-claims-demo
+    app.kubernetes.io/version: 1.0.0
+    app.kubernetes.io/managed-by: Helm
+    trustyai/detector: 'true'
+    app: claims-processing
+    component: guardrails-detector
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+    serving.kserve.io/deploymentMode: RawDeployment
+    serving.knative.openshift.io/enablePassthrough: 'true'
+    sidecar.istio.io/inject: 'true'
+    sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+    openshift.io/display-name: Claims Guardrails Detector (Llama Guard 3 1B)
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: llama-guard-3-1b
+      storageUri: oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0
+      resources:
+        limits:
+          cpu: '8'
+          memory: 10Gi
+          nvidia.com/gpu: '1'
+        requests:
+          cpu: '1'
+          memory: 8Gi
+          nvidia.com/gpu: '1'
+    tolerations:
+    - effect: NoSchedule
+      operator: Exists

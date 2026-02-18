@@ -1,0 +1,49 @@
+{{- if and .Values.inference.enabled }}
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    opendatahub.io/apiProtocol: REST
+    opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+    # where did I copy that one from?
+    opendatahub.io/runtime-version: v0.11.2
+    opendatahub.io/serving-runtime-scope: global
+    opendatahub.io/template-display-name: vLLM NVIDIA GPU ServingRuntime for KServe
+    opendatahub.io/template-name: vllm-cuda-runtime-template
+    openshift.io/display-name: vLLM NVIDIA GPU ServingRuntime for KServe
+  labels:
+    opendatahub.io/dashboard: "true"
+    {{- include "agentic-claims-demo.labels" . | nindent 4 }}
+  name: llama
+  namespace: {{ include "inference.namespace" . }}
+spec:
+  annotations:
+    opendatahub.io/kserve-runtime: vllm
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+  containers:
+    - name: kserve-container
+      # copied from upstream => should really use imagestreams shipping in redhat-ods-applications
+      # otherwise, dashboard would just tell us we're using an image that's not up to date
+      image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:latest  # Updated to latest (3.2.5) with CUDA 12.9
+      command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+      args:
+        - --port=8080
+        - --model=/mnt/models
+        - --served-model-name={{ "{{" }}.Name{{ "}}" }}
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      env:
+        - name: HF_HOME
+          value: /tmp/hf_home
+  multiModel: false
+  supportedModelFormats:
+    - name: vLLM
+      autoSelect: true
+{{- end }}

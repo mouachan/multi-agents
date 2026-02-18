@@ -1,0 +1,110 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-llama-3-3-70b-hf-cli
+  namespace: llama-3-3-70b
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      containers:
+      - name: download-model
+        image: registry.access.redhat.com/ubi8/python-39:latest
+        command:
+          - /bin/bash
+          - -c
+          - |
+            # Install huggingface_hub
+            pip3 install huggingface_hub
+
+            # Set token from secret - read directly from file
+            echo "🔍 Vérification du secret:"
+            ls -la /secrets/
+            echo "🔍 Contenu du fichier secret (premiers 30 chars):"
+            head -c 30 /secrets/hf-token && echo ""
+            echo "🔍 Taille du fichier: $(wc -c < /secrets/hf-token) bytes"
+
+            # Read token directly and write to temp file
+            cat /secrets/hf-token | tr -d '\n\r' > /tmp/hf_token.txt
+
+            # Verify the token file
+            echo "🔍 Vérification du fichier token créé:"
+            ls -la /tmp/hf_token.txt
+            echo "🔍 Contenu (premiers 30 chars): $(head -c 30 /tmp/hf_token.txt)..."
+            echo "🔍 Taille: $(wc -c < /tmp/hf_token.txt) bytes"
+
+            # Run the Python download script
+            echo "📥 Début du téléchargement du modèle Llama 3.3 70B INT8..."
+
+            # Create directory first
+            mkdir -p /mnt/models/llama-3-3-70b
+
+            # Copy the script to the container
+            cat > /tmp/download_model.py << 'PYEOF'
+            import os
+            from huggingface_hub import snapshot_download
+
+            # Read token from file
+            try:
+                with open('/tmp/hf_token.txt', 'r') as f:
+                    hf_token = f.read().strip()
+                print(f"🔍 Token lu depuis fichier: {hf_token[:10]}... (longueur: {len(hf_token)})")
+            except Exception as e:
+                print(f"❌ Erreur lecture fichier: {e}")
+                raise
+
+            # Get model from environment or use default
+            model_repo = os.environ.get('HUGGINGFACE_MODEL_70B', 'RedHatAI/Llama-3.3-70B-Instruct-quantized.w8a8')
+
+            if not hf_token or hf_token == "":
+                print("❌ HF_TOKEN est vide!")
+                raise ValueError("HF_TOKEN is empty or not set")
+
+            print(f"📥 Téléchargement du modèle {model_repo}...")
+            print(f"🔑 Token: {hf_token[:10]}...")
+
+            # Download the model with token authentication
+            snapshot_download(
+                repo_id=model_repo,
+                local_dir="/mnt/models/llama-3-3-70b",
+                allow_patterns=["*.safetensors", "*.json", "*.txt", "*.model"],
+                token=hf_token
+            )
+            print("✅ Téléchargement terminé!")
+            PYEOF
+
+            # Execute the script with model env var
+            HUGGINGFACE_MODEL_70B="${HUGGINGFACE_MODEL_70B:-RedHatAI/Llama-3.3-70B-Instruct-quantized.w8a8}" python3 /tmp/download_model.py
+
+            echo "✅ Téléchargement terminé!"
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: model-storage
+            mountPath: /mnt/models
+          - name: hf-secret
+            mountPath: /secrets
+            readOnly: true
+      restartPolicy: Never
+      nodeSelector:
+        topology.kubernetes.io/zone: eu-central-1a
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: NVIDIA-L40-PRIVATE
+          effect: NoSchedule
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: pvc-llama-3-3-70b
+        - name: hf-secret
+          secret:
+            secretName: huggingface-token
+            items:
+              - key: token
+                path: hf-token
