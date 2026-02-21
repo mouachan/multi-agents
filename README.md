@@ -95,7 +95,7 @@ Customer Submits Claim
 - **Traditional**: Fixed workflow (always call tool A, then B, then C)
 - **ReAct**: Agent decides which tools to use and when, based on reasoning
 
-### Multi-Agent Orchestrator (Work in Progress)
+### Multi-Agent Orchestrator
 
 The platform includes a **multi-agent orchestrator** that acts as a high-level router, classifying user intent via LLM and dispatching requests to the appropriate specialized agent:
 
@@ -113,12 +113,28 @@ User Message
 | Claims  |  | Tenders   |
 | Agent   |  | Agent     |
 +---------+  +-----------+
+    |              |
+    v              v
++------------------------------+
+|     MCP Tool Servers         |
+| OCR | RAG | Claims | Tenders |
++------------------------------+
+    |
+    v
++------------------------------+
+|   S3/MinIO + PostgreSQL      |
+|   Documents + Decisions      |
++------------------------------+
 ```
 
 **Key capabilities**:
+- **SSE Streaming**: Real-time response streaming via `POST /chat/stream` with tool call events, text deltas, and completion notifications
+- **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` MCP tools to persist decisions and update claim/tender status
+- **Embedding generation**: Agents call `generate_document_embedding` to index processed documents for future similarity search
 - **Intent-based routing**: Fast keyword classification routes user messages to the correct domain agent (claims or tenders)
 - **Chat sessions**: Persistent conversation history with session management
 - **Agent registry**: Dynamic registration of specialized agents with metadata, tools, and routing keywords
+- **S3/MinIO document storage**: Documents served from S3 with local filesystem fallback
 - **Suggested actions**: Context-aware follow-up suggestions (navigate, process, chat) after each agent response
 - **Cross-domain agent chaining**: After a tender Go decision, the orchestrator suggests filing an insurance claim
 - **Bilingual support**: FR/EN language detection and response generation
@@ -127,21 +143,9 @@ User Message
 - **Conversation management**: History sanitization, context window control, text tool call detection and retry
 - **Configurable architecture**: All behavioral parameters externalized in orchestrator-config.yaml (ConfigMap)
 
-**What's working**:
-- Orchestrator routing and intent classification
-- Chat sessions with message persistence and cascade deletion
-- Agent registry with claims and tenders agents
-- Context-aware suggested actions (intent-based + post-response chaining)
-- PII detection and redaction on chat messages
-- Tool call visibility with collapsible details (ToolCallSteps component)
-- Token consumption display per message and per session
-- Function calling retry mechanism (detects text tool calls, retries with explicit instruction)
-- Externalized tool display config (useToolDisplay hook + backend endpoint)
-- Bilingual UI (FR/EN) for chat, tool calls, token display
-
 **What's in progress**:
-- Runtime prompt editor (view/edit system prompt per session)
-- Migration to llm-d with Llama 3.3 70B on cluster
+- Enriched claim/tender detail pages with processing steps display
+- Migration to llm-d with Llama 3.3 70B / GPT-OSS 120B on cluster
 - OpenShift OAuth authentication
 
 ### Business Capabilities
@@ -253,13 +257,14 @@ graph TB
 
         subgraph "MCP Tool Servers - multi-agents"
             OCR["OCR MCP Server<br/>EasyOCR"]
-            RAG["RAG MCP Server<br/>pgvector similarity"]
-            CLAIMS_MCP["Claims MCP Server<br/>CRUD tools"]
-            TENDERS_MCP["Tenders MCP Server<br/>CRUD tools"]
+            RAG["RAG MCP Server<br/>pgvector similarity<br/>+ embedding generation"]
+            CLAIMS_MCP["Claims MCP Server<br/>CRUD + save_decision"]
+            TENDERS_MCP["Tenders MCP Server<br/>CRUD + save_decision"]
         end
 
         subgraph "Data Layer - multi-agents"
-            DB[("PostgreSQL 15<br/>+ pgvector<br/>+ chat sessions")]
+            DB[("PostgreSQL 16<br/>+ pgvector<br/>+ chat sessions")]
+            S3["MinIO S3<br/>Document Storage"]
         end
     end
 
@@ -277,6 +282,10 @@ graph TB
     LS -->|Shields API| GR
     RAG -->|Vector Search| DB
     B -->|CRUD| DB
+    B -->|Documents| S3
+    CLAIMS_MCP -->|Save decisions| DB
+    TENDERS_MCP -->|Save decisions| DB
+    RAG -->|Embeddings| DB
     DSPA -->|Artifacts| MINIO
 
     style LS fill:#f3e5f5
@@ -323,10 +332,11 @@ backend/
 │       ├── ao_prompts.py           # Tender agent prompts
 │       └── orchestrator_prompts.py # Multi-agent router prompts (WIP)
 ├── mcp_servers/
+│   ├── shared/               # Shared DB module (connection, retry, queries)
 │   ├── ocr_server/           # Document OCR (EasyOCR)
-│   ├── rag_server/           # Vector search (pgvector)
-│   ├── claims_server/        # Claims CRUD tools
-│   └── tenders_server/       # Tenders CRUD tools
+│   ├── rag_server/           # Vector search (pgvector) + embedding generation
+│   ├── claims_server/        # Claims CRUD + save_claim_decision
+│   └── tenders_server/       # Tenders CRUD + save_tender_decision
 frontend/
 ├── src/
 │   ├── pages/
@@ -366,7 +376,8 @@ frontend/
 - **Compliance**: TrustyAI Guardrails
 - **Backend**: Python 3.12 + FastAPI
 - **Frontend**: React 18 + TypeScript
-- **Database**: PostgreSQL 15 + pgvector
+- **Database**: PostgreSQL 16 + pgvector
+- **Document Storage**: MinIO S3-compatible (with local filesystem fallback)
 - **Pipelines**: Kubeflow Pipelines v2
 - **Deployment**: Helm 3.x on OpenShift 4.20+
 
@@ -802,18 +813,61 @@ See full troubleshooting guide in main documentation.
 
 ---
 
-## Development
+## Local Development
 
-For local development, testing, and contributing:
+### Quick Start with Docker/Podman Compose
 
-**[→ Development Guide](docs/DEVELOPMENT.md)**
+```bash
+# Copy the template and fill in your LLM/embedding endpoints
+cp docker-compose.yml docker-compose.local.yml
 
-Includes:
-- Local setup (backend, frontend, database)
-- Running tests
-- Building images
-- Database migrations
-- Debugging tips
+# Edit docker-compose.local.yml with your real values:
+# - LLM_URL: your LLM inference endpoint
+# - EMBEDDING_URL: your embedding model endpoint
+# - LLAMASTACK_DEFAULT_MODEL: your model identifier
+
+# Start all services (PostgreSQL, LlamaStack, MCP servers, MinIO, Backend, Frontend)
+podman compose -f docker-compose.local.yml up --build
+
+# Or with docker
+docker compose -f docker-compose.local.yml up --build
+```
+
+Services will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000/api/v1
+- **MinIO Console**: http://localhost:9001
+
+### What Gets Started
+
+| Service | Port | Description |
+|---------|------|-------------|
+| PostgreSQL + pgvector | 5433 | Database with seed data (claims, tenders, chat tables) |
+| LlamaStack | 8321 | AI orchestration (ReAct agent, tool routing) |
+| Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator |
+| OCR MCP Server | 8081 | Document OCR extraction |
+| RAG MCP Server | 8082 | Vector search + embedding generation |
+| Claims MCP Server | 8083 | Claims CRUD + decision persistence |
+| Tenders MCP Server | 8084 | Tenders CRUD + decision persistence |
+| MinIO | 9000/9001 | S3-compatible document storage |
+| Frontend (React) | 3000 | Chat UI + domain pages |
+
+### Document Storage
+
+Documents (claim PDFs, tender DCEs) are stored in MinIO S3. The `minio-setup` container automatically creates buckets and uploads documents from `documents/claims/` and `documents/tenders/`.
+
+To regenerate realistic PDF documents:
+```bash
+python3 backend/scripts/generate_claim_pdfs.py   # 51 claim PDFs
+python3 backend/scripts/generate_tender_pdfs.py   # 6 tender PDFs
+```
+
+### Notes
+
+- `docker-compose.yml` is the git-tracked version with placeholder values
+- `docker-compose.local.yml` is your private file with real credentials (add to `.gitignore`)
+- Backend and frontend have hot-reload enabled (code mounted as volumes)
+- MCP servers require a rebuild to pick up changes (`podman compose up --build <service>`)
 
 ---
 
@@ -831,29 +885,34 @@ Includes:
 - **Knowledge Base**: Run pipeline to generate 15/15 embeddings
 - **Similar Claims**: May return zero results if embeddings missing
 
-### Current Version: v2.2.0 (multi-agents)
+### Current Version: v3.0.0 (multi-agents)
 
 **Working**:
-- End-to-end claim processing (single-agent)
-- End-to-end tender / Appels d'Offres processing (single-agent)
+- End-to-end claim processing via multi-agent chat
+- End-to-end tender / Appels d'Offres processing via multi-agent chat
+- SSE streaming responses (real-time tool calls + text deltas)
+- Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
+- Embedding generation via MCP tool (generate_document_embedding)
+- S3/MinIO document storage with local filesystem fallback
+- Realistic PDF documents (51 claims + 6 tenders)
 - PII detection & redaction with audit trail
 - HITL review workflow (claims & tenders)
-- Ask Agent feature for interactive review
 - Multi-agent orchestrator with intent-based routing
 - Agent registry with dynamic agent registration and routing keywords
 - Chat sessions with persistent message history and cascade deletion
 - Context-aware suggested actions (intent-based + post-response chaining)
-- Chat interface with agent visualization
 - Tool call observability (collapsible traces with output/error per tool)
 - Token consumption tracking (per-message and per-session)
 - Conversation management (history sanitization, context window control)
 - Function calling retry mechanism (text tool call detection)
 - Externalized configuration (orchestrator-config.yaml via ConfigMap)
 - Bilingual support FR/EN (chat, tool calls, token display)
+- Local development with docker-compose / podman-compose
+- Helm deployment with MinIO and GitHub-based document seeding
 
 **In Progress**:
-- Runtime prompt editor (view/edit system prompt per session without redeployment)
-- Migration to llm-d with Llama 3.3 70B / GPT-OSS 120B on cluster
+- Enriched claim/tender detail pages with business-friendly processing steps display
+- Migration to llm-d with GPT-OSS 120B on cluster
+- OpenShift full stack deployment and validation
 - OpenShift OAuth authentication
-- A2A (Agent-to-Agent) protocol support
 
