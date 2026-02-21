@@ -1,10 +1,10 @@
-# GuardrailsOrchestrator CRD for Claims Demo
+# GuardrailsOrchestrator CRD for Multi-Agent AI Platform
 # Using autoConfig with detector InferenceService per OpenShift AI 3.0 docs
 apiVersion: trustyai.opendatahub.io/v1alpha1
 kind: GuardrailsOrchestrator
 metadata:
   name: claims-guardrails
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: guardrails

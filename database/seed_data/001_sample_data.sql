@@ -1,4 +1,4 @@
--- Realistic seed data for Claims Demo - 50 users, 100 claims
+-- Realistic seed data for Multi-Agent AI Platform - 50 users, 100 claims
 -- Generated automatically
 
 -- Delete existing data

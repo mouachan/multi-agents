@@ -21,12 +21,12 @@ if [ $# -eq 0 ]; then
     echo ""
     echo "Example:"
     echo "  $0 CLM-2024-0001"
-    echo "  $0 CLM-2024-0001 claims-demo"
+    echo "  $0 CLM-2024-0001 multi-agents"
     exit 1
 fi
 
 CLAIM_ID="$1"
-NAMESPACE="${2:-claims-demo}"
+NAMESPACE="${2:-multi-agents}"
 
 # Generate output filename with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -121,7 +121,7 @@ try:
     # Reconstruct HTTP request to LlamaStack
     print_http_section('HTTP REQUEST #1: Backend -> LlamaStack /v1/responses')
 
-    print('POST http://claims-llamastack-service.claims-demo.svc.cluster.local:8321/v1/responses')
+    print('POST http://claims-llamastack-service.multi-agents.svc.cluster.local:8321/v1/responses')
     print('Content-Type: application/json')
     print()
 
@@ -156,7 +156,7 @@ try:
             mcp_tools.append({
                 'type': 'mcp',
                 'server_label': 'ocr-server',
-                'server_url': 'http://ocr-server.claims-demo.svc.cluster.local:8080/sse',
+                'server_url': 'http://ocr-server.multi-agents.svc.cluster.local:8080/sse',
                 'allowed_tools': [t for t in tools_used if t.startswith('ocr')]
             })
 
@@ -164,7 +164,7 @@ try:
             mcp_tools.append({
                 'type': 'mcp',
                 'server_label': 'rag-server',
-                'server_url': 'http://rag-server.claims-demo.svc.cluster.local:8080/sse',
+                'server_url': 'http://rag-server.multi-agents.svc.cluster.local:8080/sse',
                 'allowed_tools': [t for t in tools_used if t.startswith('retrieve') or t.startswith('search')]
             })
 
@@ -189,9 +189,9 @@ try:
 
             # Determine server URL
             if 'ocr' in step_name.lower():
-                server_url = 'http://ocr-server.claims-demo.svc.cluster.local:8080/sse'
+                server_url = 'http://ocr-server.multi-agents.svc.cluster.local:8080/sse'
             elif 'retrieve' in step_name.lower() or 'search' in step_name.lower():
-                server_url = 'http://rag-server.claims-demo.svc.cluster.local:8080/sse'
+                server_url = 'http://rag-server.multi-agents.svc.cluster.local:8080/sse'
             else:
                 server_url = 'unknown'
 

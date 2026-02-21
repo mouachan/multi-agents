@@ -51,6 +51,8 @@ class ChatMessage(Base):
     entity_id = Column(PG_UUID(as_uuid=True))
     entity_type = Column(String(50))
     suggested_actions = Column(JSONB)
+    tool_calls = Column(JSONB)
+    token_usage = Column(JSONB)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     # Relationships

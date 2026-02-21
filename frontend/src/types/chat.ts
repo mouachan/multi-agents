@@ -17,6 +17,32 @@ export interface SuggestedAction {
   params?: Record<string, any>
 }
 
+export interface ToolCallInfo {
+  name: string
+  status: string
+  server_label?: string
+  output?: string
+  error?: string
+}
+
+export interface ToolDisplayMeta {
+  label: Record<string, string>
+  short: string
+  category: string
+}
+
+export interface ToolDisplayConfig {
+  tools: Record<string, ToolDisplayMeta>
+  servers: Record<string, { label: string; color: string }>
+  categories: Record<string, { label: Record<string, string>; icon: string }>
+}
+
+export interface TokenUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -25,6 +51,10 @@ export interface ChatMessage {
   entity_id?: string
   entity_type?: string
   suggested_actions?: SuggestedAction[]
+  tool_calls?: ToolCallInfo[]
+  token_usage?: TokenUsage
+  processing_time_ms?: number
+  model_id?: string
   created_at?: string
 }
 
@@ -38,6 +68,15 @@ export interface ChatResponse {
     type: string
     id: string
   }
+  tool_calls?: ToolCallInfo[]
+  token_usage?: TokenUsage
+  model_id?: string
+}
+
+export interface PromptResponse {
+  prompt: string
+  is_custom: boolean
+  agent_id?: string
 }
 
 export interface AgentInfo {

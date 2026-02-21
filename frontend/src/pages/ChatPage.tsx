@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AgentGraph from '../components/chat/AgentGraph'
 import ChatWindow from '../components/chat/ChatWindow'
@@ -25,11 +25,24 @@ export default function ChatPage() {
     sessionNotFound,
     createSession,
     sendMessage,
+    prompt,
+    isPromptCustom,
+    isPromptLoading,
+    loadPrompt,
+    savePrompt,
+    resetPrompt,
   } = useChat(sessionId)
 
   const [currentAgent, setCurrentAgent] = useState<AgentInfo | null>(null)
   const [activatedAgentIds, setActivatedAgentIds] = useState<Set<string>>(new Set())
   const [sessionList, setSessionList] = useState<ChatSession[]>([])
+  const [activeTools, setActiveTools] = useState<string[]>([])
+
+  // Prompt editor state
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [promptDraft, setPromptDraft] = useState('')
+  const [promptSaveStatus, setPromptSaveStatus] = useState<string | null>(null)
+  const promptLoadedRef = useRef(false)
 
   // Load session list
   useEffect(() => {
@@ -71,7 +84,48 @@ export default function ChatPage() {
     }
   }, [session, agentIdParam, agents])
 
+  // Sync prompt into draft when loaded
+  useEffect(() => {
+    if (prompt !== null) {
+      setPromptDraft(prompt)
+    }
+  }, [prompt])
+
+  // Reset prompt loaded flag on session change
+  useEffect(() => {
+    promptLoadedRef.current = false
+    setShowPromptEditor(false)
+    setPromptSaveStatus(null)
+  }, [sessionId])
+
+  const handleTogglePromptEditor = () => {
+    const next = !showPromptEditor
+    setShowPromptEditor(next)
+    if (next && !promptLoadedRef.current) {
+      promptLoadedRef.current = true
+      loadPrompt()
+    }
+    setPromptSaveStatus(null)
+  }
+
+  const handleSavePrompt = async () => {
+    const ok = await savePrompt(promptDraft)
+    if (ok) {
+      setPromptSaveStatus(t('prompt.saved'))
+      setTimeout(() => setPromptSaveStatus(null), 2000)
+    }
+  }
+
+  const handleResetPrompt = async () => {
+    const ok = await resetPrompt()
+    if (ok) {
+      setPromptSaveStatus(t('prompt.resetDone'))
+      setTimeout(() => setPromptSaveStatus(null), 2000)
+    }
+  }
+
   const handleSendMessage = async (message: string) => {
+    setActiveTools([])
     const response = await sendMessage(message)
     if (response?.agent_id) {
       const agent = agents.find((a) => a.id === response.agent_id)
@@ -82,6 +136,10 @@ export default function ChatPage() {
           setActivatedAgentIds((prev) => new Set(prev).add(response.agent_id!))
         }, 300)
       }
+    }
+    // Highlight called tools in the graph
+    if (response?.tool_calls && response.tool_calls.length > 0) {
+      setActiveTools(response.tool_calls.map((tc) => tc.name))
     }
   }
 
@@ -139,6 +197,8 @@ export default function ChatPage() {
     return t(`agentNames.${agentId}`) || agentId
   }
 
+  const isDraftChanged = prompt !== null && promptDraft !== prompt
+
   if (isLoading && !session) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -150,12 +210,13 @@ export default function ChatPage() {
   return (
     <div className="flex h-full gap-3">
       {/* Left sidebar - Agent graph + sessions */}
-      <div className="w-72 flex-shrink-0 flex flex-col gap-3 overflow-hidden">
+      <div className="w-[420px] flex-shrink-0 flex flex-col gap-3 overflow-hidden">
         {/* Interactive agent graph */}
         <AgentGraph
           agents={agents}
           activeAgentId={currentAgent?.id}
           activatedAgentIds={activatedAgentIds}
+          activeTools={activeTools}
           onAgentClick={handleAgentClick}
         />
 
@@ -165,10 +226,12 @@ export default function ChatPage() {
             <div className="flex items-center gap-2.5 mb-1.5">
               <div
                 className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
-                  currentAgent.color === 'amber' ? 'bg-amber-500' : 'bg-blue-500'
+                  currentAgent.color === 'amber' ? 'bg-amber-500'
+                    : currentAgent.color === 'emerald' || currentAgent.color === 'green' ? 'bg-emerald-500'
+                    : 'bg-blue-500'
                 }`}
               >
-                {currentAgent.id === 'claims' ? 'SI' : 'AO'}
+                {currentAgent.id === 'claims' ? 'SI' : currentAgent.id === 'tenders' ? 'AO' : currentAgent.name.substring(0, 2).toUpperCase()}
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-900">{currentAgent.name}</p>
@@ -258,11 +321,13 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
               currentAgent
-                ? currentAgent.color === 'amber' ? 'bg-amber-500' : 'bg-blue-500'
+                ? currentAgent.color === 'amber' ? 'bg-amber-500'
+                  : currentAgent.color === 'emerald' || currentAgent.color === 'green' ? 'bg-emerald-500'
+                  : 'bg-blue-500'
                 : 'bg-blue-600'
             }`}>
               {currentAgent
-                ? currentAgent.id === 'claims' ? 'SI' : 'AO'
+                ? currentAgent.id === 'claims' ? 'SI' : currentAgent.id === 'tenders' ? 'AO' : currentAgent.name.substring(0, 2).toUpperCase()
                 : 'HUB'}
             </div>
             <div>
@@ -274,13 +339,103 @@ export default function ChatPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={handleNewSession}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            {t('chat.newSession')}
-          </button>
+          <div className="flex items-center gap-4">
+            {/* Session token total */}
+            {(() => {
+              const totalTokens = messages.reduce((sum, m) => sum + (m.token_usage?.total_tokens || 0), 0)
+              if (totalTokens === 0) return null
+              return (
+                <span className="text-xs text-gray-400 font-mono" title={t('tokens.sessionTotal')}>
+                  {totalTokens.toLocaleString()} {t('tokens.usage')}
+                </span>
+              )
+            })()}
+            {/* Prompt editor toggle */}
+            <button
+              onClick={handleTogglePromptEditor}
+              className={`p-1.5 rounded transition-colors ${
+                showPromptEditor
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+              }`}
+              title={t('prompt.systemPrompt')}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+            </button>
+            <button
+              onClick={handleNewSession}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              {t('chat.newSession')}
+            </button>
+          </div>
         </div>
+
+        {/* Prompt editor panel (collapsible) */}
+        {showPromptEditor && (
+          <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">{t('prompt.systemPrompt')}</h3>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                  isPromptCustom
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-gray-200 text-gray-500'
+                }`}>
+                  {isPromptCustom ? t('prompt.customBadge') : t('prompt.defaultBadge')}
+                </span>
+                {promptSaveStatus && (
+                  <span className="text-xs text-green-600 font-medium">{promptSaveStatus}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {isPromptCustom && (
+                  <button
+                    onClick={handleResetPrompt}
+                    className="text-xs text-orange-600 hover:text-orange-800 font-medium"
+                  >
+                    {t('prompt.reset')}
+                  </button>
+                )}
+                <button
+                  onClick={handleSavePrompt}
+                  disabled={!isDraftChanged}
+                  className={`text-xs font-medium px-2.5 py-1 rounded ${
+                    isDraftChanged
+                      ? 'bg-purple-600 text-white hover:bg-purple-700'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  {t('prompt.save')}
+                </button>
+                <button
+                  onClick={() => setShowPromptEditor(false)}
+                  className="text-gray-400 hover:text-gray-600 p-0.5"
+                  title={t('prompt.close')}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {isPromptLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600 mr-2" />
+                <span className="text-xs text-gray-500">{t('prompt.loading')}</span>
+              </div>
+            ) : (
+              <textarea
+                value={promptDraft}
+                onChange={(e) => setPromptDraft(e.target.value)}
+                className="w-full h-48 text-xs font-mono bg-white border border-gray-300 rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                spellCheck={false}
+              />
+            )}
+          </div>
+        )}
 
         {/* Error display */}
         {error && (

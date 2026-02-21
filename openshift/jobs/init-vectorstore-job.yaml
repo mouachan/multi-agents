@@ -3,7 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: init-vectorstore
-  namespace: claims-demo
+  namespace: multi-agents
 spec:
   backoffLimit: 0
   template:
@@ -42,7 +42,7 @@ spec:
 
         env:
         - name: POSTGRES_HOST
-          value: "postgresql.claims-demo.svc.cluster.local"
+          value: "postgresql.multi-agents.svc.cluster.local"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_DB
@@ -55,7 +55,7 @@ spec:
               name: postgresql-secret
               key: POSTGRES_PASSWORD
         - name: LLAMASTACK_ENDPOINT
-          value: "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321"
+          value: "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321"
 
         volumeMounts:
         - name: init-script

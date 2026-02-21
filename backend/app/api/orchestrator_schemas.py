@@ -36,6 +36,20 @@ class SuggestedAction(BaseModel):
     params: Optional[Dict[str, Any]] = None
 
 
+class ToolCallInfo(BaseModel):
+    name: str
+    status: str = "completed"
+    server_label: Optional[str] = None
+    output: Optional[str] = None
+    error: Optional[str] = None
+
+
+class TokenUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class ChatMessageResponse(BaseModel):
     session_id: str
     intent: str
@@ -43,6 +57,9 @@ class ChatMessageResponse(BaseModel):
     message: str
     suggested_actions: List[SuggestedAction] = []
     entity_reference: Optional[Dict[str, Any]] = None
+    tool_calls: List[ToolCallInfo] = []
+    token_usage: Optional[TokenUsage] = None
+    model_id: Optional[str] = None
 
 
 class MessageItem(BaseModel):
@@ -53,6 +70,8 @@ class MessageItem(BaseModel):
     entity_id: Optional[str] = None
     entity_type: Optional[str] = None
     suggested_actions: Optional[List[Dict[str, Any]]] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    token_usage: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
 
 
@@ -74,3 +93,13 @@ class SessionSummary(BaseModel):
 class SessionListResponse(BaseModel):
     sessions: List[SessionSummary]
     total: int
+
+
+class SetPromptRequest(BaseModel):
+    custom_prompt: str = Field(..., min_length=10, description="Custom system prompt")
+
+
+class PromptResponse(BaseModel):
+    prompt: str
+    is_custom: bool
+    agent_id: Optional[str] = None

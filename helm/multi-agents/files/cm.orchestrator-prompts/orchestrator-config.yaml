@@ -1,0 +1,305 @@
+# Orchestrator structured configuration
+# Externalizes hardcoded values from orchestrator_service.py
+
+# Conversation context management for LLM calls
+conversation:
+  # Max messages from history sent to the LLM
+  max_history_messages: 10
+  # Truncate assistant messages in history beyond this length (avoids context overflow with tool outputs)
+  max_history_msg_length: 800
+  # Retry when LLM writes tool calls as text instead of using function calling API
+  max_tool_call_retries: 1
+  # Max inference iterations (tool call rounds) per Responses API call
+  max_infer_iters_simple: 2
+  max_infer_iters_complex: 10
+
+# Tool display configuration for frontend rendering
+tool_display:
+  tools:
+    ocr_document:
+      label: { fr: "OCR Document", en: "OCR Document" }
+      short: "OCR"
+      category: extraction
+    ocr_extract_claim_info:
+      label: { fr: "OCR Extraction", en: "OCR Extract" }
+      short: "OCR"
+      category: extraction
+    retrieve_user_info:
+      label: { fr: "Infos Utilisateur", en: "User Info" }
+      short: "USR"
+      category: rag
+    retrieve_similar_claims:
+      label: { fr: "Sinistres Similaires", en: "Similar Claims" }
+      short: "SIM"
+      category: rag
+    search_knowledge_base:
+      label: { fr: "Base de Connaissances", en: "Knowledge Base" }
+      short: "RAG"
+      category: rag
+    retrieve_similar_references:
+      label: { fr: "References Similaires", en: "Similar References" }
+      short: "REF"
+      category: rag
+    retrieve_historical_tenders:
+      label: { fr: "Historique AO", en: "Historical Tenders" }
+      short: "HIS"
+      category: rag
+    retrieve_capabilities:
+      label: { fr: "Capacites", en: "Capabilities" }
+      short: "CAP"
+      category: rag
+    list_claims:
+      label: { fr: "Liste Sinistres", en: "List Claims" }
+      short: "LST"
+      category: crud
+    get_claim:
+      label: { fr: "Detail Sinistre", en: "Get Claim" }
+      short: "GET"
+      category: crud
+    get_claim_documents:
+      label: { fr: "Documents Sinistre", en: "Claim Documents" }
+      short: "DOC"
+      category: crud
+    get_claim_statistics:
+      label: { fr: "Statistiques Sinistres", en: "Claim Statistics" }
+      short: "STA"
+      category: crud
+    analyze_claim:
+      label: { fr: "Analyser Sinistre", en: "Analyze Claim" }
+      short: "ANL"
+      category: crud
+    list_tenders:
+      label: { fr: "Liste AO", en: "List Tenders" }
+      short: "LST"
+      category: crud
+    get_tender:
+      label: { fr: "Detail AO", en: "Get Tender" }
+      short: "GET"
+      category: crud
+    get_tender_documents:
+      label: { fr: "Documents AO", en: "Tender Documents" }
+      short: "DOC"
+      category: crud
+    get_tender_statistics:
+      label: { fr: "Statistiques AO", en: "Tender Statistics" }
+      short: "STA"
+      category: crud
+    analyze_tender:
+      label: { fr: "Analyser AO", en: "Analyze Tender" }
+      short: "ANL"
+      category: crud
+  servers:
+    ocr-server: { label: "OCR", color: "blue" }
+    rag-server: { label: "RAG", color: "purple" }
+    claims-server: { label: "Claims", color: "emerald" }
+    tenders-server: { label: "Tenders", color: "amber" }
+  categories:
+    extraction: { label: { fr: "Extraction", en: "Extraction" }, icon: "scan" }
+    rag: { label: { fr: "Recherche", en: "Search" }, icon: "search" }
+    crud: { label: { fr: "Donnees", en: "Data" }, icon: "database" }
+
+language_detection:
+  fr_words:
+    - le
+    - la
+    - les
+    - des
+    - du
+    - un
+    - une
+    - est
+    - sont
+    - avec
+    - pour
+    - dans
+    - sur
+    - par
+    - que
+    - qui
+    - ce
+    - cette
+    - mon
+    - mes
+    - ton
+    - tes
+    - son
+    - ses
+    - nous
+    - vous
+    - leur
+    - leurs
+    - je
+    - tu
+    - il
+    - elle
+    - ils
+    - elles
+    - et
+    - ou
+    - mais
+    - donc
+    - sinistre
+    - sinistres
+    - attente
+    - traiter
+    - lister
+    - afficher
+    - combien
+    - appel
+    - offres
+    - voir
+  min_match_count: 2
+
+welcome_messages:
+  fr:
+    orchestrator: "Bienvenue ! Je suis l'orchestrateur multi-agents. Decrivez ce que vous souhaitez faire et je vous orienterai vers l'agent specialise."
+    agent: "Session demarree avec l'agent **{agent_name}**. Comment puis-je vous aider ?"
+    fallback: "Session demarree."
+  en:
+    orchestrator: "Welcome! I'm the multi-agent orchestrator. Describe what you'd like to do and I'll route you to the right specialized agent."
+    agent: "Session started with agent **{agent_name}**. How can I help you?"
+    fallback: "Session started."
+
+suggested_actions:
+  tenders:
+    fr:
+      - label: "Voir les appels d'offres"
+        action: navigate
+        params:
+          path: /tenders
+      - label: "Analyser un AO"
+        action: chat
+        params: {}
+      - label: "Lister les AO en attente"
+        action: chat
+        params: {}
+    en:
+      - label: "View tenders"
+        action: navigate
+        params:
+          path: /tenders
+      - label: "Analyze a tender"
+        action: chat
+        params: {}
+      - label: "List pending tenders"
+        action: chat
+        params: {}
+  claims:
+    fr:
+      - label: "Voir les sinistres"
+        action: navigate
+        params:
+          path: /claims
+      - label: "Traiter un sinistre"
+        action: chat
+        params: {}
+      - label: "Lister les claims en attente"
+        action: chat
+        params: {}
+    en:
+      - label: "View claims"
+        action: navigate
+        params:
+          path: /claims
+      - label: "Process a claim"
+        action: chat
+        params: {}
+      - label: "List pending claims"
+        action: chat
+        params: {}
+  general:
+    fr:
+      - label: "Sinistres (Claims)"
+        action: navigate
+        params:
+          path: /claims
+      - label: "Appels d'offres (AO)"
+        action: navigate
+        params:
+          path: /tenders
+      - label: "Parler a l'agent Sinistres"
+        action: chat
+        params: {}
+      - label: "Parler a l'agent AO"
+        action: chat
+        params: {}
+    en:
+      - label: "Claims"
+        action: navigate
+        params:
+          path: /claims
+      - label: "Tenders"
+        action: navigate
+        params:
+          path: /tenders
+      - label: "Talk to Claims agent"
+        action: chat
+        params: {}
+      - label: "Talk to Tenders agent"
+        action: chat
+        params: {}
+
+post_response_actions:
+  tenders:
+    go_keywords:
+      - "recommandation : go"
+      - "recommandation: go"
+      - "decision: go"
+      - "decision : go"
+      - "go/no-go: go"
+      - "go/no-go : go"
+      - "recommendation: go"
+    go_action:
+      fr: "Deposer un claim assurance pour ce projet"
+      en: "File an insurance claim for this project"
+    common:
+      fr:
+        - label: "Voir les details de l'AO"
+          action: navigate
+          params:
+            path: /tenders
+        - label: "Analyser un autre AO"
+          action: chat
+          params: {}
+      en:
+        - label: "View tender details"
+          action: navigate
+          params:
+            path: /tenders
+        - label: "Analyze another tender"
+          action: chat
+          params: {}
+  claims:
+    result_keywords:
+      - approved
+      - approuve
+      - denied
+      - refuse
+      - manual_review
+      - revue manuelle
+    result_actions:
+      fr:
+        - label: "Voir les details du sinistre"
+          action: navigate
+          params:
+            path: /claims
+        - label: "Demander une revue manuelle"
+          action: chat
+          params: {}
+      en:
+        - label: "View claim details"
+          action: navigate
+          params:
+            path: /claims
+        - label: "Request manual review"
+          action: chat
+          params: {}
+    common:
+      fr:
+        - label: "Traiter un autre sinistre"
+          action: chat
+          params: {}
+      en:
+        - label: "Process another claim"
+          action: chat
+          params: {}

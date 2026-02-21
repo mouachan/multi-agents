@@ -6,7 +6,7 @@ Complete reference for Helm chart configuration values.
 
 ```yaml
 global:
-  namespace: claims-demo           # Target namespace
+  namespace: multi-agents           # Target namespace
   clusterDomain: apps.cluster.com  # OpenShift cluster domain
 ```
 
@@ -372,7 +372,7 @@ minio:
 
 ## Complete Example
 
-See `helm/agentic-claims-demo/values-sample.yaml` for a complete working example.
+See `helm/multi-agents/values-sample.yaml` for a complete working example.
 
 **Minimal values.yaml for deployment**:
 
@@ -417,7 +417,7 @@ guardrails:
 Validate your values file before deploying:
 
 ```bash
-helm template agentic-claims-demo ./helm/agentic-claims-demo \
+helm template multi-agents ./helm/multi-agents \
   -f values-mydeployment.yaml \
   --debug \
   --dry-run

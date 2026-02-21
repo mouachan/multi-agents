@@ -52,12 +52,12 @@ Configure these parameters when creating a pipeline run in RHOAI:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `postgres_host` | `postgresql.claims-demo.svc.cluster.local` | PostgreSQL hostname |
+| `postgres_host` | `postgresql.multi-agents.svc.cluster.local` | PostgreSQL hostname |
 | `postgres_port` | `5432` | PostgreSQL port |
 | `postgres_db` | `claims_db` | Database name |
 | `postgres_user` | `claims_user` | Database user |
 | `postgres_password` | `ClaimsDemo2025!` | Database password |
-| `llamastack_endpoint` | `http://llamastack-test-v035.claims-demo.svc.cluster.local:8321` | LlamaStack API endpoint |
+| `llamastack_endpoint` | `http://llamastack-test-v035.multi-agents.svc.cluster.local:8321` | LlamaStack API endpoint |
 | `embedding_model` | `gemma-300m` | Embedding model name |
 | `batch_size` | `5` | Documents per batch |
 
@@ -98,16 +98,16 @@ For the enriched seed data:
 
 Check LlamaStack service availability:
 ```bash
-oc get pods -n claims-demo | grep llamastack
-oc logs -n claims-demo <llamastack-pod-name>
+oc get pods -n multi-agents | grep llamastack
+oc logs -n multi-agents <llamastack-pod-name>
 ```
 
 ### Database connection errors
 
 Verify PostgreSQL secret and service:
 ```bash
-oc get secret postgresql-secret -n claims-demo
-oc get svc postgresql -n claims-demo
+oc get secret postgresql-secret -n multi-agents
+oc get svc postgresql -n multi-agents
 ```
 
 ### Memory issues

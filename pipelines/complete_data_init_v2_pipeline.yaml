@@ -1,7 +1,7 @@
 # PIPELINE DEFINITION
 # Name: complete-data-initialization
 # Description: 
-#                  Complete data initialization for the Claims Demo.
+#                  Complete data initialization for the Multi-Agent AI Platform.
 #              
 #                  This pipeline initializes ALL data needed:
 #                  1. Knowledge Base embeddings (15 entries)
@@ -13,7 +13,7 @@
 # Inputs:
 #    batch_size: int [Default: 5.0]
 #    embedding_model: str [Default: 'vllm-embedding/embeddinggemma-300m']
-#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321']
 #    llm_model: str [Default: 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8']
 #    max_retries: int [Default: 30.0]
 #    num_historical_claims: int [Default: 60.0]
@@ -155,7 +155,7 @@ deploymentSpec:
           \ import sessionmaker\n\n    logging.basicConfig(level=logging.INFO, format='%(asctime)s\
           \ - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection\n    postgres_host = os.getenv('POSTGRES_HOST',\
-          \ 'postgresql.claims-demo.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
+          \ 'postgresql.multi-agents.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
           \ '5432')\n    postgres_db = os.getenv('POSTGRES_DATABASE')\n    postgres_user\
           \ = os.getenv('POSTGRES_USER')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
           \n    DATABASE_URL = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
@@ -265,7 +265,7 @@ deploymentSpec:
           \ import sessionmaker\n\n    logging.basicConfig(level=logging.INFO, format='%(asctime)s\
           \ - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection\n    postgres_host = os.getenv('POSTGRES_HOST',\
-          \ 'postgresql.claims-demo.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
+          \ 'postgresql.multi-agents.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
           \ '5432')\n    postgres_db = os.getenv('POSTGRES_DATABASE')\n    postgres_user\
           \ = os.getenv('POSTGRES_USER')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
           \n    DATABASE_URL = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
@@ -349,7 +349,7 @@ deploymentSpec:
           \ sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
           \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection from environment variables (injected from secret)\n\
-          \    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')\n\
           \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
           \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
           \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
@@ -433,7 +433,7 @@ deploymentSpec:
           \ sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
           \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection from environment variables (injected from secret)\n\
-          \    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')\n\
           \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
           \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
           \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
@@ -547,7 +547,7 @@ deploymentSpec:
           \ text\n    from sqlalchemy.orm import sessionmaker\n\n    logging.basicConfig(level=logging.INFO,\
           \ format='%(asctime)s - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection\n    postgres_host = os.getenv('POSTGRES_HOST',\
-          \ 'postgresql.claims-demo.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
+          \ 'postgresql.multi-agents.svc.cluster.local')\n    postgres_port = os.getenv('POSTGRES_PORT',\
           \ '5432')\n    postgres_db = os.getenv('POSTGRES_DATABASE')\n    postgres_user\
           \ = os.getenv('POSTGRES_USER')\n    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\
           \n    DATABASE_URL = f\"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}\"\
@@ -671,7 +671,7 @@ deploymentSpec:
           \ import sessionmaker\n\n    logging.basicConfig(level=logging.INFO, format='%(asctime)s\
           \ - %(levelname)s - %(message)s')\n    logger = logging.getLogger(__name__)\n\
           \n    # Database connection from environment variables\n    postgres_host\
-          \ = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')\n\
+          \ = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')\n\
           \    postgres_port = os.getenv('POSTGRES_PORT', '5432')\n    postgres_db\
           \ = os.getenv('POSTGRES_DATABASE')\n    postgres_user = os.getenv('POSTGRES_USER')\n\
           \    postgres_password = os.getenv('POSTGRES_PASSWORD')\n\n    DATABASE_URL\
@@ -712,7 +712,7 @@ deploymentSpec:
           resourceCpuLimit: '2'
           resourceMemoryLimit: 8Gi
 pipelineInfo:
-  description: "\n    Complete data initialization for the Claims Demo.\n\n    This\
+  description: "\n    Complete data initialization for the Multi-Agent AI Platform.\n\n    This\
     \ pipeline initializes ALL data needed:\n    1. Knowledge Base embeddings (15\
     \ entries)\n    2. Historical claims with OCR, embeddings, and AI decisions (60\
     \ claims)\n    3. Test claims with realistic scenarios (40 claims)\n\n    PostgreSQL\
@@ -843,7 +843,7 @@ root:
         isOptional: true
         parameterType: STRING
       llamastack_endpoint:
-        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        defaultValue: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
         description: LlamaStack API endpoint
         isOptional: true
         parameterType: STRING

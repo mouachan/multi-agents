@@ -4,11 +4,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '4'
   name: ocr-server
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
     app: ocr-server
@@ -40,7 +40,7 @@ spec:
         - name: LOG_LEVEL
           value: INFO
         - name: LLAMASTACK_ENDPOINT
-          value: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+          value: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
         - name: HOST
           value: 0.0.0.0
         - name: PORT

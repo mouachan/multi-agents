@@ -2,25 +2,25 @@
 -- Seed Data 004: Harmonized AO -> Claim Scenario
 --
 -- Coherent scenario:
--- 1. VINCI as user with construction insurance contract
+-- 1. Company as user with construction insurance contract
 -- 2. AO-2025-IDF-003: "Construction complexe sportif municipal Cergy-Pontoise"
 -- 3. Agent AO analyses -> Decision Go (good references, certs OK)
 -- 4. 6 months later: incident on site (collapsed slab)
--- 5. CLM-VINCI-001: Insurance claim for site damages
+-- 5. CLM-ENT-001: Insurance claim for site damages
 -- 6. Agent Claims analyses -> Manual Review (high amount, complex liability)
 -- 7. Linked via metadata.project_reference = "PROJ-2025-CERGY-001"
 -- 8. PII _redacted fields pre-populated
 -- ============================================================================
 
--- User: VINCI Construction IDF
+-- User: Entreprise Construction IDF
 INSERT INTO users (
     id, user_id, email, full_name, date_of_birth, phone_number, address,
     email_redacted, full_name_redacted, phone_number_redacted, date_of_birth_redacted, address_redacted,
     is_active, metadata
 ) VALUES (
     'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    'VINCI-IDF-001',
-    'jean.martin@vinci-construction.fr',
+    'ENT-IDF-001',
+    'jean.martin@company-btp.fr',
     'Jean Martin',
     '1975-03-22',
     '06 12 34 56 78',
@@ -31,7 +31,7 @@ INSERT INTO users (
     '****-**-**',
     '{"street": "1 ***", "city": "Rueil-Malmaison", "zip": "*****", "country": "France"}',
     true,
-    '{"company": "VINCI Construction IDF", "role": "Directeur de Projets", "certifications": ["ISO 9001", "ISO 14001", "MASE"]}'
+    '{"company": "Entreprise Construction IDF", "role": "Directeur de Projets", "certifications": ["ISO 9001", "ISO 14001", "MASE"]}'
 ) ON CONFLICT (user_id) DO NOTHING;
 
 -- User contract: Construction All-Risk Insurance
@@ -42,20 +42,20 @@ INSERT INTO user_contracts (
     is_active, metadata
 ) VALUES (
     'b2c3d4e5-f6a7-8901-bcde-f12345678901',
-    'VINCI-IDF-001',
-    'CTR-VINCI-RC-2024',
+    'ENT-IDF-001',
+    'CTR-ENT-RC-2024',
     'construction_all_risk',
     '2024-01-01',
     '2026-12-31',
     5000000.00,
     125000.00,
     'annual',
-    'Police Tous Risques Chantier (TRC) couvrant l''ensemble des travaux de construction entrepris par VINCI Construction IDF. Couverture: dommages materiels, effondrement, incendie, vol, vandalisme. Franchise: 50 000 EUR par sinistre. Plafond: 5 000 000 EUR par projet.',
+    'Police Tous Risques Chantier (TRC) couvrant l''ensemble des travaux de construction entrepris par Entreprise Construction IDF. Couverture: dommages materiels, effondrement, incendie, vol, vandalisme. Franchise: 50 000 EUR par sinistre. Plafond: 5 000 000 EUR par projet.',
     '{"type": "TRC", "franchise": 50000, "plafond": 5000000, "couverture_decennale": true}',
     '{"dommages_materiels": true, "effondrement": true, "incendie": true, "vol": true, "responsabilite_civile": true, "decennale": true}',
     '{"guerre": true, "nucleaire": true, "faute_intentionnelle": true, "defaut_entretien_apres_reception": true}',
     true,
-    '{"assureur": "AXA XL", "courtier": "Marsh", "project_reference": "PROJ-2025-CERGY-001"}'
+    '{"assureur": "Assureur Partenaire", "courtier": "Marsh", "project_reference": "PROJ-2025-CERGY-001"}'
 ) ON CONFLICT (contract_number) DO NOTHING;
 
 
@@ -70,7 +70,7 @@ INSERT INTO tenders (
     is_archived, metadata, agent_logs
 ) VALUES (
     'c3d4e5f6-a7b8-9012-cdef-123456789012',
-    'VINCI-IDF',
+    'ENT-IDF',
     'AO-2025-IDF-003',
     'marche_public',
     '/mnt/documents/tenders/ao-2025-idf-003-dce.pdf',
@@ -154,7 +154,7 @@ INSERT INTO tender_decisions (
     'e5f6a7b8-c9d0-1234-efab-345678901234',
     'c3d4e5f6-a7b8-9012-cdef-123456789012',
     'go', 0.85,
-    'Recommandation GO pour l''AO Construction complexe sportif Cergy-Pontoise. VINCI Construction IDF dispose de references solides en equipements sportifs (3 projets similaires sur 5 ans), toutes les certifications requises (Qualibat 2111, ISO 14001), et les capacites internes sont disponibles. Le montant de 4.2M EUR est dans notre fourchette habituelle. Le taux de reussite historique sur ce type de marche public en IDF est de 42%. Points de vigilance: delai serre de 18 mois et forte concurrence attendue (Bouygues, Eiffage).',
+    'Recommandation GO pour l''AO Construction complexe sportif Cergy-Pontoise. Entreprise Construction IDF dispose de references solides en equipements sportifs (3 projets similaires sur 5 ans), toutes les certifications requises (Qualibat 2111, ISO 14001), et les capacites internes sont disponibles. Le montant de 4.2M EUR est dans notre fourchette habituelle. Le taux de reussite historique sur ce type de marche public en IDF est de 42%. Points de vigilance: delai serre de 18 mois et forte concurrence attendue (Bouygues, Eiffage).',
     '2025-01-15 09:05:30+00',
     'go', 0.85,
     'Recommandation GO pour l''AO Construction complexe sportif Cergy-Pontoise.',
@@ -168,7 +168,7 @@ INSERT INTO tender_decisions (
 
 
 -- ============================================================================
--- PART 2: CLAIM - CLM-VINCI-001 (6 months after AO Go)
+-- PART 2: CLAIM - CLM-ENT-001 (6 months after AO Go)
 -- Incident: Collapsed slab during construction
 -- Decision: MANUAL_REVIEW (high amount, complex liability)
 -- ============================================================================
@@ -179,10 +179,10 @@ INSERT INTO claims (
     is_archived, metadata, agent_logs
 ) VALUES (
     'f6a7b8c9-d0e1-2345-fabc-456789012345',
-    'VINCI-IDF-001',
-    'CLM-VINCI-001',
+    'ENT-IDF-001',
+    'CLM-ENT-001',
     'construction_damage',
-    '/mnt/documents/claims/clm-vinci-001-sinistre.pdf',
+    '/mnt/documents/claims/clm-ent-001-sinistre.pdf',
     'manual_review',
     '2025-07-22 14:30:00+00',
     '2025-07-22 14:35:45+00',
@@ -202,15 +202,15 @@ INSERT INTO claim_documents (
     'a7b8c9d0-e1f2-3456-abcd-567890123456',
     'f6a7b8c9-d0e1-2345-fabc-456789012345',
     'sinistre_declaration',
-    '/mnt/documents/claims/clm-vinci-001-sinistre.pdf',
+    '/mnt/documents/claims/clm-ent-001-sinistre.pdf',
     1850000,
     'application/pdf',
-    'DECLARATION DE SINISTRE - VINCI CONSTRUCTION IDF
+    'DECLARATION DE SINISTRE - Entreprise Construction IDF
 
-Assure: VINCI Construction IDF
-Contrat: CTR-VINCI-RC-2024 (Tous Risques Chantier)
+Assure: Entreprise Construction IDF
+Contrat: CTR-ENT-RC-2024 (Tous Risques Chantier)
 Declarant: Jean Martin, Directeur de Projets
-Contact: jean.martin@vinci-construction.fr / 06 12 34 56 78
+Contact: jean.martin@company-btp.fr / 06 12 34 56 78
 
 Date du sinistre: 20/07/2025
 Lieu: Chantier complexe sportif municipal, Cergy-Pontoise (95)
@@ -238,10 +238,10 @@ MESURES PRISES:
 - Mise en securite du perimetre
 - Expert BET missionne (Bureau Veritas)
 - Declaration CRAM effectuee',
-    'DECLARATION DE SINISTRE - VINCI CONSTRUCTION IDF
+    'DECLARATION DE SINISTRE - Entreprise Construction IDF
 
-Assure: VINCI Construction IDF
-Contrat: CTR-VINCI-RC-2024 (Tous Risques Chantier)
+Assure: Entreprise Construction IDF
+Contrat: CTR-ENT-RC-2024 (Tous Risques Chantier)
 Declarant: J*** M***, Directeur de Projets
 Contact: j***@***.fr / ** ** ** ** **
 
@@ -271,7 +271,7 @@ MESURES PRISES:
 - Mise en securite du perimetre
 - Expert BET missionne (Bureau Veritas)
 - Declaration CRAM effectuee',
-    '{"assure": "VINCI Construction IDF", "contrat": "CTR-VINCI-RC-2024", "date_sinistre": "2025-07-20", "lieu": "Cergy-Pontoise", "type_sinistre": "effondrement_dalle", "montant_estime": 850000}',
+    '{"assure": "Entreprise Construction IDF", "contrat": "CTR-ENT-RC-2024", "date_sinistre": "2025-07-20", "lieu": "Cergy-Pontoise", "type_sinistre": "effondrement_dalle", "montant_estime": 850000}',
     0.94,
     '2025-07-22 14:31:30+00',
     8,
@@ -288,12 +288,12 @@ INSERT INTO claim_decisions (
     'b8c9d0e1-f2a3-4567-bcde-678901234567',
     'f6a7b8c9-d0e1-2345-fabc-456789012345',
     'manual_review', 0.72,
-    'Recommandation MANUAL_REVIEW pour le sinistre CLM-VINCI-001 (effondrement dalle, chantier Cergy-Pontoise). Le montant estime de 850 000 EUR est eleve et depasse le seuil de validation automatique. Le contrat CTR-VINCI-RC-2024 couvre bien les dommages materiels et effondrements (couverture TRC). Cependant, la responsabilite est complexe: il faut determiner si l''effondrement est du a un defaut de conception (responsabilite BET), un defaut d''execution (responsabilite VINCI), ou un vice de materiaux (responsabilite fournisseur). L''expertise Bureau Veritas est en cours. Points favorables: mesures de securite appropriees, aucun blesse, declaration dans les delais. Le chef de chantier Jean Martin a reagi rapidement. Contact: jean.martin@vinci-construction.fr.',
+    'Recommandation MANUAL_REVIEW pour le sinistre CLM-ENT-001 (effondrement dalle, chantier Cergy-Pontoise). Le montant estime de 850 000 EUR est eleve et depasse le seuil de validation automatique. Le contrat CTR-ENT-RC-2024 couvre bien les dommages materiels et effondrements (couverture TRC). Cependant, la responsabilite est complexe: il faut determiner si l''effondrement est du a un defaut de conception (responsabilite BET), un defaut d''execution (responsabilite entreprise), ou un vice de materiaux (responsabilite fournisseur). L''expertise Bureau Veritas est en cours. Points favorables: mesures de securite appropriees, aucun blesse, declaration dans les delais. Le chef de chantier Jean Martin a reagi rapidement. Contact: jean.martin@company-btp.fr.',
     '2025-07-22 14:35:45+00',
     'manual_review', 0.72,
-    'Recommandation MANUAL_REVIEW pour le sinistre CLM-VINCI-001.',
-    'Recommandation MANUAL_REVIEW pour le sinistre CLM-VINCI-001 (effondrement dalle, chantier Cergy-Pontoise). Le montant estime de 850 000 EUR est eleve et depasse le seuil de validation automatique. Le contrat CTR-VINCI-RC-2024 couvre bien les dommages materiels et effondrements (couverture TRC). Cependant, la responsabilite est complexe: il faut determiner si l''effondrement est du a un defaut de conception (responsabilite BET), un defaut d''execution (responsabilite VINCI), ou un vice de materiaux (responsabilite fournisseur). L''expertise Bureau Veritas est en cours. Points favorables: mesures de securite appropriees, aucun blesse, declaration dans les delais. Le chef de chantier J*** M*** a reagi rapidement. Contact: j***@***.fr.',
-    '{"contrat": "CTR-VINCI-RC-2024", "couverture": "TRC - Tous Risques Chantier", "franchise": 50000, "plafond": 5000000, "couvert": true}',
+    'Recommandation MANUAL_REVIEW pour le sinistre CLM-ENT-001.',
+    'Recommandation MANUAL_REVIEW pour le sinistre CLM-ENT-001 (effondrement dalle, chantier Cergy-Pontoise). Le montant estime de 850 000 EUR est eleve et depasse le seuil de validation automatique. Le contrat CTR-ENT-RC-2024 couvre bien les dommages materiels et effondrements (couverture TRC). Cependant, la responsabilite est complexe: il faut determiner si l''effondrement est du a un defaut de conception (responsabilite BET), un defaut d''execution (responsabilite entreprise), ou un vice de materiaux (responsabilite fournisseur). L''expertise Bureau Veritas est en cours. Points favorables: mesures de securite appropriees, aucun blesse, declaration dans les delais. Le chef de chantier J*** M*** a reagi rapidement. Contact: j***@***.fr.',
+    '{"contrat": "CTR-ENT-RC-2024", "couverture": "TRC - Tous Risques Chantier", "franchise": 50000, "plafond": 5000000, "couvert": true}',
     'vllm-inference-1/llama-instruct-32-3b',
     true
 ) ON CONFLICT DO NOTHING;

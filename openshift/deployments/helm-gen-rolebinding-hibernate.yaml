@@ -4,7 +4,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '1'
   name: hibernate
-  namespace: claims-demo
+  namespace: multi-agents
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -12,4 +12,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: hibernate
-  namespace: claims-demo
+  namespace: multi-agents

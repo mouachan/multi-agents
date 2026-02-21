@@ -1,4 +1,4 @@
--- Claims Demo Database Initialization Script
+-- Multi-Agent AI Platform Database Initialization Script
 -- PostgreSQL with pgvector extension for RAG capabilities
 
 -- First, enable vector extension in postgres database (required by LlamaStack)
@@ -474,8 +474,8 @@ CREATE TABLE tender_processing_logs (
 
 CREATE INDEX idx_tender_processing_logs_tender_id ON tender_processing_logs(tender_id);
 
--- Vinci references (past project references)
-CREATE TABLE vinci_references (
+-- company references (past project references)
+CREATE TABLE company_references (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     reference_number   VARCHAR(100) UNIQUE,
     project_name       VARCHAR(500),
@@ -495,10 +495,10 @@ CREATE TABLE vinci_references (
     updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_vinci_references_embedding ON vinci_references USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_company_references_embedding ON company_references USING ivfflat (embedding vector_cosine_ops);
 
--- Vinci capabilities (certifications, resources, equipment)
-CREATE TABLE vinci_capabilities (
+-- company capabilities (certifications, resources, equipment)
+CREATE TABLE company_capabilities (
     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     category     VARCHAR(100),
     name         VARCHAR(255),
@@ -514,7 +514,7 @@ CREATE TABLE vinci_capabilities (
     updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_vinci_capabilities_category ON vinci_capabilities(category);
+CREATE INDEX idx_company_capabilities_category ON company_capabilities(category);
 
 -- Historical tenders (past won/lost AOs)
 CREATE TABLE historical_tenders (
@@ -549,10 +549,10 @@ CREATE TRIGGER update_tender_documents_updated_at BEFORE UPDATE ON tender_docume
 CREATE TRIGGER update_tender_decisions_updated_at BEFORE UPDATE ON tender_decisions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_vinci_references_updated_at BEFORE UPDATE ON vinci_references
+CREATE TRIGGER update_company_references_updated_at BEFORE UPDATE ON company_references
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_vinci_capabilities_updated_at BEFORE UPDATE ON vinci_capabilities
+CREATE TRIGGER update_company_capabilities_updated_at BEFORE UPDATE ON company_capabilities
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_historical_tenders_updated_at BEFORE UPDATE ON historical_tenders
@@ -578,7 +578,7 @@ BEGIN
         vr.reference_number,
         vr.project_name,
         1 - (vr.embedding <=> query_embedding) AS similarity_score
-    FROM vinci_references vr
+    FROM company_references vr
     WHERE vr.is_active = TRUE
       AND vr.embedding IS NOT NULL
       AND 1 - (vr.embedding <=> query_embedding) >= similarity_threshold

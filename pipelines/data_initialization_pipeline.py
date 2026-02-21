@@ -190,12 +190,12 @@ def generate_embeddings(
     description="Generate embeddings for knowledge base and claims after database init"
 )
 def data_init_pipeline(
-    postgres_host: str = "postgresql.claims-demo.svc.cluster.local",
+    postgres_host: str = "postgresql.multi-agents.svc.cluster.local",
     postgres_port: str = "5432",
     postgres_db: str = "claims_db",
     postgres_user: str = "claims_user",
     postgres_password: str = "",  # Injected from secret
-    llamastack_endpoint: str = "http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321",
+    llamastack_endpoint: str = "http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321",
     embedding_model: str = "gemma-300m"
 ):
     """Data initialization pipeline."""

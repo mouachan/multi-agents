@@ -2,7 +2,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: backend
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: backend

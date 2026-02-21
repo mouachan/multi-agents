@@ -1,7 +1,7 @@
 -- Migration 002: Add Tender (Appel d'Offres) Tables
 -- Description: Creates tables for tender processing pipeline including
 --              OCR documents, Go/No-Go decisions, processing logs,
---              Vinci references, capabilities, and historical tenders.
+--              company references, capabilities, and historical tenders.
 -- Requires: pgvector extension
 
 -- ============================================================
@@ -111,9 +111,9 @@ CREATE TABLE IF NOT EXISTS tender_processing_logs (
 );
 
 -- ============================================================
--- 5. vinci_references — past project references
+-- 5. company_references — past project references
 -- ============================================================
-CREATE TABLE IF NOT EXISTS vinci_references (
+CREATE TABLE IF NOT EXISTS company_references (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reference_number   VARCHAR(100) UNIQUE,
     project_name       VARCHAR(500),
@@ -134,9 +134,9 @@ CREATE TABLE IF NOT EXISTS vinci_references (
 );
 
 -- ============================================================
--- 6. vinci_capabilities — certifications & resources
+-- 6. company_capabilities — certifications & resources
 -- ============================================================
-CREATE TABLE IF NOT EXISTS vinci_capabilities (
+CREATE TABLE IF NOT EXISTS company_capabilities (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category     VARCHAR(100),
     name         VARCHAR(255),
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS vinci_capabilities (
     updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_vinci_capabilities_category ON vinci_capabilities (category);
+CREATE INDEX IF NOT EXISTS idx_company_capabilities_category ON company_capabilities (category);
 
 -- ============================================================
 -- 7. historical_tenders — past won / lost AOs
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS historical_tenders (
 -- Vector similarity search functions
 -- ============================================================
 
--- Search similar Vinci references by embedding
+-- Search similar company references by embedding
 CREATE OR REPLACE FUNCTION search_similar_references(
     query_embedding  vector(768),
     similarity_threshold FLOAT DEFAULT 0.7,
@@ -220,7 +220,7 @@ AS $$
         vr.certifications_used,
         vr.key_metrics,
         1 - (vr.embedding <=> query_embedding)::FLOAT AS similarity
-    FROM vinci_references vr
+    FROM company_references vr
     WHERE vr.is_active = TRUE
       AND vr.embedding IS NOT NULL
       AND 1 - (vr.embedding <=> query_embedding) >= similarity_threshold

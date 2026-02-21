@@ -20,7 +20,7 @@ POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "claims_pass")
 
 # Embedding service
-EMBEDDING_URL = os.getenv("EMBEDDING_URL", "https://embeddinggemma-300m-edg-demo.apps.cluster-rk6mx.rk6mx.sandbox492.opentlc.com")
+EMBEDDING_URL = os.getenv("EMBEDDING_URL", "https://embedding-service.apps.your-cluster.example.com")
 
 # User data
 USERS_DATA = [

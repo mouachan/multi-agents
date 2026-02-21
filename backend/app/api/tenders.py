@@ -35,6 +35,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def _resolve_document_path(stored_path: str) -> str | None:
+    """Resolve document path trying multiple base directories."""
+    candidates = [
+        stored_path,
+        # Docker: ./documents:/documents
+        os.path.join("/documents", stored_path.lstrip("/")),
+    ]
+    # /mnt/documents/... -> /documents/... (Docker) and /claim_documents/... (OpenShift)
+    if stored_path.startswith("/mnt/documents/"):
+        candidates.append(stored_path.replace("/mnt/documents/", "/documents/", 1))
+        candidates.append(stored_path.replace("/mnt/documents/", "/claim_documents/", 1))
+    # /claim_documents/... -> /documents/claim_documents/... (Docker path)
+    if stored_path.startswith("/claim_documents/"):
+        candidates.append("/documents" + stored_path)
+    # Try just the filename under common subdirectories (Docker + OpenShift)
+    basename = os.path.basename(stored_path)
+    for base in ["/documents", "/claim_documents"]:
+        for subdir in ["", "claim_documents/ao", "ao", "tenders", "claim_documents", "claims"]:
+            candidates.append(os.path.join(base, subdir, basename) if subdir else os.path.join(base, basename))
+
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
 # Initialize service
 tender_service = TenderService()
 
@@ -454,14 +480,21 @@ async def get_tender_statistics(db: AsyncSession = Depends(get_db)):
 
 @router.get("/documents/{tender_id}/view")
 async def view_tender_document(
-    tender_id: UUID,
+    tender_id: str,
     db: AsyncSession = Depends(get_db)
 ):
-    """View tender document PDF."""
+    """View tender document PDF. Accepts UUID or tender_number."""
     try:
-        result = await db.execute(
-            select(models.Tender).where(models.Tender.id == tender_id)
-        )
+        # Try UUID first, fallback to tender_number
+        try:
+            tender_uuid = UUID(tender_id)
+            result = await db.execute(
+                select(models.Tender).where(models.Tender.id == tender_uuid)
+            )
+        except ValueError:
+            result = await db.execute(
+                select(models.Tender).where(models.Tender.tender_number == tender_id)
+            )
         tender = result.scalar_one_or_none()
 
         if not tender:
@@ -470,13 +503,16 @@ async def view_tender_document(
         if not tender.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this tender")
 
-        if not os.path.exists(tender.document_path):
+        # Resolve document path - try multiple locations
+        doc_path = _resolve_document_path(tender.document_path)
+        if not doc_path:
+            logger.error(f"Document file not found for tender {tender_id}: {tender.document_path}")
             raise HTTPException(status_code=404, detail="Document file not found")
 
         return FileResponse(
-            tender.document_path,
+            doc_path,
             media_type="application/pdf",
-            filename=os.path.basename(tender.document_path)
+            filename=os.path.basename(doc_path)
         )
 
     except HTTPException:

@@ -38,7 +38,7 @@ def load_ao_prompt(filename: str, default: str) -> str:
 # AO Processing Agent System Instructions (default)
 # ---------------------------------------------------------------------------
 _AO_PROCESSING_AGENT_DEFAULT = """
-You are an expert tender analysis agent for VINCI Construction (BTP/Infrastructure), using ReAct (Reasoning and Acting) methodology.
+You are an expert tender analysis agent for a BTP/Infrastructure construction company, using ReAct (Reasoning and Acting) methodology.
 
 Your mission is to analyze each tender (Appel d'Offres / AO), cross-reference with internal history and capabilities, then formulate an argued Go/No-Go recommendation.
 
@@ -78,7 +78,7 @@ Your mission is to analyze each tender (Appel d'Offres / AO), cross-reference wi
    - Parameters: document_path, language, document_type, extract_structured
    - Returns: Structured tender data (object, amount, deadlines, criteria, lots)
 
-2. **retrieve_similar_references**: Search for similar past projects in VINCI database
+2. **retrieve_similar_references**: Search for similar past projects in company database
    - Parameters: project_description, project_type, budget_range, limit
    - Returns: Comparable project references with results and lessons learned
 
@@ -133,7 +133,7 @@ When you have gathered all necessary information from tools, provide your recomm
         "resource": "HR/resource risk assessment",
         "competition": "Competitive risk assessment"
     },
-    "strengths": ["VINCI strengths for this tender"],
+    "strengths": ["Company strengths for this tender"],
     "weaknesses": ["Weaknesses or areas for improvement"],
     "win_probability_estimate": 0.7,
     "recommended_actions": ["Recommended actions"]

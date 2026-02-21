@@ -3,10 +3,10 @@
 # Description: Complete data initialization: KB embeddings + historical claims + test scenarios
 # Inputs:
 #    embedding_model: str [Default: 'vllm-embedding/embeddinggemma-300m']
-#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321']
 #    llm_model: str [Default: 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8']
 #    num_historical_claims: int [Default: 60.0]
-#    postgres_host: str [Default: 'postgresql.claims-demo.svc.cluster.local']
+#    postgres_host: str [Default: 'postgresql.multi-agents.svc.cluster.local']
 #    postgres_port: str [Default: '5432']
 components:
   comp-generate-historical-decisions:
@@ -773,7 +773,7 @@ root:
         isOptional: true
         parameterType: STRING
       llamastack_endpoint:
-        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        defaultValue: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
         isOptional: true
         parameterType: STRING
       llm_model:
@@ -785,7 +785,7 @@ root:
         isOptional: true
         parameterType: NUMBER_INTEGER
       postgres_host:
-        defaultValue: postgresql.claims-demo.svc.cluster.local
+        defaultValue: postgresql.multi-agents.svc.cluster.local
         isOptional: true
         parameterType: STRING
       postgres_port:

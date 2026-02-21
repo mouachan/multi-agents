@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NS=${1:-claims-demo}
+NS=${1:-multi-agents}
 
 PG_SECRET="$(oc -n "$NS" get secret -l app=postgresql -o name | head -1)"
 DATABASE="$(oc -n "$NS" get "$PG_SECRET" -o yaml | yq -r '.data["POSTGRES_DATABASE"]' | base64 --decode)"

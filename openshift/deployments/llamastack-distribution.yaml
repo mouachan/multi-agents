@@ -24,7 +24,7 @@ apiVersion: llamastack.io/v1alpha1
 kind: LlamaStackDistribution
 metadata:
   name: claims-llamastack
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: llama-stack

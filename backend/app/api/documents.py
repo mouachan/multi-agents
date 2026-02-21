@@ -25,21 +25,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _resolve_document_path(stored_path: str) -> str | None:
+    """Resolve document path trying multiple base directories.
+
+    Handles path variations between local Docker and OpenShift deployments:
+    - /claim_documents/file.pdf  (seed data 001)
+    - /mnt/documents/claims/file.pdf  (harmonized seed data 004)
+    - /mnt/documents/tenders/file.pdf  (harmonized seed data 004)
+    - claim_documents/file.pdf  (relative)
+    """
+    candidates = [
+        stored_path,
+        # Docker: ./documents:/documents
+        os.path.join("/documents", stored_path.lstrip("/")),
+    ]
+    # /mnt/documents/... -> /documents/... (Docker) and /claim_documents/... (OpenShift)
+    if stored_path.startswith("/mnt/documents/"):
+        candidates.append(stored_path.replace("/mnt/documents/", "/documents/", 1))
+        candidates.append(stored_path.replace("/mnt/documents/", "/claim_documents/", 1))
+    # /claim_documents/... -> /documents/claim_documents/... (Docker path)
+    if stored_path.startswith("/claim_documents/"):
+        candidates.append("/documents" + stored_path)
+    # Try just the filename under common subdirectories (Docker + OpenShift)
+    basename = os.path.basename(stored_path)
+    for base in ["/documents", "/claim_documents"]:
+        for subdir in ["", "claim_documents", "claim_documents/ao", "claims", "tenders", "ao"]:
+            candidates.append(os.path.join(base, subdir, basename) if subdir else os.path.join(base, basename))
+
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
+
 @router.get("/{claim_id}/view")
 async def view_claim_document(
-    claim_id: UUID,
+    claim_id: str,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    View claim document PDF.
-    
+    View claim document PDF. Accepts UUID or claim_number (e.g. CLM-2024-0019).
+
     Returns the PDF document associated with a claim.
     """
     try:
-        # Get claim
-        result = await db.execute(
-            select(models.Claim).where(models.Claim.id == claim_id)
-        )
+        # Try UUID first, fallback to claim_number
+        try:
+            claim_uuid = UUID(claim_id)
+            result = await db.execute(
+                select(models.Claim).where(models.Claim.id == claim_uuid)
+            )
+        except ValueError:
+            result = await db.execute(
+                select(models.Claim).where(models.Claim.claim_number == claim_id)
+            )
         claim = result.scalar_one_or_none()
 
         if not claim:
@@ -51,25 +90,26 @@ async def view_claim_document(
             logger.warning(f"No document path for claim: {claim_id}")
             raise HTTPException(status_code=404, detail="No document associated with this claim")
 
-        # Check if file exists (don't expose path in error message)
-        if not os.path.exists(claim.document_path):
-            logger.error(f"Document file not found at path for claim {claim_id}")
+        # Resolve document path - try multiple locations
+        doc_path = _resolve_document_path(claim.document_path)
+        if not doc_path:
+            logger.error(f"Document file not found for claim {claim_id}: {claim.document_path}")
             raise HTTPException(status_code=404, detail="Document file not found")
 
         # Check file size limit
-        file_size = os.path.getsize(claim.document_path)
+        file_size = os.path.getsize(doc_path)
         max_size = settings.max_upload_size_mb * 1024 * 1024
         if file_size > max_size:
             logger.warning(f"Document too large for claim {claim_id}: {file_size} bytes")
             raise HTTPException(status_code=413, detail="Document file too large")
 
         logger.info(f"Serving document for claim {claim_id}")
-        
+
         # Return PDF file
         return FileResponse(
-            claim.document_path,
+            doc_path,
             media_type="application/pdf",
-            filename=os.path.basename(claim.document_path)
+            filename=os.path.basename(doc_path)
         )
 
     except HTTPException:

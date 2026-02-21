@@ -1,0 +1,15 @@
+{{- if .Values.backend.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  name: orchestrator-prompts
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: backend
+data:
+{{ (.Files.Glob "files/cm.orchestrator-prompts/*").AsConfig | indent 2 }}
+{{- end }}

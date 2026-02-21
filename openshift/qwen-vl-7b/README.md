@@ -224,7 +224,7 @@ args:
 - "0.95"  # Use more GPU memory for larger batch sizes
 ```
 
-## Integration with Claims Demo
+## Integration with Multi-Agent AI Platform
 
 The OCR MCP Server (`backend/mcp_servers/ocr_server/server.py`) uses Qwen-VL for:
 

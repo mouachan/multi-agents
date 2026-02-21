@@ -5,7 +5,7 @@
 
 set -e
 
-NAMESPACE="claims-demo"
+NAMESPACE="multi-agents"
 PVC_NAME="claim-documents"
 LOCAL_PDF_DIR="/tmp/claim_documents"
 

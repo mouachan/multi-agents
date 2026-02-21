@@ -24,12 +24,13 @@ COPY requirements.txt .
 # The base UBI9 Python image may have NumPy 2.x which is incompatible with PyTorch/OpenCV
 RUN pip uninstall -y numpy || true
 
-# Install PyTorch with CUDA support (CUDA 11.8 for broad compatibility)
-# This allows GPU acceleration when nvidia.com/gpu is available
-RUN pip install --no-cache-dir \
-    torch==2.2.0 \
-    torchvision==0.17.0 \
-    --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch - use CUDA wheels on x86_64, standard PyPI on ARM (macOS)
+RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then \
+        pip install --no-cache-dir torch==2.2.0 torchvision==0.17.0; \
+    else \
+        pip install --no-cache-dir torch==2.2.0 torchvision==0.17.0 \
+            --index-url https://download.pytorch.org/whl/cu118; \
+    fi
 
 # Install other dependencies (excluding torch/torchvision already installed)
 # hadolint ignore=SC2261

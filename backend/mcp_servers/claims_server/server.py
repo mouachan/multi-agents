@@ -119,6 +119,7 @@ async def list_claims(
             query = text("""
                 SELECT
                     c.id, c.claim_number, c.user_id, c.claim_type,
+                    c.document_path,
                     c.status::text as status, c.submitted_at, c.processed_at,
                     c.total_processing_time_ms,
                     u.full_name as user_name,
@@ -136,6 +137,7 @@ async def list_claims(
             query = text("""
                 SELECT
                     c.id, c.claim_number, c.user_id, c.claim_type,
+                    c.document_path,
                     c.status::text as status, c.submitted_at, c.processed_at,
                     c.total_processing_time_ms,
                     u.full_name as user_name,
@@ -153,13 +155,18 @@ async def list_claims(
         claims = []
         for row in results:
             claim = dict(row._mapping)
+            uuid_id = str(claim['id'])
             # Convert non-serializable types
             for key, value in claim.items():
                 if hasattr(value, 'isoformat'):
                     claim[key] = value.isoformat()
                 elif hasattr(value, '__float__'):
                     claim[key] = float(value)
-            claim['id'] = str(claim['id'])
+            claim['id'] = uuid_id
+            # Pre-built document link for the LLM (ready-to-use markdown)
+            if claim.get('document_path'):
+                claim['document_view_url'] = f"/api/v1/documents/{uuid_id}/view"
+                claim['document_link'] = f"[View Document (PDF)](/api/v1/documents/{uuid_id}/view)"
             claims.append(claim)
 
         logger.info(f"Found {len(claims)} claims")
@@ -195,8 +202,8 @@ async def get_claim(claim_id: str) -> str:
     claim_id = claim_id.strip()
 
     try:
-        # Get claim with user info
-        query = text("""
+        # Get claim with user info — try claim_number first, fallback to UUID
+        base_query = """
             SELECT
                 c.id, c.claim_number, c.user_id, c.claim_type,
                 c.document_path, c.status::text as status,
@@ -206,21 +213,38 @@ async def get_claim(claim_id: str) -> str:
                 u.phone_number as user_phone, u.address as user_address
             FROM claims c
             LEFT JOIN users u ON c.user_id = u.user_id
-            WHERE c.claim_number = :claim_id
-        """)
-        result = await run_db_query_one(query, {"claim_id": claim_id})
+        """
+        result = await run_db_query_one(
+            text(base_query + " WHERE c.claim_number = :claim_id"),
+            {"claim_id": claim_id},
+        )
+        if not result:
+            # Fallback: try as UUID
+            try:
+                result = await run_db_query_one(
+                    text(base_query + " WHERE c.id = :claim_id::uuid"),
+                    {"claim_id": claim_id},
+                )
+            except Exception:
+                pass  # Not a valid UUID, ignore
 
         if not result:
             return json.dumps({"success": False, "error": f"Claim {claim_id} not found"})
 
         claim = dict(result._mapping)
         claim_uuid = claim['id']
-        claim['id'] = str(claim['id'])
+        uuid_str = str(claim['id'])
+        claim['id'] = uuid_str
 
         # Convert types
         for key, value in claim.items():
             if hasattr(value, 'isoformat'):
                 claim[key] = value.isoformat()
+
+        # Pre-built document link for the LLM (ready-to-use markdown)
+        if claim.get('document_path'):
+            claim['document_view_url'] = f"/api/v1/documents/{uuid_str}/view"
+            claim['document_link'] = f"[View Document (PDF)](/api/v1/documents/{uuid_str}/view)"
 
         # Get decision
         decision_query = text("""
@@ -290,7 +314,8 @@ async def get_claim_documents(claim_id: str) -> str:
         return json.dumps({"success": False, "error": "claim_id is required"})
 
     try:
-        query = text("""
+        cid = claim_id.strip()
+        base_query = """
             SELECT
                 cd.id, cd.document_type, cd.file_path, cd.file_size_bytes,
                 cd.mime_type, cd.raw_ocr_text, cd.structured_data,
@@ -298,9 +323,17 @@ async def get_claim_documents(claim_id: str) -> str:
                 cd.language
             FROM claim_documents cd
             JOIN claims c ON cd.claim_id = c.id
-            WHERE c.claim_number = :claim_id
-        """)
-        results = await run_db_query(query, {"claim_id": claim_id.strip()})
+        """
+        results = await run_db_query(
+            text(base_query + " WHERE c.claim_number = :claim_id"), {"claim_id": cid}
+        )
+        if not results:
+            try:
+                results = await run_db_query(
+                    text(base_query + " WHERE c.id = :claim_id::uuid"), {"claim_id": cid}
+                )
+            except Exception:
+                results = []
 
         documents = []
         for row in results:
@@ -424,8 +457,8 @@ async def analyze_claim(claim_id: str) -> str:
     claim_id = claim_id.strip()
 
     try:
-        # Get claim with user info
-        claim_query = text("""
+        # Get claim with user info — try claim_number first, fallback to UUID
+        base_query = """
             SELECT
                 c.id, c.claim_number, c.user_id, c.claim_type,
                 c.document_path, c.status::text as status,
@@ -433,9 +466,19 @@ async def analyze_claim(claim_id: str) -> str:
                 u.full_name as user_name, u.email as user_email
             FROM claims c
             LEFT JOIN users u ON c.user_id = u.user_id
-            WHERE c.claim_number = :claim_id
-        """)
-        claim_result = await run_db_query_one(claim_query, {"claim_id": claim_id})
+        """
+        claim_result = await run_db_query_one(
+            text(base_query + " WHERE c.claim_number = :claim_id"),
+            {"claim_id": claim_id},
+        )
+        if not claim_result:
+            try:
+                claim_result = await run_db_query_one(
+                    text(base_query + " WHERE c.id = :claim_id::uuid"),
+                    {"claim_id": claim_id},
+                )
+            except Exception:
+                pass
 
         if not claim_result:
             return json.dumps({"success": False, "error": f"Claim {claim_id} not found"})

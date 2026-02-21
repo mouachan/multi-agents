@@ -45,6 +45,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def _resolve_document_path(stored_path: str) -> str | None:
+    """Resolve document path trying multiple base directories."""
+    if os.path.exists(stored_path):
+        return stored_path
+    alt = os.path.join("/documents", stored_path.lstrip("/"))
+    if os.path.exists(alt):
+        return alt
+    if stored_path.startswith("/mnt/documents/"):
+        alt = stored_path.replace("/mnt/documents/", "/documents/", 1)
+        if os.path.exists(alt):
+            return alt
+    return None
+
 # Initialize service
 claim_service = ClaimService()
 
@@ -572,14 +586,21 @@ async def get_guardrails_detections(
 
 @router.get("/documents/{claim_id}/view")
 async def view_claim_document(
-    claim_id: UUID,
+    claim_id: str,
     db: AsyncSession = Depends(get_db)
 ):
-    """View claim document PDF."""
+    """View claim document PDF. Accepts UUID or claim_number (e.g. CLM-2024-0019)."""
     try:
-        result = await db.execute(
-            select(models.Claim).where(models.Claim.id == claim_id)
-        )
+        # Try UUID first, fallback to claim_number
+        try:
+            claim_uuid = UUID(claim_id)
+            result = await db.execute(
+                select(models.Claim).where(models.Claim.id == claim_uuid)
+            )
+        except ValueError:
+            result = await db.execute(
+                select(models.Claim).where(models.Claim.claim_number == claim_id)
+            )
         claim = result.scalar_one_or_none()
 
         if not claim:
@@ -588,13 +609,16 @@ async def view_claim_document(
         if not claim.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this claim")
 
-        if not os.path.exists(claim.document_path):
+        # Resolve document path - try multiple locations
+        doc_path = _resolve_document_path(claim.document_path)
+        if not doc_path:
+            logger.error(f"Document file not found for claim {claim_id}: {claim.document_path}")
             raise HTTPException(status_code=404, detail="Document file not found")
 
         return FileResponse(
-            claim.document_path,
+            doc_path,
             media_type="application/pdf",
-            filename=os.path.basename(claim.document_path)
+            filename=os.path.basename(doc_path)
         )
 
     except HTTPException:

@@ -1,7 +1,7 @@
 """
 SQLAlchemy models for tenders (Appels d'Offres) and related entities.
 
-Vinci AO use case - Go/No-Go decision support for public and private tenders.
+Tender analysis use case - Go/No-Go decision support for public and private tenders.
 
 Follows the same patterns as claim.py:
 - Timezone-aware datetimes via utc_now()
@@ -85,7 +85,7 @@ class Tender(Base):
     __tablename__ = "tenders"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    entity_id = Column(String(255), nullable=False, index=True)  # e.g. "VINCI-IDF"
+    entity_id = Column(String(255), nullable=False, index=True)  # e.g. "ENT-IDF"
     tender_number = Column(String(100), unique=True, nullable=False)
     tender_type = Column(String(100))  # marche_public / prive / conception_realisation
     document_path = Column(Text, nullable=False)
@@ -234,10 +234,10 @@ class TenderProcessingLog(Base):
     tender = relationship("Tender", back_populates="processing_logs")
 
 
-class VinciReference(Base):
-    """Past project references for Vinci entities."""
+class CompanyReference(Base):
+    """Past project references for company entities."""
 
-    __tablename__ = "vinci_references"
+    __tablename__ = "company_references"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     reference_number = Column(String(100), unique=True, nullable=False)
@@ -263,10 +263,10 @@ class VinciReference(Base):
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
-class VinciCapability(Base):
-    """Vinci internal capabilities: certifications, equipment, teams."""
+class CompanyCapability(Base):
+    """Company internal capabilities: certifications, equipment, teams."""
 
-    __tablename__ = "vinci_capabilities"
+    __tablename__ = "company_capabilities"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     category = Column(String(100), nullable=False, index=True)  # certification / materiel / personnel

@@ -1,20 +1,14 @@
 """
-Agent services for reusable AI orchestration logic.
-
-This package contains services for:
-- Agent orchestration (creation, sessions, turns)
-- Review workflows (ask, approve, deny)
-- Context building for agents
-- Response parsing from agents
+Agent services for AI orchestration via LlamaStack Responses API.
 """
 
-from .orchestrator import AgentOrchestrator
+from .responses_orchestrator import ResponsesOrchestrator
 from .reviewer import ReviewService
 from .context_builder import ContextBuilder
 from .response_parser import ResponseParser
 
 __all__ = [
-    "AgentOrchestrator",
+    "ResponsesOrchestrator",
     "ReviewService",
     "ContextBuilder",
     "ResponseParser",

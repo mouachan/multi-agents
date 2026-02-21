@@ -5,16 +5,16 @@ metadata:
     argocd.argoproj.io/sync-wave: '5'
     haproxy.router.openshift.io/timeout: 120s
   name: frontend
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
     app: frontend
 spec:
-  host: frontend-claims-demo.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com
+  host: frontend-multi-agents.apps.your-cluster.example.com
   to:
     kind: Service
     name: frontend

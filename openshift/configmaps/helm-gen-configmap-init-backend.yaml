@@ -4,17 +4,17 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '1'
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
   name: init-backend
-  namespace: claims-demo
+  namespace: multi-agents
 data:
   init-back.sh: "#!/bin/bash\n\nset -e\n\necho ============================================\n\
     echo Copying test claim documents to PVC\necho ============================================\n\
-    \n# GitHub repository details\nREPO=mouachan/agentic-claim-demo\nBRANCH=main\n\
+    \n# GitHub repository details\nREPO=your-org/multi-agents\nBRANCH=main\n\
     PDF_DIR=backend/test_data/claim_documents\n\n# Target directory in PVC\nTARGET_DIR=/claim_documents\n\
     \n# Create target directory\nmkdir -p $TARGET_DIR\n\n# Generate list of all PDF\
     \ files (50 total)\nPDF_FILES=()\n\n# Auto claims (20 files: claim_auto_001 to\

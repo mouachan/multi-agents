@@ -2,13 +2,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
   name: init-postgres
-  namespace: claims-demo
+  namespace: multi-agents
 data:
   init-pg.sh: "#!/bin/bash\n\nPOSTGRESQL_ADMIN_PASSWORD=\"$(cat /cluster-secrets/POSTGRES_ADMIN_PASSWORD)\"\
     \nPOSTGRESQL_DATABASE=\"$(cat /cluster-secrets/POSTGRES_DATABASE)\"\n# For pgvector\
@@ -77,11 +77,11 @@ data:
     \ To modify database initialization:\n\n1. **Edit the source files** in `/database/`:\n\
     \   - `/database/init.sql` for schema\n   - `/database/seed_data/001_sample_data.sql`\
     \ for seed data\n\n2. Changes will **automatically be reflected** here via symlinks\n\
-    \n3. Test with: `helm template test agentic-claims-demo`\n\n## Why symlinks?\n\
+    \n3. Test with: `helm template test multi-agents`\n\n## Why symlinks?\n\
     \n- \u2705 **Single source of truth** in `/database/`\n- \u2705 **No duplication**\
     \ = no sync errors\n- \u2705 Helm can still read files via `.Files.Glob`\n- \u2705\
     \ Respects separation: code in `/database/`, deployment in `/helm/`\n"
-  init.sql: "-- Claims Demo Database Initialization Script\n-- PostgreSQL with pgvector\
+  init.sql: "-- Multi-Agent AI Platform Database Initialization Script\n-- PostgreSQL with pgvector\
     \ extension for RAG capabilities\n\n-- First, enable vector extension in postgres\
     \ database (required by LlamaStack)\n\\c postgres\nCREATE EXTENSION IF NOT EXISTS\
     \ vector;\n\n-- Then switch to claims_db and enable extensions\n\\c claims_db\n\
@@ -242,7 +242,7 @@ data:
     -- not sure why current_database() shows as a syntax error... looks legit AFAIU\n\
     -- no big deal, can do without\n-- COMMENT ON DATABASE current_database() IS 'Claims\
     \ Processing Demo Database with pgvector for RAG';\n"
-  seed.sql: '-- Realistic seed data for Claims Demo - 50 users, 100 claims
+  seed.sql: '-- Realistic seed data for Multi-Agent AI Platform - 50 users, 100 claims
 
     -- Generated automatically
 
@@ -1416,7 +1416,7 @@ data:
     ARRAY[''limits'', ''maximum''], true, ''2024-01-01'');
 
     '
-  seed.sql.original: '-- Realistic seed data for Claims Demo - 50 users, 100 claims
+  seed.sql.original: '-- Realistic seed data for Multi-Agent AI Platform - 50 users, 100 claims
 
     -- Generated automatically
 

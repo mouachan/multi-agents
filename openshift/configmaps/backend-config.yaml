@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: backend-config
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: backend
@@ -19,14 +19,14 @@ data:
   API_PORT: "8000"
   
   # Database Configuration
-  POSTGRES_HOST: "postgresql.claims-demo.svc.cluster.local"
+  POSTGRES_HOST: "postgresql.multi-agents.svc.cluster.local"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "claims_db"
   DATABASE_POOL_SIZE: "10"
   DATABASE_MAX_OVERFLOW: "20"
   
   # LlamaStack Configuration (OpenShift AI)
-  LLAMASTACK_ENDPOINT: "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321"
+  LLAMASTACK_ENDPOINT: "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321"
   LLAMASTACK_DEFAULT_MODEL: "vllm-inference-1/llama-3-3-70b"
   LLAMASTACK_EMBEDDING_MODEL: "gemma-embedding/gemma-300m"
   LLAMASTACK_EMBEDDING_DIMENSION: "768"
@@ -34,9 +34,9 @@ data:
   LLAMASTACK_MAX_RETRIES: "3"
   
   # MCP Servers Configuration
-  OCR_SERVER_URL: "http://ocr-server.claims-demo.svc.cluster.local:8080"
-  RAG_SERVER_URL: "http://rag-server.claims-demo.svc.cluster.local:8080"
-  GUARDRAILS_SERVER_URL: "http://claims-guardrails.claims-demo.svc.cluster.local:8080"
+  OCR_SERVER_URL: "http://ocr-server.multi-agents.svc.cluster.local:8080"
+  RAG_SERVER_URL: "http://rag-server.multi-agents.svc.cluster.local:8080"
+  GUARDRAILS_SERVER_URL: "http://claims-guardrails.multi-agents.svc.cluster.local:8080"
   
   # CORS Configuration
   CORS_ALLOW_CREDENTIALS: "true"

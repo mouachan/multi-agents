@@ -115,25 +115,33 @@ User Message
 +---------+  +-----------+
 ```
 
-**Key capabilities (in progress)**:
-- **Intent-based routing**: LLM classifies user messages and routes to the correct domain agent (claims or tenders)
+**Key capabilities**:
+- **Intent-based routing**: Fast keyword classification routes user messages to the correct domain agent (claims or tenders)
 - **Chat sessions**: Persistent conversation history with session management
-- **Agent registry**: Dynamic registration of specialized agents with metadata and capabilities
+- **Agent registry**: Dynamic registration of specialized agents with metadata, tools, and routing keywords
 - **Suggested actions**: Context-aware follow-up suggestions (navigate, process, chat) after each agent response
-- **Cross-domain agent chaining**: After a tender Go decision, the orchestrator can suggest filing an insurance claim
+- **Cross-domain agent chaining**: After a tender Go decision, the orchestrator suggests filing an insurance claim
 - **Bilingual support**: FR/EN language detection and response generation
+- **Tool call observability**: Full tool execution traces (name, server, output, error) persisted and displayed in UI
+- **Token consumption tracking**: Per-message and per-session LLM token usage displayed in chat
+- **Conversation management**: History sanitization, context window control, text tool call detection and retry
+- **Configurable architecture**: All behavioral parameters externalized in orchestrator-config.yaml (ConfigMap)
 
 **What's working**:
 - Orchestrator routing and intent classification
-- Chat sessions with message persistence
+- Chat sessions with message persistence and cascade deletion
 - Agent registry with claims and tenders agents
-- Basic suggested actions
-- PII detection on chat messages
+- Context-aware suggested actions (intent-based + post-response chaining)
+- PII detection and redaction on chat messages
+- Tool call visibility with collapsible details (ToolCallSteps component)
+- Token consumption display per message and per session
+- Function calling retry mechanism (detects text tool calls, retries with explicit instruction)
+- Externalized tool display config (useToolDisplay hook + backend endpoint)
+- Bilingual UI (FR/EN) for chat, tool calls, token display
 
 **What's in progress**:
-- Dynamic LLM-generated suggested actions (replacing hardcoded fallbacks)
-- Full i18n for all frontend components
-- Session deletion with cascade
+- Runtime prompt editor (view/edit system prompt per session)
+- Migration to llm-d with Llama 3.3 70B on cluster
 - OpenShift OAuth authentication
 
 ### Business Capabilities
@@ -216,7 +224,7 @@ graph TB
     end
 
     subgraph "OpenShift Cluster"
-        subgraph "Application - claims-demo namespace"
+        subgraph "Application - multi-agents namespace"
             F["Frontend React<br/>Chat UI + Domain Pages"]
             B["Backend FastAPI"]
             ORCH["Multi-Agent Orchestrator<br/>Intent Routing (WIP)"]
@@ -243,14 +251,14 @@ graph TB
             end
         end
 
-        subgraph "MCP Tool Servers - claims-demo"
+        subgraph "MCP Tool Servers - multi-agents"
             OCR["OCR MCP Server<br/>EasyOCR"]
             RAG["RAG MCP Server<br/>pgvector similarity"]
             CLAIMS_MCP["Claims MCP Server<br/>CRUD tools"]
             TENDERS_MCP["Tenders MCP Server<br/>CRUD tools"]
         end
 
-        subgraph "Data Layer - claims-demo"
+        subgraph "Data Layer - multi-agents"
             DB[("PostgreSQL 15<br/>+ pgvector<br/>+ chat sessions")]
         end
     end
@@ -293,9 +301,10 @@ backend/
 │   ├── services/
 │   │   ├── claim_service.py              # Claims orchestration
 │   │   ├── tender_service.py             # Tenders orchestration
-│   │   ├── agents/                       # Multi-agent layer (WIP)
+│   │   ├── agents/                       # Multi-agent layer
 │   │   │   ├── base_agent_service.py     # Common agent pattern
 │   │   │   ├── orchestrator_service.py   # Intent routing & chat sessions
+│   │   │   ├── conversation_utils.py     # History sanitization, token normalization
 │   │   │   └── registry.py              # Dynamic agent registry
 │   │   ├── agent/                        # Shared AI components
 │   │   │   ├── responses_orchestrator.py # LlamaStack Responses API client
@@ -326,16 +335,18 @@ frontend/
 │   │   ├── ClaimsListPage.tsx    # Claims list & filtering
 │   │   └── TendersListPage.tsx   # Tenders list & filtering
 │   ├── components/
-│   │   ├── chat/                 # Chat UI components (WIP)
+│   │   ├── chat/                 # Chat UI components
 │   │   │   ├── ChatWindow.tsx    # Message display & input
-│   │   │   ├── ChatMessage.tsx   # Message rendering with agent routing
+│   │   │   ├── ChatMessage.tsx   # Message rendering with tool calls & tokens
+│   │   │   ├── ToolCallSteps.tsx # Collapsible tool execution trace
 │   │   │   ├── SuggestedActions.tsx # Context-aware action buttons
 │   │   │   └── AgentGraph.tsx    # Agent architecture visualization
 │   │   └── common/
 │   │       ├── AgentCard.tsx     # Agent status cards
 │   │       └── PIIBadge.tsx      # PII detection indicators
 │   ├── hooks/
-│   │   ├── useChat.ts            # Chat session management (WIP)
+│   │   ├── useChat.ts            # Chat session management
+│   │   ├── useToolDisplay.ts     # Tool display config (labels, servers)
 │   │   └── useAgents.ts          # Agent registry hook
 │   ├── services/
 │   │   └── orchestratorService.ts # Orchestrator API client (WIP)
@@ -398,22 +409,22 @@ Pre-built images are available on Quay.io:
 # In your values file
 backend:
   image:
-    repository: quay.io/mouachan/agentic-claims-demo/backend
+    repository: quay.io/your-org/multi-agents/backend
     tag: v2.0.0
 
 frontend:
   image:
-    repository: quay.io/mouachan/agentic-claims-demo/frontend
+    repository: quay.io/your-org/multi-agents/frontend
     tag: v2.0.0
 
 ocr:
   image:
-    repository: quay.io/mouachan/agentic-claims-demo/ocr-server
+    repository: quay.io/your-org/multi-agents/ocr-server
     tag: v2.0.0
 
 rag:
   image:
-    repository: quay.io/mouachan/agentic-claims-demo/rag-server
+    repository: quay.io/your-org/multi-agents/rag-server
     tag: v2.0.0
 
 postgresql:
@@ -427,7 +438,7 @@ postgresql:
 ### 2. Configure Values
 
 ```bash
-cd helm/agentic-claims-demo
+cd helm/multi-agents
 cp values-sample.yaml values-mydeployment.yaml
 ```
 
@@ -462,9 +473,9 @@ guardrails:
 ### 3. Deploy
 
 ```bash
-helm install agentic-claims-demo . \
+helm install multi-agents . \
   -f values-mydeployment.yaml \
-  -n claims-demo \
+  -n multi-agents \
   --create-namespace \
   --timeout=30m
 ```
@@ -475,20 +486,20 @@ helm install agentic-claims-demo . \
 
 ```bash
 # Check pods
-oc get pods -n claims-demo
+oc get pods -n multi-agents
 
 # Check DSPA (should be Ready=True)
-oc get dspa -n claims-demo
+oc get dspa -n multi-agents
 
 # Get URLs
-oc get routes -n claims-demo
+oc get routes -n multi-agents
 ```
 
 ### 5. Generate Embeddings (Required)
 
 After deployment, run the embedding generation pipeline:
 
-1. **Access OpenShift AI Dashboard** → Data Science Projects → `claims-demo` → Pipelines
+1. **Access OpenShift AI Dashboard** → Data Science Projects → `multi-agents` → Pipelines
 
 2. **Import Pipeline**:
 
@@ -506,7 +517,7 @@ After deployment, run the embedding generation pipeline:
    - Set parameters:
      - `batch_size`: 5
      - `embedding_model`: `vllm-embedding/embeddinggemma-300m`
-     - `llamastack_endpoint`: `http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321`
+     - `llamastack_endpoint`: `http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321`
      - `llm_model`: `vllm-inference/llama-3-3-70b-instruct-quantized-w8a8`
      - `max_retries`: 30
      - `num_claims`: 60 (default: 10, recommended: 60 for testing)
@@ -521,12 +532,12 @@ After deployment, run the embedding generation pipeline:
 5. **Verify**:
    ```bash
    # Check knowledge base (should be 15/15)
-   oc exec -n claims-demo statefulset/postgresql -- \
+   oc exec -n multi-agents statefulset/postgresql -- \
      psql -U claims_user -d claims_db -c \
      "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL;"
 
    # Check claims (should be 60/60 with num_claims=60)
-   oc exec -n claims-demo statefulset/postgresql -- \
+   oc exec -n multi-agents statefulset/postgresql -- \
      psql -U claims_user -d claims_db -c \
      "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
    ```
@@ -535,10 +546,10 @@ After deployment, run the embedding generation pipeline:
 
 ```bash
 # Frontend URL
-echo "Frontend: http://$(oc get route frontend -n claims-demo -o jsonpath='{.spec.host}')"
+echo "Frontend: http://$(oc get route frontend -n multi-agents -o jsonpath='{.spec.host}')"
 
 # Backend API
-echo "Backend: http://$(oc get route backend -n claims-demo -o jsonpath='{.spec.host}')/api/v1"
+echo "Backend: http://$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')/api/v1"
 ```
 
 ---
@@ -596,7 +607,7 @@ For claims requiring manual review:
 ### Via API
 
 ```bash
-BACKEND_URL=$(oc get route backend -n claims-demo -o jsonpath='{.spec.host}')
+BACKEND_URL=$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')
 
 # List pending claims
 curl "http://$BACKEND_URL/api/v1/claims?status=pending" | jq
@@ -626,12 +637,12 @@ For detailed configuration options, see [Helm Values Reference](docs/HELM_VALUES
 
 ```yaml
 global:
-  namespace: claims-demo
+  namespace: multi-agents
   clusterDomain: apps.cluster.com
 
 backend:
   image:
-    repository: quay.io/mouachan/agentic-claims-demo/backend
+    repository: quay.io/your-org/multi-agents/backend
     tag: v2.0.0
   replicas: 1
 
@@ -671,11 +682,11 @@ Agent prompts are stored in `app/llamastack/prompts/` and mounted via ConfigMap.
 1. **Development** - Edit files directly in `backend/app/llamastack/prompts/`
 2. **Production** - Update ConfigMap:
    ```bash
-   oc edit configmap claims-prompts -n claims-demo
+   oc edit configmap claims-prompts -n multi-agents
    ```
 3. **Restart backend** to load changes:
    ```bash
-   oc rollout restart deployment/backend -n claims-demo
+   oc rollout restart deployment/backend -n multi-agents
    ```
 
 **Environment Variable**: `PROMPTS_DIR=/app/prompts`
@@ -688,17 +699,17 @@ Backend configuration via ConfigMap (`backend-config`) and Secrets.
 
 ```yaml
 # LlamaStack
-LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
 LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
 LLAMASTACK_EMBEDDING_MODEL: vllm-embedding/embeddinggemma-300m
 LLAMASTACK_MAX_TOKENS: 4096
 
 # MCP Servers
-OCR_SERVER_URL: http://ocr-server.claims-demo.svc.cluster.local:8080
-RAG_SERVER_URL: http://rag-server.claims-demo.svc.cluster.local:8080
+OCR_SERVER_URL: http://ocr-server.multi-agents.svc.cluster.local:8080
+RAG_SERVER_URL: http://rag-server.multi-agents.svc.cluster.local:8080
 
 # Guardrails
-GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.claims-demo.svc.cluster.local:8032
+GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.multi-agents.svc.cluster.local:8032
 ENABLE_PII_DETECTION: true
 
 # Database (from Secret postgresql-secret)
@@ -714,14 +725,14 @@ POSTGRES_DATABASE: claims_db
 
 **Modify ConfigMap**:
 ```bash
-oc edit configmap backend-config -n claims-demo
-oc rollout restart deployment/backend -n claims-demo
+oc edit configmap backend-config -n multi-agents
+oc rollout restart deployment/backend -n multi-agents
 ```
 
 **Modify Secret** (database credentials):
 ```bash
-oc edit secret postgresql-secret -n claims-demo
-oc rollout restart deployment/backend -n claims-demo
+oc edit secret postgresql-secret -n multi-agents
+oc rollout restart deployment/backend -n multi-agents
 ```
 
 ### Frontend Configuration
@@ -758,8 +769,8 @@ VITE_API_URL=/api/v1  # (default fallback in code)
 
 **Check**:
 ```bash
-oc get dspa -n claims-demo -o yaml
-oc logs -l app=ds-pipeline-dspa -n claims-demo
+oc get dspa -n multi-agents -o yaml
+oc logs -l app=ds-pipeline-dspa -n multi-agents
 ```
 
 **Common fixes**:
@@ -774,7 +785,7 @@ oc logs -l app=ds-pipeline-dspa -n claims-demo
 **Check**:
 ```bash
 oc get inferenceservice -A
-oc logs deployment/llamastack-rhoai -n claims-demo
+oc logs deployment/llamastack-rhoai -n multi-agents
 ```
 
 **Solution**: Update model endpoints with correct cluster domain in values.yaml
@@ -820,27 +831,29 @@ Includes:
 - **Knowledge Base**: Run pipeline to generate 15/15 embeddings
 - **Similar Claims**: May return zero results if embeddings missing
 
-### Current Version: v2.1.0 (multi-agents) — Under Construction
+### Current Version: v2.2.0 (multi-agents)
 
 **Working**:
 - End-to-end claim processing (single-agent)
 - End-to-end tender / Appels d'Offres processing (single-agent)
-- PII detection & audit trail
+- PII detection & redaction with audit trail
 - HITL review workflow (claims & tenders)
 - Ask Agent feature for interactive review
 - Multi-agent orchestrator with intent-based routing
-- Agent registry with dynamic agent registration
-- Chat sessions with persistent message history
-- Basic suggested actions after agent responses
+- Agent registry with dynamic agent registration and routing keywords
+- Chat sessions with persistent message history and cascade deletion
+- Context-aware suggested actions (intent-based + post-response chaining)
 - Chat interface with agent visualization
-- Bilingual support FR/EN (partial)
+- Tool call observability (collapsible traces with output/error per tool)
+- Token consumption tracking (per-message and per-session)
+- Conversation management (history sanitization, context window control)
+- Function calling retry mechanism (text tool call detection)
+- Externalized configuration (orchestrator-config.yaml via ConfigMap)
+- Bilingual support FR/EN (chat, tool calls, token display)
 
 **In Progress**:
-- Dynamic LLM-generated suggested actions (replacing hardcoded fallbacks)
-- Full i18n for all frontend components (claims, tenders, admin pages)
-- Backend language detection and locale-aware agent responses
-- Session deletion with cascade cleanup
-- Cross-domain agent chaining refinement
+- Runtime prompt editor (view/edit system prompt per session without redeployment)
+- Migration to llm-d with Llama 3.3 70B / GPT-OSS 120B on cluster
 - OpenShift OAuth authentication
 - A2A (Agent-to-Agent) protocol support
 

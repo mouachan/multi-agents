@@ -622,9 +622,9 @@ def generate_test_claims(
 )
 def complete_data_init_pipeline(
     num_historical_claims: int = 60,
-    postgres_host: str = "postgresql.claims-demo.svc.cluster.local",
+    postgres_host: str = "postgresql.multi-agents.svc.cluster.local",
     postgres_port: str = "5432",
-    llamastack_endpoint: str = "http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321",
+    llamastack_endpoint: str = "http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321",
     embedding_model: str = "vllm-embedding/embeddinggemma-300m",
     llm_model: str = "vllm-inference/llama-3-3-70b-instruct-quantized-w8a8"
 ):

@@ -13,7 +13,7 @@ Extracts the 90% identical pattern from ClaimService and TenderService:
 import json as json_lib
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -185,7 +185,6 @@ class BaseAgentService(ABC):
                 agent_config=effective_config,
                 input_message=processing_message,
                 tools=tools or self.get_tools(),
-                session_name=f"{self.get_entity_type()}_{self.get_entity_number(entity)}_{datetime.now().isoformat()}",
             )
 
             # Parse decision

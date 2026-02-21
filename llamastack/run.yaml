@@ -14,19 +14,21 @@ apis:
 
 providers:
   inference:
-  - provider_id: vllm-inference
+  # LiteMaaS - LLM models (Mistral-Small-24B + Llama-4-Scout-17B)
+  - provider_id: litemaas
     provider_type: remote::vllm
     config:
-      url: https://llama-llama-3-3-70b.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      url: ${env.LITEMAAS_URL:=https://your-llm-endpoint.example.com/v1}
       max_tokens: 4096
-      api_token: fake
+      api_token: ${env.LITEMAAS_API_KEY:=sk-placeholder}
       tls_verify: false
-  - provider_id: vllm-embedding
+  # LiteMaaS - Embeddings + Safety (nomic-embed-text + Llama-Guard)
+  - provider_id: litemaas-embedding
     provider_type: remote::vllm
     config:
-      url: https://gemma-embeddinggemma-300m.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
+      url: ${env.LITEMAAS_EMBEDDING_URL:=https://your-embedding-endpoint.example.com/v1}
       max_tokens: 512
-      api_token: fake
+      api_token: ${env.LITEMAAS_EMBEDDING_API_KEY:=sk-placeholder}
       tls_verify: false
 
   vector_io:
@@ -43,7 +45,10 @@ providers:
         namespace: vector_io::pgvector
 
   safety:
-    []
+  - provider_id: llama-guard
+    provider_type: inline::llama-guard
+    config:
+      excluded_categories: []
 
   agents:
   - provider_id: meta-reference
@@ -111,11 +116,20 @@ providers:
 storage:
   backends:
     kv_default:
-      type: kv_sqlite
-      db_path: /data/llamastack_kv.db
+      type: kv_postgres
+      host: ${env.POSTGRES_HOST:=postgresql}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB:=claims_db}
+      user: ${env.POSTGRES_USER:=claims_user}
+      password: ${env.POSTGRES_PASSWORD:=claims_pass}
+      table_name: llamastack_kvstore
     sql_default:
-      type: sql_sqlite
-      db_path: /data/llamastack_sql.db
+      type: sql_postgres
+      host: ${env.POSTGRES_HOST:=postgresql}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB:=claims_db}
+      user: ${env.POSTGRES_USER:=claims_user}
+      password: ${env.POSTGRES_PASSWORD:=claims_pass}
   stores:
     metadata:
       backend: kv_default
@@ -134,19 +148,36 @@ storage:
 
 registered_resources:
   models:
+  # Reasoning model - Mistral Small 24B (complex ReAct, tool calling, decisions)
   - metadata: {}
-    model_id: llama-3-3-70b
-    provider_id: vllm-inference
-    provider_model_id: llama-3-3-70b-instruct-quantized-w8a8
+    model_id: mistral-small-24b
+    provider_id: litemaas
+    provider_model_id: Mistral-Small-24B-W8A8
     model_type: llm
+  # Routing model - Llama 4 Scout 17B MoE (intent classification, simple queries)
+  - metadata: {}
+    model_id: llama-4-scout-17b
+    provider_id: litemaas
+    provider_model_id: Llama-4-Scout-17B-16E-W4A16
+    model_type: llm
+  # Embeddings - Nomic Embed Text v1.5 (768-dim, free)
   - metadata:
       embedding_dimension: 768
-    model_id: embeddinggemma-300m
-    provider_id: vllm-embedding
-    provider_model_id: embeddinggemma-300m
+    model_id: nomic-embed-text
+    provider_id: litemaas-embedding
+    provider_model_id: nomic-embed-text-v1-5
     model_type: embedding
+  # Safety - Llama Guard 3 1B (free)
+  - metadata: {}
+    model_id: llama-guard-3
+    provider_id: litemaas-embedding
+    provider_model_id: Llama-Guard-3-1B
+    model_type: llm
 
-  shields: []
+  shields:
+  - shield_id: llama-guard
+    provider_id: llama-guard
+    provider_shield_id: llama-guard-3
   vector_dbs: []
   datasets: []
   scoring_fns: []

@@ -1,0 +1,21 @@
+---
+apiVersion: v2
+name: multi-agents
+description: Multi-Agent AI Decision Platform with LlamaStack and MCP agents
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - ai
+  - llama
+  - mcp
+  - insurance
+  - claims
+  - agents
+
+maintainers:
+  - name: Multi-Agents Team
+    email: team@example.com
+
+dependencies: []

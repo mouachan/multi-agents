@@ -228,7 +228,7 @@ export TAG=dev-$(date +%Y%m%d)
 **Backend**:
 ```bash
 # IMPORTANT: Build from parent directory
-cd /path/to/agentic-claim-demo
+cd /path/to/multi-agents
 podman build --platform linux/amd64 \
   -t quay.io/your-org/backend:dev \
   -f backend/Dockerfile .
@@ -277,7 +277,7 @@ podman push quay.io/your-org/rag-server:dev
 
 2. **Sync to Helm** (IMPORTANT):
 ```bash
-cp database/init.sql helm/agentic-claims-demo/files/cm.init-postgres/
+cp database/init.sql helm/multi-agents/files/cm.init-postgres/
 ```
 
 3. **Apply locally** for testing:
@@ -292,7 +292,7 @@ psql -h localhost -U claims_user -d claims_db -f database/init.sql
 2. **Sync to Helm** (IMPORTANT):
 ```bash
 cp database/seed_data/001_sample_data.sql \
-   helm/agentic-claims-demo/files/cm.init-postgres/seed.sql
+   helm/multi-agents/files/cm.init-postgres/seed.sql
 ```
 
 3. **Reload seed data**:
@@ -336,11 +336,11 @@ oc apply -f openshift/jobs/
 After Helm chart changes, regenerate OpenShift manifests:
 
 ```bash
-cd /path/to/agentic-claim-demo
+cd /path/to/multi-agents
 
 # Generate from Helm
-helm template agentic-claims-demo ./helm/agentic-claims-demo \
-  --namespace claims-demo \
+helm template multi-agents ./helm/multi-agents \
+  --namespace multi-agents \
   > /tmp/all-manifests.yaml
 
 # Split into organized directories
@@ -375,7 +375,7 @@ uvicorn app.main:app --reload
 
 ```bash
 # OpenShift
-oc logs -f deployment/backend -c backend -n claims-demo
+oc logs -f deployment/backend -c backend -n multi-agents
 
 # Local
 tail -f logs/app.log
@@ -411,7 +411,7 @@ psql -h localhost -U claims_user -d claims_db
 
 OpenShift:
 ```bash
-oc exec -it statefulset/postgresql -n claims-demo -- \
+oc exec -it statefulset/postgresql -n multi-agents -- \
   psql -U claims_user -d claims_db
 ```
 
@@ -484,15 +484,15 @@ python backend/scripts/generate_realistic_pdfs.py
 
 ```bash
 # Validate Helm chart
-helm lint helm/agentic-claims-demo/
+helm lint helm/multi-agents/
 
 # Render templates
-helm template agentic-claims-demo ./helm/agentic-claims-demo \
+helm template multi-agents ./helm/multi-agents \
   -f values-dev.yaml
 
 # Show diff
-helm diff upgrade agentic-claims-demo ./helm/agentic-claims-demo \
-  -f values-dev.yaml -n claims-demo
+helm diff upgrade multi-agents ./helm/multi-agents \
+  -f values-dev.yaml -n multi-agents
 ```
 
 ## Performance Profiling

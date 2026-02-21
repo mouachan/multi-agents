@@ -298,7 +298,7 @@ def generate_enriched_seed():
     """Generate complete enriched seed.sql file."""
 
     # Read original seed.sql to get users, contracts, and knowledge_base
-    with open("/Users/mouchan/projects/agentic-claim-demo/helm/agentic-claims-demo/files/cm.init-postgres/seed.sql", "r") as f:
+    with open("/Users/mouchan/projects/multi-agents/helm/multi-agents/files/cm.init-postgres/seed.sql", "r") as f:
         original_seed = f.read()
 
     # Extract sections we want to keep
@@ -360,7 +360,7 @@ def generate_enriched_seed():
     random.shuffle(historical_claims)
 
     # Start building the new seed.sql
-    sql = """-- Enriched seed data for Claims Demo
+    sql = """-- Enriched seed data for Multi-Agent AI Platform
 -- 64 users, 100 claims (60 historical + 40 pending)
 -- Historical claims have processed status, OCR text, and decisions for RAG
 
@@ -484,7 +484,7 @@ if __name__ == "__main__":
     print("Generating enriched seed.sql...")
     seed_sql = generate_enriched_seed()
 
-    output_path = "/Users/mouchan/projects/agentic-claim-demo/helm/agentic-claims-demo/files/cm.init-postgres/seed-enriched.sql"
+    output_path = "/Users/mouchan/projects/multi-agents/helm/multi-agents/files/cm.init-postgres/seed-enriched.sql"
     with open(output_path, "w") as f:
         f.write(seed_sql)
 

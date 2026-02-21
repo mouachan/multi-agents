@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: job-hibernate
+  namespace: {{ include "multi-agents.namespace" . }}
+data:
+{{ (.Files.Glob "files/cm.job-hibernate/*").AsConfig | indent 2 }}

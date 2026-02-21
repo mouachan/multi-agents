@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: frontend
     component: frontend
@@ -18,11 +18,11 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: quay.io/mouachan/agentic-claims-demo/frontend:latest
+          image: quay.io/your-org/multi-agents/frontend:latest
           imagePullPolicy: Always
           env:
             - name: BACKEND_URL
-              value: http://backend-service.claims-demo.svc.cluster.local:8000
+              value: http://backend-service.multi-agents.svc.cluster.local:8000
           ports:
             - containerPort: 8080
               name: http

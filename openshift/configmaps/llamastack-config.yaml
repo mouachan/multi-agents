@@ -2,13 +2,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: llama-stack-config
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     llamastack.io/distribution: claims-llamastack
     opendatahub.io/dashboard: "true"
 data:
   run.yaml: |
-    # Llama Stack Configuration for Claims Demo - Using OpenShift AI Models
+    # Llama Stack Configuration for Multi-Agent AI Platform - Using OpenShift AI Models
     version: "2"
     image_name: rh
 
@@ -49,7 +49,7 @@ data:
         - provider_id: pgvector
           provider_type: remote::pgvector
           config:
-            host: postgresql.claims-demo.svc.cluster.local
+            host: postgresql.multi-agents.svc.cluster.local
             port: 5432
             database: claims_db
             user: ${env.POSTGRES_USER:=claims_user}
@@ -173,11 +173,11 @@ data:
       - toolgroup_id: mcp::ocr-server
         provider_id: model-context-protocol
         mcp_endpoint:
-          uri: http://ocr-server.claims-demo.svc.cluster.local:8080/sse
+          uri: http://ocr-server.multi-agents.svc.cluster.local:8080/sse
       - toolgroup_id: mcp::rag-server
         provider_id: model-context-protocol
         mcp_endpoint:
-          uri: http://rag-server.claims-demo.svc.cluster.local:8080/sse
+          uri: http://rag-server.multi-agents.svc.cluster.local:8080/sse
 
     server:
       port: 8321

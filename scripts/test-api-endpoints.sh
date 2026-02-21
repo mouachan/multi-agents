@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-BACKEND_URL="${BACKEND_URL:-https://backend-claims-demo.apps.cluster-rk6mx.rk6mx.sandbox492.opentlc.com}"
+BACKEND_URL="${BACKEND_URL:-https://backend-multi-agents.apps.your-cluster.example.com}"
 API_PREFIX="/api/v1"
 
 echo "🧪 Testing Claims Processing API"
@@ -82,4 +82,4 @@ echo ""
 echo "💡 Tips:"
 echo "  - Correct API prefix is: ${API_PREFIX} (not /api)"
 echo "  - Ensure database is seeded with claims for full testing"
-echo "  - Check logs: oc logs -n claims-demo deployment/backend --tail=50"
+echo "  - Check logs: oc logs -n multi-agents deployment/backend --tail=50"

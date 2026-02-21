@@ -3,13 +3,13 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claims-demo-backend"
+name = "multi-agents-backend"
 version = "0.1.0"
 description = "Agentic claims processing backend with FastAPI and LlamaStack"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "Claims Demo Team", email = "team@example.com" }
+    { name = "Multi-Agent AI Platform Team", email = "team@example.com" }
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

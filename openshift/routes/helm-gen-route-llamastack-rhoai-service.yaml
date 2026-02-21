@@ -2,16 +2,16 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: llamastack-rhoai-service
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
     app: llamastack
 spec:
-  host: llamastack-rhoai-claims-demo.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com
+  host: llamastack-rhoai-multi-agents.apps.your-cluster.example.com
   to:
     kind: Service
     name: llamastack-rhoai-service

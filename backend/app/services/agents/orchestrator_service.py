@@ -11,9 +11,11 @@ Responsibilities:
 """
 import json
 import logging
+import re
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from app.services.pii.redactor import redact_text_pii
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,12 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.llamastack.orchestrator_prompts import (
     CHAT_AGENT_WRAPPER,
+    LANGUAGE_RULE_TEMPLATE,
     ORCHESTRATOR_CLASSIFICATION_PROMPT,
+    ORCHESTRATOR_CONFIG,
     ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
-    SIMPLE_QUERY_CLAIMS,
-    SIMPLE_QUERY_TENDERS,
 )
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
+from .conversation_utils import ConversationHelper
 from .registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
@@ -37,6 +40,7 @@ class OrchestratorService:
 
     def __init__(self, orchestrator: Optional[ResponsesOrchestrator] = None):
         self.orchestrator = orchestrator or ResponsesOrchestrator()
+        self.conv = ConversationHelper(ORCHESTRATOR_CONFIG.get("conversation"))
 
     async def create_session(
         self,
@@ -62,17 +66,30 @@ class OrchestratorService:
 
         # Build welcome message based on locale
         is_fr = (locale or "fr").startswith("fr")
+        lang_key = "fr" if is_fr else "en"
+        welcome_cfg = ORCHESTRATOR_CONFIG.get("welcome_messages", {}).get(lang_key, {})
+
         if agent_id:
             agent_def = AgentRegistry.get(agent_id)
             if agent_def:
-                welcome = f"Session demarree avec l'agent **{agent_def.name}**. Comment puis-je vous aider ?" if is_fr else f"Session started with agent **{agent_def.name}**. How can I help you?"
+                tpl = welcome_cfg.get(
+                    "agent",
+                    "Session demarree avec l'agent **{agent_name}**. Comment puis-je vous aider ?"
+                    if is_fr else
+                    "Session started with agent **{agent_name}**. How can I help you?",
+                )
+                welcome = tpl.format(agent_name=agent_def.name)
             else:
-                welcome = "Session demarree." if is_fr else "Session started."
+                welcome = welcome_cfg.get(
+                    "fallback",
+                    "Session demarree." if is_fr else "Session started.",
+                )
         else:
-            welcome = (
+            welcome = welcome_cfg.get(
+                "orchestrator",
                 "Bienvenue ! Je suis l'orchestrateur multi-agents. Decrivez ce que vous souhaitez faire et je vous orienterai vers l'agent specialise."
                 if is_fr else
-                "Welcome! I'm the multi-agent orchestrator. Describe what you'd like to do and I'll route you to the right specialized agent."
+                "Welcome! I'm the multi-agent orchestrator. Describe what you'd like to do and I'll route you to the right specialized agent.",
             )
 
         # Save welcome message
@@ -124,14 +141,6 @@ class OrchestratorService:
         db.add(user_msg)
         await db.commit()
 
-        # Get conversation history
-        history_result = await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session.id)
-            .order_by(ChatMessage.created_at.asc())
-        )
-        history = history_result.scalars().all()
-
         # Fast keyword classification (no LLM call - saves ~10s)
         classification = self._fallback_classification(message, session.agent_id)
         intent = classification.get("intent", "general")
@@ -139,54 +148,109 @@ class OrchestratorService:
         response_text = classification.get("message", "")
         suggested_actions = classification.get("suggested_actions", [])
         tool_calls = []
+        token_usage = None
+        model = None
+        result = {}
 
-        # Update session agent if routed
+        # Get previous_response_id for stateful conversation chaining
+        metadata = dict(session.session_metadata or {})
+        previous_response_id = metadata.get("last_response_id")
+
+        # Update session agent if routed — clear response chain on agent switch
         if agent_id and agent_id != session.agent_id:
             session.agent_id = agent_id
+            previous_response_id = None  # New agent = new conversation context
             await db.commit()
 
-        # Single LLM call WITH MCP tools (the agent handles everything)
+        # Single LLM call — one model, all tools, the LLM decides everything
         if agent_id:
             agent_def = AgentRegistry.get(agent_id)
             if agent_def and agent_def.tools:
                 try:
-                    # Build conversation for context
-                    conversation = []
-                    for msg in history[-10:]:  # Last 10 messages for context
-                        conversation.append({
-                            "role": msg.role,
-                            "content": msg.content,
-                        })
+                    user_lang = self._detect_language(message)
+                    lang_name = "English" if user_lang == "en" else "French"
+                    lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
 
-                    # Select tools, instructions, and iteration limit based on complexity
-                    is_simple = self._is_simple_query(message)
-                    tools, instructions = self._select_tools_for_request(
-                        message, agent_id, agent_def
-                    )
+                    custom_prompt = (session.session_metadata or {}).get("custom_prompt")
+                    agent_instructions = custom_prompt or agent_def.instructions
+                    tools = agent_def.tools
+                    instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
+                    model = settings.llamastack_default_model
+                    max_iters = self.conv.get_max_infer_iters(False)
+
+                    logger.info(f"Calling agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
                     result = await self.orchestrator.process_with_agent(
-                        agent_config={
-                            "model": settings.llamastack_default_model,
-                            "instructions": instructions,
-                        },
-                        input_message=conversation,
+                        agent_config={"model": model, "instructions": instructions},
+                        input_message=message,
                         tools=tools,
-                        max_infer_iters=2 if is_simple else 10,
+                        max_infer_iters=max_iters,
+                        previous_response_id=previous_response_id,
                     )
 
                     agent_response = result.get("output", "")
                     tool_calls = result.get("tool_calls", [])
+                    token_usage = ConversationHelper.normalize_token_usage(result.get("usage", {}))
+
+                    # Retry if LLM wrote tool calls as text instead of function calling
+                    last_response_id = result.get("response_id")
+                    if (
+                        not tool_calls
+                        and self.conv.contains_text_tool_calls(agent_response)
+                        and self.conv.max_tool_call_retries > 0
+                    ):
+                        logger.warning("LLM wrote tool calls as text — retrying")
+                        result = await self.orchestrator.process_with_agent(
+                            agent_config={"model": model, "instructions": instructions},
+                            input_message="You wrote tool calls as text instead of calling them. "
+                                          "Use the function calling mechanism to actually execute the tools now.",
+                            tools=tools,
+                            max_infer_iters=max_iters,
+                            previous_response_id=last_response_id,
+                        )
+                        agent_response = result.get("output", "")
+                        tool_calls = result.get("tool_calls", [])
+                        retry_usage = ConversationHelper.normalize_token_usage(result.get("usage", {}))
+                        if token_usage and retry_usage:
+                            token_usage = {k: token_usage[k] + retry_usage[k] for k in token_usage}
+                        elif retry_usage:
+                            token_usage = retry_usage
 
                     if agent_response and agent_response.strip():
-                        response_text = agent_response
-                        # Generate post-response actions (chaining)
+                        if not tool_calls and self.conv.contains_text_tool_calls(agent_response):
+                            text_tool_names = ConversationHelper.extract_tool_names_from_text(agent_response)
+                            tool_calls = [{"name": n, "server": None, "output": None, "error": None} for n in text_tool_names]
+
+                        agent_response = ConversationHelper.clean_response_for_chat(agent_response)
+                        response_text = redact_text_pii(agent_response)
+                        if response_text != agent_response:
+                            logger.info("PII detected and redacted in agent response")
                         suggested_actions = self._generate_post_response_actions(
-                            response_text, agent_id
+                            response_text, agent_id, user_lang
                         )
 
                 except Exception as e:
                     logger.error(f"Agent {agent_id} MCP call failed: {e}", exc_info=True)
                     response_text = f"Erreur lors du traitement: {str(e)}"
+
+        # Build enriched tool_calls with full metadata
+        enriched_tool_calls = [
+            {
+                "name": tc.get("name", "unknown"),
+                "status": "error" if tc.get("error") else "completed",
+                "server_label": tc.get("server"),
+                "output": tc.get("output"),
+                "error": tc.get("error"),
+            }
+            for tc in tool_calls
+            if isinstance(tc, dict) and tc.get("name")
+        ]
+
+        # Store last_response_id for conversation chaining
+        new_response_id = result.get("response_id") if isinstance(result, dict) else None
+        if new_response_id:
+            metadata["last_response_id"] = new_response_id
+            session.session_metadata = metadata
 
         # Save assistant response
         assistant_msg = ChatMessage(
@@ -195,9 +259,21 @@ class OrchestratorService:
             content=response_text,
             agent_id=agent_id or "orchestrator",
             suggested_actions=suggested_actions if suggested_actions else None,
+            tool_calls=enriched_tool_calls if enriched_tool_calls else None,
+            token_usage=token_usage,
         )
         db.add(assistant_msg)
         await db.commit()
+
+        # Determine which model was used (short name for display)
+        model_id = None
+        if agent_id and AgentRegistry.get(agent_id):
+            full_model = model if isinstance(model, str) else settings.llamastack_default_model
+            # Extract short name: "litemaas/Mistral-Small-24B-W8A8" → "Mistral-Small-24B"
+            short = full_model.split("/")[-1] if "/" in full_model else full_model
+            # Remove quantization suffix (e.g. -W8A8, -W4A16)
+            short = re.sub(r'-W\d+A\d+$', '', short)
+            model_id = short
 
         return {
             "session_id": session_id,
@@ -206,7 +282,9 @@ class OrchestratorService:
             "message": response_text,
             "suggested_actions": suggested_actions,
             "entity_reference": classification.get("entity_reference"),
-            "tool_calls": tool_calls,
+            "tool_calls": enriched_tool_calls,
+            "token_usage": token_usage,
+            "model_id": model_id,
         }
 
     async def list_sessions(
@@ -279,6 +357,8 @@ class OrchestratorService:
                 "entity_id": str(msg.entity_id) if msg.entity_id else None,
                 "entity_type": msg.entity_type,
                 "suggested_actions": msg.suggested_actions,
+                "tool_calls": msg.tool_calls,
+                "token_usage": msg.token_usage,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None,
             }
             for msg in messages
@@ -315,6 +395,88 @@ class OrchestratorService:
         result = await db.execute(sql_delete(ChatSession))
         await db.commit()
         return result.rowcount
+
+    async def get_session_prompt(
+        self,
+        db: AsyncSession,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """Return effective prompt for a session (custom or default)."""
+        from app.models.conversation import ChatSession
+
+        result = await db.execute(
+            select(ChatSession).where(ChatSession.session_id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        custom_prompt = (session.session_metadata or {}).get("custom_prompt")
+        if custom_prompt:
+            prompt = self._wrap_instructions_for_chat(custom_prompt)
+            return {"prompt": prompt, "is_custom": True, "agent_id": session.agent_id}
+
+        # Build default prompt the same way process_message does
+        agent_id = session.agent_id
+        if agent_id:
+            agent_def = AgentRegistry.get(agent_id)
+            if agent_def:
+                prompt = self._wrap_instructions_for_chat(agent_def.instructions)
+                return {"prompt": prompt, "is_custom": False, "agent_id": agent_id}
+
+        # No agent assigned — return orchestrator instructions
+        return {
+            "prompt": ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
+            "is_custom": False,
+            "agent_id": None,
+        }
+
+    async def set_session_prompt(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        custom_prompt: str,
+    ) -> Dict[str, Any]:
+        """Set custom prompt for this session."""
+        from app.models.conversation import ChatSession
+
+        result = await db.execute(
+            select(ChatSession).where(ChatSession.session_id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        metadata = dict(session.session_metadata or {})
+        metadata["custom_prompt"] = custom_prompt
+        session.session_metadata = metadata
+        await db.commit()
+
+        prompt = self._wrap_instructions_for_chat(custom_prompt)
+        return {"prompt": prompt, "is_custom": True, "agent_id": session.agent_id}
+
+    async def reset_session_prompt(
+        self,
+        db: AsyncSession,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """Remove custom prompt, revert to default."""
+        from app.models.conversation import ChatSession
+
+        result = await db.execute(
+            select(ChatSession).where(ChatSession.session_id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        metadata = dict(session.session_metadata or {})
+        metadata.pop("custom_prompt", None)
+        session.session_metadata = metadata
+        await db.commit()
+
+        # Return default prompt
+        return await self.get_session_prompt(db, session_id)
 
     async def _classify_intent(
         self,
@@ -363,107 +525,156 @@ class OrchestratorService:
             logger.error(f"Error classifying intent: {e}", exc_info=True)
             return self._fallback_classification(message, current_agent_id)
 
-    # Tools needed only for simple CRUD queries (list, get, stats)
-    CRUD_TOOLS = {
-        "claims": ["list_claims", "get_claim", "get_claim_statistics"],
-        "tenders": ["list_tenders", "get_tender", "get_tender_statistics"],
-    }
-
-    # Keywords indicating a simple list/query (no processing needed)
-    SIMPLE_QUERY_KEYWORDS = [
-        "list", "lister", "liste", "montre", "affiche", "show",
-        "combien", "how many", "stats", "statistiques", "statistics",
-        "pending", "en attente", "status", "statut",
-        "premier", "first", "dernier", "last", "recent",
-    ]
-
-    def _is_simple_query(self, message: str) -> bool:
-        """Detect if the user request is a simple list/query (no processing)."""
-        msg_lower = message.lower()
-        # Simple query if it matches list keywords AND doesn't ask for processing
-        process_keywords = [
-            "traite", "process", "analyse", "analyser", "decide",
-            "decision", "approve", "deny", "go/no-go",
-        ]
-        has_simple = any(kw in msg_lower for kw in self.SIMPLE_QUERY_KEYWORDS)
-        has_process = any(kw in msg_lower for kw in process_keywords)
-        return has_simple and not has_process
-
-    def _select_tools_for_request(
-        self, message: str, agent_id: str, agent_def
-    ) -> tuple:
-        """Select tools and instructions based on request complexity.
-
-        Returns (tools, instructions) tuple. Simple queries get fewer tools
-        and a lightweight prompt for faster responses.
-        """
-        if self._is_simple_query(message):
-            tools = self.CRUD_TOOLS.get(agent_id, agent_def.tools[:3])
-            simple_prompts = {
-                "claims": SIMPLE_QUERY_CLAIMS,
-                "tenders": SIMPLE_QUERY_TENDERS,
-            }
-            instructions = self._wrap_instructions_for_chat(
-                simple_prompts.get(agent_id, "Use the available tools to answer.")
-            )
-            logger.info(f"Simple query detected - using {len(tools)} CRUD tools only")
-        else:
-            tools = agent_def.tools
-            instructions = self._wrap_instructions_for_chat(agent_def.instructions)
-            logger.info(f"Complex query - using all {len(tools)} tools")
-        return tools, instructions
-
     @staticmethod
     def _wrap_instructions_for_chat(agent_instructions: str) -> str:
         """Wrap agent instructions with chat-specific guidance."""
         return CHAT_AGENT_WRAPPER.format(agent_instructions=agent_instructions)
+
+    # Regex patterns for entity extraction
+    _CLAIM_NUMBER_RE = re.compile(r'CLM-\d{4}-\d{4}', re.IGNORECASE)
+    _TENDER_NUMBER_RE = re.compile(r'AO-\d{4}-\w+-\d{3}', re.IGNORECASE)
+
+    async def _enrich_message_for_processing(
+        self, db, message: str, agent_id: str
+    ) -> str:
+        """Pre-fetch entity data and append to message for processing.
+
+        When the LLM needs to process a claim/tender, it needs document_path
+        and user_id upfront. Without this, the LLM calls get_claim first and
+        stops before doing actual processing (OCR, RAG, decision).
+        """
+        from sqlalchemy import text as sql_text
+
+        try:
+            if agent_id == "claims":
+                match = self._CLAIM_NUMBER_RE.search(message)
+                if not match:
+                    return message
+                claim_number = match.group(0)
+                result = await db.execute(
+                    sql_text(
+                        "SELECT claim_number, user_id, claim_type, document_path "
+                        "FROM claims WHERE claim_number = :cn"
+                    ),
+                    {"cn": claim_number},
+                )
+                row = result.fetchone()
+                if row:
+                    data = (
+                        f"\n\n--- Claim data (pre-fetched) ---\n"
+                        f"claim_number: {row.claim_number}\n"
+                        f"user_id: {row.user_id}\n"
+                        f"claim_type: {row.claim_type}\n"
+                        f"document_path: {row.document_path}\n"
+                    )
+                    logger.info(f"Enriched message with claim data: {claim_number}")
+                    return message + data
+
+            elif agent_id == "tenders":
+                match = self._TENDER_NUMBER_RE.search(message)
+                if not match:
+                    return message
+                tender_number = match.group(0)
+                result = await db.execute(
+                    sql_text(
+                        "SELECT tender_number, entity_id, tender_type, document_path "
+                        "FROM tenders WHERE tender_number = :tn"
+                    ),
+                    {"tn": tender_number},
+                )
+                row = result.fetchone()
+                if row:
+                    data = (
+                        f"\n\n--- Tender data (pre-fetched) ---\n"
+                        f"tender_number: {row.tender_number}\n"
+                        f"entity_id: {row.entity_id}\n"
+                        f"tender_type: {row.tender_type}\n"
+                        f"document_path: {row.document_path}\n"
+                    )
+                    logger.info(f"Enriched message with tender data: {tender_number}")
+                    return message + data
+
+        except Exception as e:
+            logger.warning(f"Failed to enrich message: {e}")
+
+        return message
+
+    # Default French words for language detection (used when config not mounted)
+    _DEFAULT_FR_WORDS = {
+        "le", "la", "les", "des", "du", "un", "une", "est", "sont", "avec",
+        "pour", "dans", "sur", "par", "que", "qui", "ce", "cette", "mon",
+        "mes", "ton", "tes", "son", "ses", "nous", "vous", "leur", "leurs",
+        "je", "tu", "il", "elle", "nous", "ils", "elles", "et", "ou",
+        "mais", "donc", "sinistre", "sinistres", "attente", "traiter",
+        "lister", "afficher", "combien", "appel", "offres", "voir",
+    }
+
+    @staticmethod
+    def _detect_language(message: str) -> str:
+        """Detect user language from message. Returns 'en' or 'fr'."""
+        lang_cfg = ORCHESTRATOR_CONFIG.get("language_detection", {})
+        fr_words = set(lang_cfg.get("fr_words", OrchestratorService._DEFAULT_FR_WORDS))
+        min_match = lang_cfg.get("min_match_count", 2)
+        words = set(message.lower().split())
+        fr_count = len(words & fr_words)
+        return "fr" if fr_count >= min_match else "en"
+
+    @staticmethod
+    def _match_keywords(message_lower: str, words: set, keywords: list) -> bool:
+        """Match keywords against message using word boundaries.
+
+        - Multi-word keywords (containing space/apostrophe/slash): substring match
+        - Short keywords (<=3 chars): exact word match to avoid false positives
+        - Prefix keywords (ending with -): substring match (e.g. "clm-" matches "CLM-2024")
+        - Other keywords: substring match
+        """
+        for kw in keywords:
+            if " " in kw or "'" in kw or "/" in kw:
+                if kw in message_lower:
+                    return True
+            elif kw.endswith("-"):
+                if kw in message_lower:
+                    return True
+            elif len(kw) <= 3:
+                if kw in words:
+                    return True
+            else:
+                if kw in message_lower:
+                    return True
+        return False
 
     def _fallback_classification(
         self,
         message: str,
         current_agent_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Fast intent classification using keyword matching (no LLM call)."""
-        msg_lower = message.lower()
+        """Fast intent classification using keyword matching from agent registry.
 
-        # Tender keywords (checked first - more specific)
-        tender_keywords = [
-            "appel d'offres", "appels d'offres", "appel d offres",
-            "ao-", "ao ", "tender", "tenders",
-            "marche public", "marches publics", "soumission",
-            "btp", "construction", "go/no-go", "go no go",
-            "offre", "offres",
-        ]
-        # Claim keywords
-        claim_keywords = [
-            "claim", "claims", "clm-", "sinistre", "sinistres",
-            "assurance", "dommage", "remboursement",
-            "indemnisation", "police d'assurance", "contrat d'assurance",
-            "pending", "approve", "deny",
-        ]
+        Iterates over all registered agents and their routing_keywords.
+        No hardcoded agent IDs — adding a new agent with routing_keywords
+        is enough for routing to work.
+        """
+        msg_lower = message.lower()
+        msg_words = set(re.sub(r'[^\w\s-]', ' ', msg_lower).split())
 
         agent_id = current_agent_id
         intent = "general"
 
-        for kw in tender_keywords:
-            if kw in msg_lower:
-                agent_id = "tenders"
+        for agent_def in AgentRegistry.list_agents():
+            if agent_def.routing_keywords and self._match_keywords(
+                msg_lower, msg_words, agent_def.routing_keywords
+            ):
+                agent_id = agent_def.id
                 intent = "agent_request"
                 break
-
-        if intent == "general":
-            for kw in claim_keywords:
-                if kw in msg_lower:
-                    agent_id = "claims"
-                    intent = "agent_request"
-                    break
 
         # If still no match but session has an agent, keep routing there
         if intent == "general" and current_agent_id:
             agent_id = current_agent_id
             intent = "follow_up"
 
-        suggested_actions = self._generate_actions_for_intent(intent, agent_id)
+        user_lang = self._detect_language(message)
+        suggested_actions = self._generate_actions_for_intent(intent, agent_id, user_lang)
 
         return {
             "intent": intent,
@@ -472,37 +683,116 @@ class OrchestratorService:
             "suggested_actions": suggested_actions,
         }
 
-    def _generate_actions_for_intent(
-        self,
-        intent: str,
-        agent_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """Generate contextual suggested actions based on intent and agent."""
-        if agent_id == "tenders":
-            return [
+    # Default suggested actions (used when config not mounted)
+    _DEFAULT_SUGGESTED_ACTIONS = {
+        "tenders": {
+            "fr": [
                 {"label": "Voir les appels d'offres", "action": "navigate", "params": {"path": "/tenders"}},
                 {"label": "Analyser un AO", "action": "chat", "params": {}},
                 {"label": "Lister les AO en attente", "action": "chat", "params": {}},
-            ]
-        elif agent_id == "claims":
-            return [
+            ],
+            "en": [
+                {"label": "View tenders", "action": "navigate", "params": {"path": "/tenders"}},
+                {"label": "Analyze a tender", "action": "chat", "params": {}},
+                {"label": "List pending tenders", "action": "chat", "params": {}},
+            ],
+        },
+        "claims": {
+            "fr": [
                 {"label": "Voir les sinistres", "action": "navigate", "params": {"path": "/claims"}},
                 {"label": "Traiter un sinistre", "action": "chat", "params": {}},
                 {"label": "Lister les claims en attente", "action": "chat", "params": {}},
-            ]
-        else:
-            # General / no agent: suggest both domains
-            return [
+            ],
+            "en": [
+                {"label": "View claims", "action": "navigate", "params": {"path": "/claims"}},
+                {"label": "Process a claim", "action": "chat", "params": {}},
+                {"label": "List pending claims", "action": "chat", "params": {}},
+            ],
+        },
+        "general": {
+            "fr": [
                 {"label": "Sinistres (Claims)", "action": "navigate", "params": {"path": "/claims"}},
                 {"label": "Appels d'offres (AO)", "action": "navigate", "params": {"path": "/tenders"}},
                 {"label": "Parler a l'agent Sinistres", "action": "chat", "params": {}},
                 {"label": "Parler a l'agent AO", "action": "chat", "params": {}},
-            ]
+            ],
+            "en": [
+                {"label": "Claims", "action": "navigate", "params": {"path": "/claims"}},
+                {"label": "Tenders", "action": "navigate", "params": {"path": "/tenders"}},
+                {"label": "Talk to Claims agent", "action": "chat", "params": {}},
+                {"label": "Talk to Tenders agent", "action": "chat", "params": {}},
+            ],
+        },
+    }
+
+    def _generate_actions_for_intent(
+        self,
+        intent: str,
+        agent_id: Optional[str] = None,
+        lang: str = "fr",
+    ) -> List[Dict[str, Any]]:
+        """Generate contextual suggested actions based on intent, agent and language."""
+        cfg_actions = ORCHESTRATOR_CONFIG.get("suggested_actions", {})
+        key = agent_id if agent_id in ("tenders", "claims") else "general"
+        defaults = self._DEFAULT_SUGGESTED_ACTIONS[key]
+        actions = cfg_actions.get(key, defaults)
+        return actions.get(lang, actions.get("fr", defaults.get("fr", [])))
+
+    # Default post-response actions config (used when config not mounted)
+    _DEFAULT_POST_RESPONSE_ACTIONS = {
+        "tenders": {
+            "go_keywords": [
+                "recommandation : go", "recommandation: go",
+                "decision: go", "decision : go",
+                "go/no-go: go", "go/no-go : go",
+                "recommendation: go",
+            ],
+            "go_action": {
+                "fr": "Deposer un claim assurance pour ce projet",
+                "en": "File an insurance claim for this project",
+            },
+            "common": {
+                "fr": [
+                    {"label": "Voir les details de l'AO", "action": "navigate", "params": {"path": "/tenders"}},
+                    {"label": "Analyser un autre AO", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "View tender details", "action": "navigate", "params": {"path": "/tenders"}},
+                    {"label": "Analyze another tender", "action": "chat", "params": {}},
+                ],
+            },
+        },
+        "claims": {
+            "result_keywords": [
+                "approved", "approuve", "denied", "refuse",
+                "manual_review", "revue manuelle",
+            ],
+            "result_actions": {
+                "fr": [
+                    {"label": "Voir les details du sinistre", "action": "navigate", "params": {"path": "/claims"}},
+                    {"label": "Demander une revue manuelle", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "View claim details", "action": "navigate", "params": {"path": "/claims"}},
+                    {"label": "Request manual review", "action": "chat", "params": {}},
+                ],
+            },
+            "common": {
+                "fr": [
+                    {"label": "Traiter un autre sinistre", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "Process another claim", "action": "chat", "params": {}},
+                ],
+            },
+        },
+    }
 
     def _generate_post_response_actions(
         self,
         response_text: str,
         agent_id: Optional[str] = None,
+        lang: str = "fr",
     ) -> List[Dict[str, Any]]:
         """Generate follow-up actions after an agent response (chaining)."""
         if not response_text:
@@ -510,20 +800,26 @@ class OrchestratorService:
 
         resp_lower = response_text.lower()
         actions: List[Dict[str, Any]] = []
+        cfg_post = ORCHESTRATOR_CONFIG.get("post_response_actions", {})
 
         if agent_id == "tenders":
-            # After a Go decision → suggest chaining to claims
-            if any(kw in resp_lower for kw in ["recommandation : go", "recommandation: go", "decision: go", "decision : go", "go/no-go: go", "go/no-go : go"]):
-                actions.append({"label": "Deposer un claim assurance pour ce projet", "action": "chat", "params": {}})
-            actions.append({"label": "Voir les details de l'AO", "action": "navigate", "params": {"path": "/tenders"}})
-            actions.append({"label": "Analyser un autre AO", "action": "chat", "params": {}})
+            tender_cfg = cfg_post.get("tenders", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"])
+            go_keywords = tender_cfg.get("go_keywords", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["go_keywords"])
+            if any(kw in resp_lower for kw in go_keywords):
+                go_action = tender_cfg.get("go_action", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["go_action"])
+                label = go_action.get(lang, go_action.get("fr", ""))
+                actions.append({"label": label, "action": "chat", "params": {}})
+            common = tender_cfg.get("common", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["common"])
+            actions.extend(common.get(lang, common.get("fr", [])))
         elif agent_id == "claims":
-            # After a claim decision
-            if any(kw in resp_lower for kw in ["approved", "approuve", "denied", "refuse", "manual_review", "revue manuelle"]):
-                actions.append({"label": "Voir les details du sinistre", "action": "navigate", "params": {"path": "/claims"}})
-                actions.append({"label": "Demander une revue manuelle", "action": "chat", "params": {}})
-            actions.append({"label": "Traiter un autre sinistre", "action": "chat", "params": {}})
+            claims_cfg = cfg_post.get("claims", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"])
+            result_keywords = claims_cfg.get("result_keywords", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["result_keywords"])
+            if any(kw in resp_lower for kw in result_keywords):
+                result_actions = claims_cfg.get("result_actions", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["result_actions"])
+                actions.extend(result_actions.get(lang, result_actions.get("fr", [])))
+            common = claims_cfg.get("common", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["common"])
+            actions.extend(common.get(lang, common.get("fr", [])))
         else:
-            actions = self._generate_actions_for_intent("general", None)
+            actions = self._generate_actions_for_intent("general", None, lang)
 
         return actions

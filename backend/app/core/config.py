@@ -1,5 +1,5 @@
 """
-Configuration settings for the Claims Demo backend application.
+Configuration settings for the Multi-Agent AI Platform backend application.
 Loads settings from environment variables and provides typed configuration.
 
 FIXES APPLIED:
@@ -60,22 +60,22 @@ class Settings(BaseSettings):
         )
 
     # LlamaStack (OpenShift AI)
-    llamastack_endpoint: str = "http://llamastack-test-v035.claims-demo.svc.cluster.local:8321"
+    llamastack_endpoint: str = "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
     llamastack_api_key: Optional[str] = None
-    llamastack_default_model: str = "vllm-inference-1/llama-instruct-32-3b"
-    llamastack_embedding_model: str = "sentence-transformers/all-mpnet-base-v2"
+    llamastack_default_model: str = "litemaas/Llama-4-Scout-17B-16E-W4A16"  # Main model (tool calling + reasoning)
+    llamastack_embedding_model: str = "embeddinggemma-300m"
     llamastack_embedding_dimension: int = 768
     llamastack_timeout: int = 300  # seconds
     llamastack_max_retries: int = 3
     llamastack_max_tokens: int = 4096  # max tokens for responses (avoid exceeding model context)
 
     # MCP Servers
-    ocr_server_url: str = "http://ocr-server.claims-demo.svc.cluster.local:8080"
-    rag_server_url: str = "http://rag-server.claims-demo.svc.cluster.local:8080"
+    ocr_server_url: str = "http://ocr-server.multi-agents.svc.cluster.local:8080"
+    rag_server_url: str = "http://rag-server.multi-agents.svc.cluster.local:8080"
     claims_server_url: str = "http://claims-server:8080"
     tenders_server_url: str = "http://tenders-server:8080"
     guardrails_server_url: str = (
-        "http://claims-guardrails.claims-demo.svc.cluster.local:8080"
+        "http://claims-guardrails.multi-agents.svc.cluster.local:8080"
     )
 
     # Guardrails/Shields Configuration
@@ -105,7 +105,7 @@ class Settings(BaseSettings):
 
     # Admin & Database Reset
     # Configure this to point to your GitHub repository branch
-    # Example: https://raw.githubusercontent.com/your-org/agentic-claim-demo/main/database/seed_data/001_sample_data.sql
+    # Example: https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql
     seed_data_url: str = ""  # Must be set via SEED_DATA_URL env var
 
     # Logging

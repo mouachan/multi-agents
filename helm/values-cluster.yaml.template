@@ -9,7 +9,7 @@
 # =============================================================================
 global:
   clusterDomain: "apps.cluster-xxxxx.xxxxx.sandboxXXXX.opentlc.com"  # Replace with your cluster domain
-  namespace: claims-demo
+  namespace: multi-agents
   imageRegistry: quay.io/your-org  # Replace with your registry
   imagePullPolicy: IfNotPresent
 
@@ -105,7 +105,7 @@ postgresql:
       memory: 4Gi
 
   image:
-    repository: agentic-claims-demo/postgresql
+    repository: multi-agents/postgresql
     tag: latest
 
 # =============================================================================
@@ -135,7 +135,7 @@ mcp:
     enabled: true
     replicas: 1
     image:
-      repository: agentic-claims-demo/ocr-server
+      repository: multi-agents/ocr-server
       tag: latest
     resources:
       requests:
@@ -149,7 +149,7 @@ mcp:
     enabled: true
     replicas: 1
     image:
-      repository: agentic-claims-demo/rag-server
+      repository: multi-agents/rag-server
       tag: latest
     resources:
       requests:
@@ -167,7 +167,7 @@ backend:
   replicas: 1
 
   image:
-    repository: agentic-claims-demo/backend
+    repository: multi-agents/backend
     tag: latest  # Or responses-api for Responses API version
 
   route:
@@ -197,7 +197,7 @@ frontend:
   replicas: 2
 
   image:
-    repository: agentic-claims-demo/frontend
+    repository: multi-agents/frontend
     tag: latest
 
   route:
@@ -218,7 +218,7 @@ frontend:
 # =============================================================================
 hfcli:
   image:
-    repository: agentic-claims-demo/hfcli
+    repository: multi-agents/hfcli
     tag: latest
 
 # =============================================================================

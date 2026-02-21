@@ -1,6 +1,6 @@
 -- ============================================================================
--- Seed Data: Vinci Construction - Tender Pipeline Demo
--- Description: Realistic French BTP data for Vinci Construction demo
+-- Seed Data: BTP Construction - Tender Pipeline Demo
+-- Description: Realistic French BTP data for BTP construction demo
 --              Includes references, historical tenders, capabilities,
 --              and pending tenders for live demo.
 -- ============================================================================
@@ -10,14 +10,14 @@ DELETE FROM tender_processing_logs;
 DELETE FROM tender_decisions;
 DELETE FROM tender_documents;
 DELETE FROM tenders;
-DELETE FROM vinci_references;
-DELETE FROM vinci_capabilities;
+DELETE FROM company_references;
+DELETE FROM company_capabilities;
 DELETE FROM historical_tenders;
 
 -- ============================================================================
--- 1. VINCI REFERENCES — 10 completed projects
+-- 1. COMPANY REFERENCES — 10 completed projects
 -- ============================================================================
-INSERT INTO vinci_references (
+INSERT INTO company_references (
     id, reference_number, project_name, maitre_ouvrage, nature_travaux,
     montant, date_debut, date_fin, region, description,
     certifications_used, key_metrics, is_active
@@ -482,9 +482,9 @@ INSERT INTO historical_tenders (
 
 
 -- ============================================================================
--- 3. VINCI CAPABILITIES — 20 entries (8 certifications, 6 materiel, 6 personnel)
+-- 3. COMPANY CAPABILITIES — 20 entries (8 certifications, 6 materiel, 6 personnel)
 -- ============================================================================
-INSERT INTO vinci_capabilities (
+INSERT INTO company_capabilities (
     id, category, name, description, valid_until, region, availability, details, is_active
 ) VALUES
 
@@ -494,7 +494,7 @@ INSERT INTO vinci_capabilities (
     gen_random_uuid(),
     'certification',
     'ISO 9001:2015 - Management de la qualite',
-    'Certification ISO 9001 version 2015 couvrant l''ensemble des activites de construction, rehabilitation et genie civil de Vinci Construction France. Auditee annuellement par Bureau Veritas.',
+    'Certification ISO 9001 version 2015 couvrant l''ensemble des activites de construction, rehabilitation et genie civil de l''entreprise France. Auditee annuellement par Bureau Veritas.',
     '2026-12-31',
     'National',
     'disponible',
@@ -746,7 +746,7 @@ INSERT INTO tenders (
 -- AO-2026-0042: Marche public, 80 logements Nanterre
 (
     gen_random_uuid(),
-    'VINCI-IDF',
+    'ENT-IDF',
     'AO-2026-0042',
     'Marche public',
     '/claim_documents/ao/ao_2026_0042.pdf',
@@ -773,7 +773,7 @@ INSERT INTO tenders (
 -- AO-2026-0043: Marche prive, rehabilitation bureaux La Defense
 (
     gen_random_uuid(),
-    'VINCI-IDF',
+    'ENT-IDF',
     'AO-2026-0043',
     'Marche prive',
     '/claim_documents/ao/ao_2026_0043.pdf',
@@ -800,7 +800,7 @@ INSERT INTO tenders (
 -- AO-2026-0044: Conception-realisation, gymnase Villeurbanne
 (
     gen_random_uuid(),
-    'VINCI-ARA',
+    'ENT-ARA',
     'AO-2026-0044',
     'Conception-realisation',
     '/claim_documents/ao/ao_2026_0044.pdf',
@@ -827,7 +827,7 @@ INSERT INTO tenders (
 -- AO-2026-0045: Marche public, ouvrage d'art A86
 (
     gen_random_uuid(),
-    'VINCI-IDF',
+    'ENT-IDF',
     'AO-2026-0045',
     'Marche public',
     '/claim_documents/ao/ao_2026_0045.pdf',
@@ -854,7 +854,7 @@ INSERT INTO tenders (
 -- AO-2026-0046: Marche public, amenagement ZAC Bordeaux Euratlantique
 (
     gen_random_uuid(),
-    'VINCI-NAQ',
+    'ENT-NAQ',
     'AO-2026-0046',
     'Marche public',
     '/claim_documents/ao/ao_2026_0046.pdf',
@@ -882,10 +882,10 @@ INSERT INTO tenders (
 -- ============================================================================
 -- Verification counts (uncomment to run)
 -- ============================================================================
--- SELECT 'vinci_references' AS table_name, COUNT(*) AS row_count FROM vinci_references
+-- SELECT 'company_references' AS table_name, COUNT(*) AS row_count FROM company_references
 -- UNION ALL
 -- SELECT 'historical_tenders', COUNT(*) FROM historical_tenders
 -- UNION ALL
--- SELECT 'vinci_capabilities', COUNT(*) FROM vinci_capabilities
+-- SELECT 'company_capabilities', COUNT(*) FROM company_capabilities
 -- UNION ALL
 -- SELECT 'tenders (pending)', COUNT(*) FROM tenders WHERE status = 'pending';

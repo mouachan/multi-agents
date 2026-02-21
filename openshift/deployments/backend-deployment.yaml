@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: backend
@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: quay.io/mouachan/agentic-claims-demo/backend:latest
+          image: quay.io/your-org/multi-agents/backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

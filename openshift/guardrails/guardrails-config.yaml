@@ -1,10 +1,10 @@
-# GuardrailsOrchestrator Configuration ConfigMap for Claims Demo
+# GuardrailsOrchestrator Configuration ConfigMap for Multi-Agent AI Platform
 # Configures HAP and PII detection for claim processing
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: claims-guardrails-config
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: claims-processing
     component: guardrails
@@ -16,7 +16,7 @@ data:
     chat_generation:
       service:
         # LlamaStack inference endpoint (HTTP)
-        hostname: claims-llamastack-service.claims-demo.svc.cluster.local
+        hostname: claims-llamastack-service.multi-agents.svc.cluster.local
         port: 8321
 
     # Detector configurations

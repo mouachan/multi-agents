@@ -4,7 +4,7 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: guardrails-detector
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     trustyai/detector: "true"  # CRITICAL: Label for GuardrailsOrchestrator auto-discovery
     app: claims-processing

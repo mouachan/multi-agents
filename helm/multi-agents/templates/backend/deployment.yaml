@@ -1,0 +1,130 @@
+{{- if .Values.backend.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+  name: backend
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: backend
+spec:
+{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
+  replicas: {{ .Values.backend.replicas }}
+{{- else }}
+  replicas: 1
+{{- end }}
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+{{- else }}
+    type: Recreate
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: backend-config
+          env:
+            {{- include "postgres.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - mountPath: /claim_documents
+              name: claim-documents
+              readOnly: true
+            - mountPath: /app/prompts
+              name: prompts
+              readOnly: true
+            - mountPath: /app/prompts-ao
+              name: ao-prompts
+              readOnly: true
+            - mountPath: /app/prompts-orchestrator
+              name: orchestrator-prompts
+              readOnly: true
+{{- if and .Values.mcp.ocr.enabled (ne .Values.backend.pvc.accessMode "ReadWriteMany") }}
+        - name: ocr-server
+          image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.mcp.ocr.image.repository }}:{{ .Values.mcp.ocr.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8081
+              name: http
+              protocol: TCP
+          env:
+            - name: OCR_GPU_ENABLED
+              value: {{ .Values.mcp.ocr.env.OCR_GPU_ENABLED | quote }}
+            - name: OCR_LANGUAGES
+              value: {{ .Values.mcp.ocr.env.OCR_LANGUAGES | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.mcp.ocr.env.LOG_LEVEL | quote }}
+            - name: LLAMASTACK_ENDPOINT
+              value: {{ quote (include "llamastack.endpoint" .) }}
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "8081"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            {{- toYaml .Values.mcp.ocr.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: claim-documents
+              mountPath: /claim_documents
+{{- end }}
+      volumes:
+        - name: claim-documents
+          persistentVolumeClaim:
+            claimName: claim-documents
+        - name: prompts
+          configMap:
+            name: claims-prompts
+        - name: ao-prompts
+          configMap:
+            name: ao-prompts
+        - name: orchestrator-prompts
+          configMap:
+            name: orchestrator-prompts
+{{- end }}

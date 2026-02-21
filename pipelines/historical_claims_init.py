@@ -4,7 +4,7 @@ Kubeflow Pipeline: Historical Claims Initialization
 Initializes historical claims with OCR, embeddings, and realistic AI decisions
 for similarity search in the claims processing workflow (default: 10 claims).
 
-Author: Claims Demo Team
+Author: Multi-Agent AI Platform Team
 RHOAI Version: 3.2
 """
 
@@ -46,7 +46,7 @@ def generate_realistic_pdfs(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables (injected from secret)
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -213,7 +213,7 @@ def docling_parse_pdfs(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -344,7 +344,7 @@ def generate_embeddings(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -517,7 +517,7 @@ def generate_decisions(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -763,7 +763,7 @@ REASONING: [Your detailed reasoning]
 )
 def historical_claims_pipeline(
     num_claims: int = 10,
-    llamastack_endpoint: str = 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321',
+    llamastack_endpoint: str = 'http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321',
     embedding_model: str = 'vllm-embedding/embeddinggemma-300m',
     llm_model: str = 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8',
     batch_size: int = 5,

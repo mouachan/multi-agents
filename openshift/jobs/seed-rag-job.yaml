@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: seed-rag-data
-  namespace: claims-demo
+  namespace: multi-agents
 spec:
   template:
     spec:
@@ -17,7 +17,7 @@ spec:
           python3 /scripts/seed_rag_data.py
         env:
         - name: POSTGRES_HOST
-          value: "postgresql.claims-demo.svc.cluster.local"
+          value: "postgresql.multi-agents.svc.cluster.local"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_DB
@@ -33,7 +33,7 @@ spec:
               name: postgresql-secret
               key: POSTGRES_PASSWORD
         - name: EMBEDDING_URL
-          value: "https://embeddinggemma-300m-edg-demo.apps.cluster-rk6mx.rk6mx.sandbox492.opentlc.com"
+          value: "https://embedding-service.apps.your-cluster.example.com"
         volumeMounts:
         - name: seed-script
           mountPath: /scripts

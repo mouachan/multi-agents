@@ -1,0 +1,4 @@
+
+
+## MANDATORY LANGUAGE RULE
+You MUST write your ENTIRE response in {lang_name}. Every word of your answer must be in {lang_name}.

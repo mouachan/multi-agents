@@ -1,7 +1,7 @@
 apiVersion: datasciencecluster.opendatahub.io/v1
 kind: DataScienceProject
 metadata:
-  name: claims-demo
+  name: multi-agents
   labels:
     app: claims-processing
     environment: production

@@ -2,9 +2,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: claim-documents
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    app: claims-demo
+    app: multi-agents
 spec:
   accessModes:
     - ReadWriteOnce

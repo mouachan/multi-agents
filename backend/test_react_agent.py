@@ -9,7 +9,7 @@ import time
 import sys
 
 # Set environment variables if needed
-os.environ.setdefault("LLAMASTACK_ENDPOINT", "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321")
+os.environ.setdefault("LLAMASTACK_ENDPOINT", "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321")
 os.environ.setdefault("LLAMASTACK_DEFAULT_MODEL", "vllm-inference-1/llama-instruct-32-3b")
 
 from llama_stack_client import LlamaStackClient

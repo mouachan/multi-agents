@@ -6,7 +6,7 @@ Initializes ALL data needed for the claims demo:
 2. Historical claims with OCR, embeddings, and AI decisions (60 claims)
 3. Test claims with realistic scenarios APPROVE/DENY/MANUAL_REVIEW (40 claims)
 
-Author: Claims Demo Team
+Author: Multi-Agent AI Platform Team
 RHOAI Version: 3.2
 """
 
@@ -45,7 +45,7 @@ def generate_kb_embeddings(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables (injected from secret)
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -142,7 +142,7 @@ def generate_realistic_pdfs(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables (injected from secret)
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -275,7 +275,7 @@ def parse_with_docling(
     logger = logging.getLogger(__name__)
 
     # Database connection from environment variables
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -373,7 +373,7 @@ def generate_embeddings(
     logger = logging.getLogger(__name__)
 
     # Database connection
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -473,7 +473,7 @@ def generate_decisions(
     logger = logging.getLogger(__name__)
 
     # Database connection
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -619,7 +619,7 @@ def generate_test_claims(
     logger = logging.getLogger(__name__)
 
     # Database connection
-    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.claims-demo.svc.cluster.local')
+    postgres_host = os.getenv('POSTGRES_HOST', 'postgresql.multi-agents.svc.cluster.local')
     postgres_port = os.getenv('POSTGRES_PORT', '5432')
     postgres_db = os.getenv('POSTGRES_DATABASE')
     postgres_user = os.getenv('POSTGRES_USER')
@@ -752,7 +752,7 @@ def generate_test_claims(
 @dsl.pipeline(
     name='Complete Data Initialization',
     description="""
-    Complete data initialization for the Claims Demo.
+    Complete data initialization for the Multi-Agent AI Platform.
 
     This pipeline initializes ALL data needed:
     1. Knowledge Base embeddings (15 entries)
@@ -774,7 +774,7 @@ def generate_test_claims(
 )
 def complete_data_init_pipeline(
     num_historical_claims: int = 60,
-    llamastack_endpoint: str = 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321',
+    llamastack_endpoint: str = 'http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321',
     embedding_model: str = 'vllm-embedding/embeddinggemma-300m',
     llm_model: str = 'vllm-inference/llama-3-3-70b-instruct-quantized-w8a8',
     batch_size: int = 5,

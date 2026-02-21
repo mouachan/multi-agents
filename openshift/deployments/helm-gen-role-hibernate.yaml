@@ -4,7 +4,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '1'
   name: hibernate
-  namespace: claims-demo
+  namespace: multi-agents
 rules:
 - apiGroups:
   - apps

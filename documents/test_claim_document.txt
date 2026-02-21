@@ -28,4 +28,4 @@ Phone: (415) 555-1234
 Patient Signature: John Doe
 Date: 12/20/2024
 
-This is a test document for the agentic claims processing demo.
+This is a test document for the multi-agent AI platform.

@@ -26,6 +26,7 @@ class AgentDefinition:
     icon: str = "document"
     api_prefix: str = ""
     decision_values: List[str] = field(default_factory=list)
+    routing_keywords: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 

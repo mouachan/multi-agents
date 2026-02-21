@@ -4,13 +4,13 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '3'
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
   name: llamastack-rhoai
-  namespace: claims-demo
+  namespace: multi-agents
 data:
   run.yaml: "version: 2\nimage_name: rh-dev\n\napis:\n- agents\n- batches\n- datasetio\n\
     - eval\n- files\n- inference\n- safety\n- scoring\n- tool_runtime\n- vector_io\n\
@@ -69,8 +69,8 @@ data:
     \              - credit-card\n              - phone\n  vector_dbs: []\n  datasets:\
     \ []\n  scoring_fns: []\n  benchmarks: []\n\n  tool_groups:\n  - toolgroup_id:\
     \ mcp::ocr-server\n    provider_id: model-context-protocol\n    mcp_endpoint:\n\
-    \      uri: http://ocr-server.claims-demo.svc.cluster.local:8080/sse\n  - toolgroup_id:\
+    \      uri: http://ocr-server.multi-agents.svc.cluster.local:8080/sse\n  - toolgroup_id:\
     \ mcp::rag-server\n    provider_id: model-context-protocol\n    mcp_endpoint:\n\
-    \      uri: http://rag-server.claims-demo.svc.cluster.local:8080/sse\n  - toolgroup_id:\
+    \      uri: http://rag-server.multi-agents.svc.cluster.local:8080/sse\n  - toolgroup_id:\
     \ builtin::rag\n    provider_id: rag-runtime\n\ntelemetry:\n  enabled: true\n\n\
     server:\n  port: 8321\n"

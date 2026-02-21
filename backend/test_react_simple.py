@@ -3,7 +3,7 @@
 import os
 import time
 
-os.environ.setdefault("LLAMASTACK_ENDPOINT", "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321")
+os.environ.setdefault("LLAMASTACK_ENDPOINT", "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321")
 os.environ.setdefault("LLAMASTACK_DEFAULT_MODEL", "vllm-inference-1/llama-instruct-32-3b")
 
 from llama_stack_client import LlamaStackClient
@@ -18,12 +18,12 @@ def test_react_with_mcp():
         {
             "type": "mcp",
             "server_label": "ocr-server",
-            "server_url": "http://ocr-server.claims-demo.svc.cluster.local:8080/sse"
+            "server_url": "http://ocr-server.multi-agents.svc.cluster.local:8080/sse"
         },
         {
             "type": "mcp",
             "server_label": "rag-server",
-            "server_url": "http://rag-server.claims-demo.svc.cluster.local:8080/sse"
+            "server_url": "http://rag-server.multi-agents.svc.cluster.local:8080/sse"
         }
     ]
 

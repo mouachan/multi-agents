@@ -30,14 +30,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.claims-demo.svc.cluster.local")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.multi-agents.svc.cluster.local")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 LLAMASTACK_ENDPOINT = os.getenv(
     "LLAMASTACK_ENDPOINT",
-    "http://llamastack-test-v035.claims-demo.svc.cluster.local:8321"
+    "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
 )
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemma-300m")
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "5"))  # Process 5 documents at a time

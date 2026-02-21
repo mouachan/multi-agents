@@ -1,4 +1,4 @@
-// Type definitions for Claims Demo
+// Type definitions for Multi-Agent AI Platform
 
 export interface AgentLogEntry {
   type: 'reviewer_question' | 'agent_answer' | 'approve' | 'reject' | 'request_info' | 'comment'

@@ -17,9 +17,11 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - ./database/migrations/003_add_pii_redacted_fields.sql:/docker-entrypoint-initdb.d/02-pii-fields.sql:ro
       - ./database/migrations/004_add_chat_tables.sql:/docker-entrypoint-initdb.d/03-chat-tables.sql:ro
-      - ./database/seed_data/001_sample_data.sql:/docker-entrypoint-initdb.d/04-seed-data.sql:ro
-      - ./database/seed_data/002_tender_seed_data.sql:/docker-entrypoint-initdb.d/05-tender-seed.sql:ro
-      - ./database/seed_data/004_harmonized_scenario.sql:/docker-entrypoint-initdb.d/06-harmonized.sql:ro
+      - ./database/migrations/005_add_tool_calls_to_chat_messages.sql:/docker-entrypoint-initdb.d/04-tool-calls.sql:ro
+      - ./database/migrations/006_add_token_usage_to_chat_messages.sql:/docker-entrypoint-initdb.d/05-token-usage.sql:ro
+      - ./database/seed_data/001_sample_data.sql:/docker-entrypoint-initdb.d/06-seed-data.sql:ro
+      - ./database/seed_data/002_tender_seed_data.sql:/docker-entrypoint-initdb.d/07-tender-seed.sql:ro
+      - ./database/seed_data/004_harmonized_scenario.sql:/docker-entrypoint-initdb.d/08-harmonized.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U claims_user -d claims_db"]
       interval: 10s
@@ -28,23 +30,24 @@ services:
     networks:
       - multi-agents-network
 
-  # LlamaStack - local orchestrator connecting to remote models
+  # LlamaStack - local orchestrator connecting to LiteMaaS + remote embeddings
   llamastack:
     image: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9@sha256:a9e415ce30b0a61ae35ef43870b03ccb193074fdbd02683757f1908343266837
     container_name: multi-agents-llamastack
     environment:
-      INFERENCE_MODEL: llama-3-3-70b-instruct-quantized-w8a8
-      VLLM_URL: https://llama-llama-3-3-70b.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
-      VLLM_API_TOKEN: fake
-      EMBEDDING_MODEL: embeddinggemma-300m
-      VLLM_EMBEDDING_URL: https://gemma-embeddinggemma-300m.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com/v1
-      VLLM_EMBEDDING_API_TOKEN: fake
+      LITEMAAS_URL: ${LITEMAAS_URL:-https://your-llm-endpoint.example.com/v1}
+      LITEMAAS_API_KEY: ${LITEMAAS_API_KEY:-sk-change-me}
+      LITEMAAS_EMBEDDING_URL: ${LITEMAAS_EMBEDDING_URL:-https://your-embedding-endpoint.example.com/v1}
+      LITEMAAS_EMBEDDING_API_KEY: ${LITEMAAS_EMBEDDING_API_KEY:-sk-change-me}
       RUN_CONFIG_PATH: /config/run.yaml
     ports:
       - "8321:8321"
     volumes:
       - ./llamastack/run.yaml:/config/run.yaml:ro
       - llamastack_data:/data
+    depends_on:
+      postgresql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
       interval: 15s
@@ -69,19 +72,21 @@ services:
       POSTGRES_USER: claims_user
       POSTGRES_PASSWORD: claims_pass
       LLAMASTACK_ENDPOINT: http://llamastack:8321
-      LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
-      LLAMASTACK_EMBEDDING_MODEL: embeddinggemma-300m
+      LLAMASTACK_DEFAULT_MODEL: litemaas/Llama-4-Scout-17B-16E-W4A16
+      LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
       LLAMASTACK_EMBEDDING_DIMENSION: 768
       OCR_SERVER_URL: http://ocr-server:8080
       RAG_SERVER_URL: http://rag-server:8080
       CLAIMS_SERVER_URL: http://claims-server:8080
       TENDERS_SERVER_URL: http://tenders-server:8080
-      GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-claims-demo.apps.cluster-wvqkp.wvqkp.sandbox3534.opentlc.com
+      GUARDRAILS_SERVER_URL: ${GUARDRAILS_SERVER_URL:-https://guardrails-orchestrator-your-namespace.apps.your-cluster.example.com}
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
     ports:
       - "8000:8000"
     depends_on:
       postgresql:
+        condition: service_healthy
+      llamastack:
         condition: service_healthy
     volumes:
       - ./backend/app:/opt/app-root/src/app

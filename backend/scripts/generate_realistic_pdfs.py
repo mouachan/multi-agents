@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.claims-demo.svc.cluster.local")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.multi-agents.svc.cluster.local")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")

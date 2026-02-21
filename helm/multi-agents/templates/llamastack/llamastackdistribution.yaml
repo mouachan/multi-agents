@@ -1,0 +1,85 @@
+{{- if and .Values.llamastack.enabled }}
+---
+apiVersion: llamastack.io/v1alpha1
+kind: LlamaStackDistribution
+metadata:
+  annotations:
+    # ArgoCD GitOps
+    argocd.argoproj.io/sync-wave: "10"
+    # Helm hooks
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+  name: llamastack-rhoai
+  namespace: {{ include "multi-agents.namespace" . }}
+spec:
+  replicas: 1
+  server:
+    containerSpec:
+      env:
+        # Remote LLM configuration
+        - name: INFERENCE_MODEL
+          value: {{ include "llamastack.model" . | quote }}
+        - name: VLLM_URL
+          value: {{ include "llamastack.inferenceEndpoint" . | quote }}
+        - name: VLLM_TLS_VERIFY
+          value: "false"
+        - name: VLLM_API_TOKEN
+          value: "fake"
+        - name: VLLM_MAX_TOKENS
+          value: "4096"
+
+        # Remote embedding configuration
+        - name: EMBEDDING_MODEL
+          value: {{ include "llamastack.embeddingModel" . | quote }}
+        - name: EMBEDDING_PROVIDER_MODEL_ID
+          value: {{ include "llamastack.embeddingModel" . | quote }}
+        - name: VLLM_EMBEDDING_URL
+          value: {{ include "llamastack.embeddingEndpoint" . | quote }}
+        - name: VLLM_EMBEDDING_TLS_VERIFY
+          value: "false"
+        - name: VLLM_EMBEDDING_API_TOKEN
+          value: "fake"
+        - name: VLLM_EMBEDDING_MAX_TOKENS
+          value: "512"
+
+        # PostgreSQL and PGVector configuration
+        - name: POSTGRES_HOST
+          value: postgresql.{{ include "multi-agents.namespace" . }}.svc.cluster.local
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: LLAMASTACK_DATABASE
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: LLAMASTACK_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: LLAMASTACK_PASSWORD
+        - name: ENABLE_PGVECTOR
+          value: "true"
+{{- if .Values.guardrails.enabled }}
+        - name: FMS_ORCHESTRATOR_URL
+          value: "https://guardrails-orchestrator-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8032"
+{{- end }}
+      name: llama-stack
+      port: 8321
+      resources:
+        {{- toYaml .Values.llamastack.resources | nindent 8 }}
+    distribution:
+      name: rh-dev
+    userConfig:
+      configMapName: llamastack-rhoai
+    storage:
+      size: 20Gi
+      mountPath: /opt/app-root/src/.llama/distributions/rh/
+{{- end }}

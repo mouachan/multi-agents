@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatResponse,
   ChatSession,
+  PromptResponse,
 } from '../types/chat'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -11,7 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 60000,
+  timeout: 300000, // 5 minutes for LLM + MCP tool calling
 })
 
 export const orchestratorApi = {
@@ -60,6 +61,34 @@ export const orchestratorApi = {
   // Delete all sessions
   deleteAllSessions: async (): Promise<{ count: number }> => {
     const response = await apiClient.delete('/orchestrator/sessions')
+    return response.data
+  },
+
+  // Get the effective prompt for a session
+  getSessionPrompt: async (sessionId: string): Promise<PromptResponse> => {
+    const response = await apiClient.get(
+      `/orchestrator/sessions/${sessionId}/prompt`
+    )
+    return response.data
+  },
+
+  // Set a custom prompt for a session
+  setSessionPrompt: async (
+    sessionId: string,
+    customPrompt: string
+  ): Promise<PromptResponse> => {
+    const response = await apiClient.put(
+      `/orchestrator/sessions/${sessionId}/prompt`,
+      { custom_prompt: customPrompt }
+    )
+    return response.data
+  },
+
+  // Reset session prompt to default
+  resetSessionPrompt: async (sessionId: string): Promise<PromptResponse> => {
+    const response = await apiClient.delete(
+      `/orchestrator/sessions/${sessionId}/prompt`
+    )
     return response.data
   },
 

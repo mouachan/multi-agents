@@ -5,7 +5,7 @@ echo "=========================================="
 echo "Pushing MCP Server Images to Quay.io"
 echo "=========================================="
 
-QUAY_REPO="quay.io/mouachan/agentic-claims-demo"
+QUAY_REPO="${QUAY_REPO:-quay.io/your-org/multi-agents}"
 
 # Check if logged in to Quay.io
 if ! podman login quay.io --get-login &>/dev/null; then

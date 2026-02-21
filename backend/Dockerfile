@@ -5,7 +5,7 @@
 FROM registry.access.redhat.com/ubi9/python-312:latest
 
 # Labels
-LABEL maintainer="Claims Demo Team" \
+LABEL maintainer="Multi-Agent AI Platform Team" \
       description="Claims Processing Backend API" \
       version="1.0.0"
 

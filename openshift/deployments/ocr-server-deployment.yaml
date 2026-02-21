@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ocr-server
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: ocr-server
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: ocr-server
-        image: quay.io/mouachan/agentic-claims-demo/ocr-server:latest
+        image: quay.io/your-org/multi-agents/ocr-server:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

@@ -5,7 +5,7 @@ echo "=========================================="
 echo "Tests RAG Server + Workflow End-to-End"
 echo "=========================================="
 
-NAMESPACE="claims-demo"
+NAMESPACE="multi-agents"
 
 # Couleurs pour les logs
 GREEN='\033[0;32m'

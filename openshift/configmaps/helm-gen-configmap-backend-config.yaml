@@ -4,11 +4,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '4'
   name: backend-config
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
     app: backend
@@ -22,16 +22,16 @@ data:
   API_PORT: '8000'
   DATABASE_POOL_SIZE: '10'
   DATABASE_MAX_OVERFLOW: '20'
-  LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+  LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
   LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
   LLAMASTACK_EMBEDDING_MODEL: vllm-embedding/embeddinggemma-300m
   LLAMASTACK_EMBEDDING_DIMENSION: '768'
   LLAMASTACK_TIMEOUT: '300'
   LLAMASTACK_MAX_RETRIES: '3'
   LLAMASTACK_MAX_TOKENS: '4096'
-  OCR_SERVER_URL: http://ocr-server.claims-demo.svc.cluster.local:8080
-  RAG_SERVER_URL: http://rag-server.claims-demo.svc.cluster.local:8080
-  GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.claims-demo.svc.cluster.local:8032
+  OCR_SERVER_URL: http://ocr-server.multi-agents.svc.cluster.local:8080
+  RAG_SERVER_URL: http://rag-server.multi-agents.svc.cluster.local:8080
+  GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.multi-agents.svc.cluster.local:8032
   ENABLE_PII_DETECTION: 'true'
   PII_SHIELD_ID: pii_detector
   CORS_ALLOW_CREDENTIALS: 'true'
@@ -48,4 +48,4 @@ data:
   METRICS_PORT: '9090'
   PROMPTS_DIR: /app/prompts
   TOOL_AGENT_MAPPING: ocr_extract_claim_info:ocr-agent,ocr_document:ocr-agent,retrieve_user_info:rag-agent,retrieve_similar_claims:rag-agent,search_knowledge_base:rag-agent
-  SEED_DATA_URL: https://raw.githubusercontent.com/mouachan/agentic-claim-demo/refactor/v1.5-architecture/database/seed_data/001_sample_data.sql
+  SEED_DATA_URL: https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql

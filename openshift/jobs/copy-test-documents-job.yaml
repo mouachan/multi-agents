@@ -2,9 +2,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: copy-test-documents
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
-    app: claims-demo
+    app: multi-agents
     component: data-seeder
 spec:
   template:
@@ -23,7 +23,7 @@ spec:
           echo "============================================"
 
           # GitHub repository details
-          REPO="mouachan/agentic-claim-demo"
+          REPO="your-org/multi-agents"
           BRANCH="main"
           PDF_DIR="backend/test_data/claim_documents"
 

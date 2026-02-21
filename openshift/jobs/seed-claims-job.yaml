@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: seed-claims
-  namespace: claims-demo
+  namespace: multi-agents
 spec:
   template:
     spec:
@@ -17,7 +17,7 @@ spec:
           python3 /scripts/seed_database.py
         env:
         - name: POSTGRES_HOST
-          value: "postgresql.claims-demo.svc.cluster.local"
+          value: "postgresql.multi-agents.svc.cluster.local"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_DB

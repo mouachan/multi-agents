@@ -10,7 +10,7 @@ const STEP_LABELS: Record<string, { label: string; icon: string; color: string }
   ocr_document: { label: 'Extraction du Document (OCR)', icon: 'doc', color: 'blue' },
   retrieve_similar_references: { label: 'References Projets Similaires', icon: 'search', color: 'purple' },
   retrieve_historical_tenders: { label: 'Historique AO (Gagne/Perdu)', icon: 'history', color: 'amber' },
-  retrieve_capabilities: { label: 'Capacites Internes VINCI', icon: 'shield', color: 'green' },
+  retrieve_capabilities: { label: 'Capacites Internes', icon: 'shield', color: 'green' },
 }
 
 function formatAmount(amount: number | null | undefined) {

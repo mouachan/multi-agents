@@ -35,6 +35,13 @@ const colorMap: Record<string, { border: string; bg: string; text: string; butto
     button: 'bg-green-600 hover:bg-green-700',
     hover: 'bg-green-50',
   },
+  emerald: {
+    border: 'border-emerald-500',
+    bg: 'bg-emerald-500',
+    text: 'text-emerald-700',
+    button: 'bg-emerald-600 hover:bg-emerald-700',
+    hover: 'bg-emerald-50',
+  },
   purple: {
     border: 'border-purple-500',
     bg: 'bg-purple-500',

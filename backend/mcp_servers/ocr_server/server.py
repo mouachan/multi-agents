@@ -260,7 +260,13 @@ def validate_file_path(document_path: str) -> Tuple[bool, str, Path]:
         return False, "Document path is required", Path()
     
     doc_path = Path(document_path.strip())
-    
+
+    # Fallback: if path not found, try under /documents prefix
+    if not doc_path.exists():
+        alt_path = Path("/documents") / doc_path.relative_to("/") if doc_path.is_absolute() else Path("/documents") / doc_path
+        if alt_path.exists():
+            doc_path = alt_path
+
     if not doc_path.exists():
         return False, f"Document not found: {document_path}", doc_path
     

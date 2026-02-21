@@ -15,9 +15,11 @@ from app.api.orchestrator_schemas import (
     ChatMessageResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    PromptResponse,
     SessionListResponse,
     SessionMessagesResponse,
     SessionSummary,
+    SetPromptRequest,
     MessageItem,
 )
 from app.core.database import get_db
@@ -112,6 +114,57 @@ async def delete_session(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/prompt", response_model=PromptResponse)
+async def get_session_prompt(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the effective prompt for a session."""
+    try:
+        result = await orchestrator_service.get_session_prompt(db, session_id)
+        return PromptResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting session prompt: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/sessions/{session_id}/prompt", response_model=PromptResponse)
+async def set_session_prompt(
+    session_id: str,
+    request: SetPromptRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a custom prompt for this session."""
+    try:
+        result = await orchestrator_service.set_session_prompt(
+            db, session_id, request.custom_prompt
+        )
+        return PromptResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error setting session prompt: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/sessions/{session_id}/prompt", response_model=PromptResponse)
+async def reset_session_prompt(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset to default prompt."""
+    try:
+        result = await orchestrator_service.reset_session_prompt(db, session_id)
+        return PromptResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error resetting session prompt: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

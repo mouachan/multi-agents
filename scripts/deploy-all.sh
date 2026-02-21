@@ -2,10 +2,10 @@
 set -e
 
 echo "=========================================="
-echo "Deploying Agentic Claims Demo to OpenShift"
+echo "Deploying Multi-Agent AI Platform to OpenShift"
 echo "=========================================="
 
-PROJECT="claims-demo"
+PROJECT="multi-agents"
 
 # Check if connected to OpenShift
 if ! oc whoami &>/dev/null; then
@@ -125,7 +125,7 @@ oc get route backend -o jsonpath='{.spec.host}' && echo
 
 echo ""
 echo "LlamaStack endpoint (internal):"
-echo "http://llamastack.claims-demo.svc.cluster.local:8321"
+echo "http://llamastack.multi-agents.svc.cluster.local:8321"
 
 echo ""
 echo "To check logs:"

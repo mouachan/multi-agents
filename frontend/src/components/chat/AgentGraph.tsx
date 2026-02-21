@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { AgentInfo } from '../../types/chat'
 import { useTranslation } from '../../i18n/LanguageContext'
+import { useToolDisplay } from '../../hooks/useToolDisplay'
 
 interface AgentGraphProps {
   agents: AgentInfo[]
   activeAgentId?: string | null
   activatedAgentIds?: Set<string>
+  activeTools?: string[]
   onAgentClick?: (agent: AgentInfo) => void
 }
 
@@ -13,6 +15,7 @@ const AGENT_COLORS: Record<string, string> = {
   blue: '#3B82F6',
   amber: '#F59E0B',
   green: '#10B981',
+  emerald: '#10B981',
   red: '#EF4444',
   purple: '#8B5CF6',
   indigo: '#6366F1',
@@ -36,12 +39,13 @@ export default function AgentGraph({
   agents,
   activeAgentId,
   activatedAgentIds,
+  activeTools,
   onAgentClick,
 }: AgentGraphProps) {
-  // Only show all agents if activatedAgentIds prop is not provided at all
   const showAll = activatedAgentIds === undefined
   const [ready, setReady] = useState(false)
   const { t } = useTranslation()
+  const { getToolShort } = useToolDisplay()
 
   useEffect(() => {
     const t = setTimeout(() => setReady(true), 150)
@@ -49,19 +53,25 @@ export default function AgentGraph({
   }, [])
 
   // Layout
-  const W = 280
-  const H = 240
+  const W = 400
+  const H = 380
   const cx = W / 2
-  const cy = 105
-  const orbit = 78
-  const orchR = 26
-  const nodeR = 21
+  const cy = 155
+  const orbit = 100
+  const orchR = 30
+  const nodeR = 25
+  const toolOrbit = 44
+  const toolR = 8
+  const maxTools = 7
 
   // Position agents in a circle around the hub
   const nodes = agents.map((agent, i) => {
     const a = ((2 * Math.PI) / agents.length) * i - Math.PI / 2
-    return { agent, x: cx + orbit * Math.cos(a), y: cy + orbit * Math.sin(a) }
+    return { agent, x: cx + orbit * Math.cos(a), y: cy + orbit * Math.sin(a), angle: a }
   })
+
+  // Active tools set for quick lookup
+  const activeToolSet = new Set(activeTools || [])
 
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
@@ -81,12 +91,19 @@ export default function AgentGraph({
               0%, 100% { opacity: 0; }
               15%, 85% { opacity: 1; }
             }
+            @keyframes tool-pulse {
+              0%, 100% { r: ${toolR}; opacity: 0.9; }
+              50% { r: ${toolR + 2}; opacity: 1; }
+            }
             .flow-line {
               stroke-dasharray: 5 5;
               animation: dash-flow 1.2s linear infinite;
             }
             .particle {
               animation: particle-fade 2.5s ease-in-out infinite;
+            }
+            .tool-active {
+              animation: tool-pulse 1.5s ease-in-out infinite;
             }
           `}</style>
 
@@ -101,6 +118,13 @@ export default function AgentGraph({
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+            <filter id="tool-glow">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
             <radialGradient id="ambient" cx="50%" cy="44%">
               <stop offset="0%" stopColor={ORCH_COLOR} stopOpacity="0.06" />
               <stop offset="100%" stopColor="transparent" />
@@ -108,7 +132,7 @@ export default function AgentGraph({
           </defs>
 
           {/* Ambient glow */}
-          <circle cx={cx} cy={cy} r="110" fill="url(#ambient)" />
+          <circle cx={cx} cy={cy} r="150" fill="url(#ambient)" />
 
           {/* Connections: hub <-> agents */}
           {nodes.map((n, i) => {
@@ -232,70 +256,138 @@ export default function AgentGraph({
             const isActivated = showAll || (activatedAgentIds?.has(n.agent.id) ?? false)
             const delay = 0.35 + i * 0.22
 
+            // Tool positions: arc on the outward side of the agent
+            const toolsToShow = (n.agent.tools || []).slice(0, maxTools)
+            const spreadAngle = Math.PI * 0.7
+            const startAngle = n.angle - spreadAngle / 2
+
             return (
-              <g
-                key={n.agent.id}
-                transform={`translate(${n.x}, ${n.y})`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => onAgentClick?.(n.agent)}
-              >
+              <g key={n.agent.id}>
+                {/* Tool connector lines + nodes */}
+                {toolsToShow.map((toolName, j) => {
+                  const tAngle = toolsToShow.length > 1
+                    ? startAngle + (spreadAngle / (toolsToShow.length - 1)) * j
+                    : n.angle
+                  const tx = n.x + toolOrbit * Math.cos(tAngle)
+                  const ty = n.y + toolOrbit * Math.sin(tAngle)
+                  const isActive = activeToolSet.has(toolName)
+                  const toolDelay = delay + 0.3 + j * 0.08
+
+                  return (
+                    <g
+                      key={`tool-${n.agent.id}-${toolName}`}
+                      opacity={ready && isActivated ? 1 : 0}
+                      style={{ transition: `opacity 0.5s ease ${toolDelay}s` }}
+                    >
+                      {/* Connector line */}
+                      <line
+                        x1={n.x} y1={n.y} x2={tx} y2={ty}
+                        stroke={c} strokeWidth="0.7" strokeOpacity="0.2"
+                        strokeDasharray="2 2"
+                      />
+                      {/* Tool node */}
+                      <g style={{ cursor: 'default' }}>
+                        <title>{toolName.replace(/_/g, ' ')}</title>
+                        {isActive ? (
+                          <>
+                            {/* Glow ring for active tool */}
+                            <circle cx={tx} cy={ty} r={toolR + 3} fill={c} opacity="0.15" />
+                            <rect
+                              x={tx - toolR} y={ty - toolR}
+                              width={toolR * 2} height={toolR * 2}
+                              rx="3" ry="3"
+                              fill={c} filter="url(#tool-glow)"
+                              className="tool-active"
+                            />
+                          </>
+                        ) : (
+                          <rect
+                            x={tx - toolR + 1} y={ty - toolR + 1}
+                            width={(toolR - 1) * 2} height={(toolR - 1) * 2}
+                            rx="2.5" ry="2.5"
+                            fill={c} opacity="0.25"
+                            stroke={c} strokeWidth="0.5" strokeOpacity="0.3"
+                          />
+                        )}
+                        {/* Tool abbreviation */}
+                        <text
+                          x={tx} y={ty + 0.5}
+                          textAnchor="middle" dominantBaseline="central"
+                          fontSize="6.5" fill={isActive ? 'white' : c}
+                          fontWeight="700" opacity={isActive ? 1 : 0.7}
+                          style={{ fontFamily: 'system-ui, sans-serif', pointerEvents: 'none' }}
+                        >
+                          {getToolShort(toolName)}
+                        </text>
+                      </g>
+                    </g>
+                  )
+                })}
+
+                {/* Agent node (on top of tool lines) */}
                 <g
-                  style={{
-                    transform: ready && isActivated ? 'scale(1)' : 'scale(0)',
-                    transition: `transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) ${delay}s`,
-                  }}
+                  transform={`translate(${n.x}, ${n.y})`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => onAgentClick?.(n.agent)}
                 >
-                  {/* Active pulse ring */}
-                  {active && (
-                    <circle r={nodeR + 5} fill="none" stroke={c} strokeWidth="1.5">
-                      <animate
-                        attributeName="r"
-                        values={`${nodeR + 5};${nodeR + 12};${nodeR + 5}`}
-                        dur="2s" repeatCount="indefinite"
-                      />
-                      <animate
-                        attributeName="opacity"
-                        values="0.5;0.1;0.5"
-                        dur="2s" repeatCount="indefinite"
-                      />
-                    </circle>
-                  )}
-
-                  {/* Main circle */}
-                  <circle
-                    r={nodeR} fill={c} filter="url(#node-shadow)"
-                    stroke={active ? c : 'none'}
-                    strokeWidth={active ? 2 : 0}
-                    strokeOpacity={active ? 0.3 : 0}
-                  />
-                  <circle
-                    r={nodeR - 1.5} fill="none" stroke="white"
-                    strokeWidth="0.5" opacity="0.2"
-                  />
-
-                  {/* Abbreviation inside */}
-                  <text
-                    y="1" textAnchor="middle" dominantBaseline="central"
-                    fontSize="10" fill="white" fontWeight="800"
-                    style={{ fontFamily: 'system-ui, sans-serif' }}
+                  <g
+                    style={{
+                      transform: ready && isActivated ? 'scale(1)' : 'scale(0)',
+                      transition: `transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) ${delay}s`,
+                    }}
                   >
-                    {getShortLabel(n.agent)}
+                    {/* Active pulse ring */}
+                    {active && (
+                      <circle r={nodeR + 5} fill="none" stroke={c} strokeWidth="1.5">
+                        <animate
+                          attributeName="r"
+                          values={`${nodeR + 5};${nodeR + 12};${nodeR + 5}`}
+                          dur="2s" repeatCount="indefinite"
+                        />
+                        <animate
+                          attributeName="opacity"
+                          values="0.5;0.1;0.5"
+                          dur="2s" repeatCount="indefinite"
+                        />
+                      </circle>
+                    )}
+
+                    {/* Main circle */}
+                    <circle
+                      r={nodeR} fill={c} filter="url(#node-shadow)"
+                      stroke={active ? c : 'none'}
+                      strokeWidth={active ? 2 : 0}
+                      strokeOpacity={active ? 0.3 : 0}
+                    />
+                    <circle
+                      r={nodeR - 1.5} fill="none" stroke="white"
+                      strokeWidth="0.5" opacity="0.2"
+                    />
+
+                    {/* Abbreviation inside */}
+                    <text
+                      y="1" textAnchor="middle" dominantBaseline="central"
+                      fontSize="10" fill="white" fontWeight="800"
+                      style={{ fontFamily: 'system-ui, sans-serif' }}
+                    >
+                      {getShortLabel(n.agent)}
+                    </text>
+                  </g>
+
+                  {/* Name label */}
+                  <text
+                    y={nodeR + 13} textAnchor="middle"
+                    fontSize="9" fill={active ? '#1E40AF' : '#64748B'}
+                    fontWeight={active ? '700' : '500'}
+                    style={{
+                      fontFamily: 'system-ui, sans-serif',
+                      opacity: ready && isActivated ? 1 : 0,
+                      transition: `opacity 0.5s ease ${delay + 0.2}s`,
+                    }}
+                  >
+                    {n.agent.name}
                   </text>
                 </g>
-
-                {/* Name label */}
-                <text
-                  y={nodeR + 13} textAnchor="middle"
-                  fontSize="9" fill={active ? '#1E40AF' : '#64748B'}
-                  fontWeight={active ? '700' : '500'}
-                  style={{
-                    fontFamily: 'system-ui, sans-serif',
-                    opacity: ready && isActivated ? 1 : 0,
-                    transition: `opacity 0.5s ease ${delay + 0.2}s`,
-                  }}
-                >
-                  {n.agent.name}
-                </text>
               </g>
             )
           })}

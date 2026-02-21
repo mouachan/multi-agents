@@ -119,6 +119,7 @@ async def list_tenders(
             query = text("""
                 SELECT
                     t.id, t.tender_number, t.entity_id, t.tender_type,
+                    t.document_path,
                     t.status, t.submitted_at, t.processed_at,
                     t.total_processing_time_ms, t.metadata,
                     td.decision as ai_decision,
@@ -134,6 +135,7 @@ async def list_tenders(
             query = text("""
                 SELECT
                     t.id, t.tender_number, t.entity_id, t.tender_type,
+                    t.document_path,
                     t.status, t.submitted_at, t.processed_at,
                     t.total_processing_time_ms, t.metadata,
                     td.decision as ai_decision,
@@ -149,12 +151,17 @@ async def list_tenders(
         tenders = []
         for row in results:
             tender = dict(row._mapping)
-            tender['id'] = str(tender['id'])
+            uuid_id = str(tender['id'])
+            tender['id'] = uuid_id
             for key, value in tender.items():
                 if hasattr(value, 'isoformat'):
                     tender[key] = value.isoformat()
                 elif hasattr(value, '__float__') and key != 'id':
                     tender[key] = float(value)
+            # Pre-built document link for the LLM (ready-to-use markdown)
+            if tender.get('document_path'):
+                tender['document_view_url'] = f"/api/v1/tenders/documents/{uuid_id}/view"
+                tender['document_link'] = f"[View Document (PDF)](/api/v1/tenders/documents/{uuid_id}/view)"
             tenders.append(tender)
 
         logger.info(f"Found {len(tenders)} tenders")
@@ -190,28 +197,44 @@ async def get_tender(tender_id: str) -> str:
     tender_id = tender_id.strip()
 
     try:
-        # Get tender
-        query = text("""
+        # Get tender — try tender_number first, fallback to UUID
+        base_query = """
             SELECT
                 t.id, t.tender_number, t.entity_id, t.tender_type,
                 t.document_path, t.status,
                 t.submitted_at, t.processed_at,
                 t.total_processing_time_ms, t.metadata
             FROM tenders t
-            WHERE t.tender_number = :tender_id
-        """)
-        result = await run_db_query_one(query, {"tender_id": tender_id})
+        """
+        result = await run_db_query_one(
+            text(base_query + " WHERE t.tender_number = :tender_id"),
+            {"tender_id": tender_id},
+        )
+        if not result:
+            try:
+                result = await run_db_query_one(
+                    text(base_query + " WHERE t.id = :tender_id::uuid"),
+                    {"tender_id": tender_id},
+                )
+            except Exception:
+                pass
 
         if not result:
             return json.dumps({"success": False, "error": f"Tender {tender_id} not found"})
 
         tender = dict(result._mapping)
         tender_uuid = tender['id']
-        tender['id'] = str(tender['id'])
+        uuid_str = str(tender['id'])
+        tender['id'] = uuid_str
 
         for key, value in tender.items():
             if hasattr(value, 'isoformat'):
                 tender[key] = value.isoformat()
+
+        # Pre-built document link for the LLM (ready-to-use markdown)
+        if tender.get('document_path'):
+            tender['document_view_url'] = f"/api/v1/tenders/documents/{uuid_str}/view"
+            tender['document_link'] = f"[View Document (PDF)](/api/v1/tenders/documents/{uuid_str}/view)"
 
         # Get decision
         decision_query = text("""
@@ -283,7 +306,8 @@ async def get_tender_documents(tender_id: str) -> str:
         return json.dumps({"success": False, "error": "tender_id is required"})
 
     try:
-        query = text("""
+        tid = tender_id.strip()
+        base_query = """
             SELECT
                 td.id, td.document_type, td.file_path, td.file_size_bytes,
                 td.mime_type, td.raw_ocr_text, td.structured_data,
@@ -291,9 +315,19 @@ async def get_tender_documents(tender_id: str) -> str:
                 td.language
             FROM tender_documents td
             JOIN tenders t ON td.tender_id = t.id
-            WHERE t.tender_number = :tender_id
-        """)
-        results = await run_db_query(query, {"tender_id": tender_id.strip()})
+        """
+        results = await run_db_query(
+            text(base_query + " WHERE t.tender_number = :tender_id"),
+            {"tender_id": tid},
+        )
+        if not results:
+            try:
+                results = await run_db_query(
+                    text(base_query + " WHERE t.id = :tender_id::uuid"),
+                    {"tender_id": tid},
+                )
+            except Exception:
+                results = []
 
         documents = []
         for row in results:
@@ -431,16 +465,26 @@ async def analyze_tender(tender_id: str) -> str:
     tender_id = tender_id.strip()
 
     try:
-        # Get tender info
-        tender_query = text("""
+        # Get tender info — try tender_number first, fallback to UUID
+        base_query = """
             SELECT
                 t.id, t.tender_number, t.entity_id, t.tender_type,
                 t.document_path, t.status,
                 t.submitted_at, t.processed_at, t.metadata
             FROM tenders t
-            WHERE t.tender_number = :tender_id
-        """)
-        tender_result = await run_db_query_one(tender_query, {"tender_id": tender_id})
+        """
+        tender_result = await run_db_query_one(
+            text(base_query + " WHERE t.tender_number = :tender_id"),
+            {"tender_id": tender_id},
+        )
+        if not tender_result:
+            try:
+                tender_result = await run_db_query_one(
+                    text(base_query + " WHERE t.id = :tender_id::uuid"),
+                    {"tender_id": tender_id},
+                )
+            except Exception:
+                pass
 
         if not tender_result:
             return json.dumps({"success": False, "error": f"Tender {tender_id} not found"})

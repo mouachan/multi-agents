@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-NAMESPACE="claims-demo"
+NAMESPACE="multi-agents"
 BACKEND_POD=""
 API_URL="http://localhost:8000/api/v1"
 

@@ -4,7 +4,7 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: granite-guardian-detector
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     trustyai/detector: "true"  # Label for auto-discovery by GuardrailsOrchestrator
     app: claims-processing

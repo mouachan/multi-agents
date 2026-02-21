@@ -49,10 +49,15 @@ def register_agents():
         instructions=CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         user_message_template=USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
         tools=CLAIM_TOOLS,
-        color="blue",
+        color="emerald",
         icon="document",
         api_prefix="/api/v1/claims",
         decision_values=["approve", "deny", "manual_review"],
+        routing_keywords=[
+            "claim", "claims", "clm-", "sinistre", "sinistres",
+            "assurance", "dommage", "remboursement",
+            "indemnisation", "police d'assurance", "contrat d'assurance",
+        ],
     ))
 
     AgentRegistry.register(AgentDefinition(
@@ -68,6 +73,13 @@ def register_agents():
         icon="building",
         api_prefix="/api/v1/tenders",
         decision_values=["go", "no_go", "a_approfondir"],
+        routing_keywords=[
+            "appel d'offres", "appels d'offres", "appel d offres",
+            "ao", "tender", "tenders",
+            "marche public", "marches publics", "soumission",
+            "btp", "construction", "go/no-go", "go no go",
+            "offre", "offres",
+        ],
     ))
 
     logger.info(f"Registered {len(AgentRegistry.list_agents())} agents")
@@ -160,6 +172,57 @@ async def list_agents():
     """List available AI agents (dynamic via AgentRegistry)."""
     from app.services.agents.registry import AgentRegistry
     return AgentRegistry.to_api_list()
+
+
+# Default tool display configuration (used when ConfigMap not mounted)
+_DEFAULT_TOOL_DISPLAY = {
+    "tools": {
+        "ocr_document": {"label": {"fr": "OCR Document", "en": "OCR Document"}, "short": "OCR", "category": "extraction"},
+        "ocr_extract_claim_info": {"label": {"fr": "OCR Extraction", "en": "OCR Extract"}, "short": "OCR", "category": "extraction"},
+        "retrieve_user_info": {"label": {"fr": "Infos Utilisateur", "en": "User Info"}, "short": "USR", "category": "rag"},
+        "retrieve_similar_claims": {"label": {"fr": "Sinistres Similaires", "en": "Similar Claims"}, "short": "SIM", "category": "rag"},
+        "search_knowledge_base": {"label": {"fr": "Base de Connaissances", "en": "Knowledge Base"}, "short": "RAG", "category": "rag"},
+        "retrieve_similar_references": {"label": {"fr": "References Similaires", "en": "Similar References"}, "short": "REF", "category": "rag"},
+        "retrieve_historical_tenders": {"label": {"fr": "Historique AO", "en": "Historical Tenders"}, "short": "HIS", "category": "rag"},
+        "retrieve_capabilities": {"label": {"fr": "Capacites", "en": "Capabilities"}, "short": "CAP", "category": "rag"},
+        "list_claims": {"label": {"fr": "Liste Sinistres", "en": "List Claims"}, "short": "LST", "category": "crud"},
+        "get_claim": {"label": {"fr": "Detail Sinistre", "en": "Get Claim"}, "short": "GET", "category": "crud"},
+        "get_claim_documents": {"label": {"fr": "Documents Sinistre", "en": "Claim Documents"}, "short": "DOC", "category": "crud"},
+        "get_claim_statistics": {"label": {"fr": "Statistiques Sinistres", "en": "Claim Statistics"}, "short": "STA", "category": "crud"},
+        "analyze_claim": {"label": {"fr": "Analyser Sinistre", "en": "Analyze Claim"}, "short": "ANL", "category": "crud"},
+        "list_tenders": {"label": {"fr": "Liste AO", "en": "List Tenders"}, "short": "LST", "category": "crud"},
+        "get_tender": {"label": {"fr": "Detail AO", "en": "Get Tender"}, "short": "GET", "category": "crud"},
+        "get_tender_documents": {"label": {"fr": "Documents AO", "en": "Tender Documents"}, "short": "DOC", "category": "crud"},
+        "get_tender_statistics": {"label": {"fr": "Statistiques AO", "en": "Tender Statistics"}, "short": "STA", "category": "crud"},
+        "analyze_tender": {"label": {"fr": "Analyser AO", "en": "Analyze Tender"}, "short": "ANL", "category": "crud"},
+    },
+    "servers": {
+        "ocr-server": {"label": "OCR", "color": "blue"},
+        "rag-server": {"label": "RAG", "color": "purple"},
+        "claims-server": {"label": "Claims", "color": "emerald"},
+        "tenders-server": {"label": "Tenders", "color": "amber"},
+    },
+    "categories": {
+        "extraction": {"label": {"fr": "OCR", "en": "OCR"}, "icon": "scan"},
+        "rag": {"label": {"fr": "RAG", "en": "RAG"}, "icon": "search"},
+        "crud": {"label": {"fr": "Database", "en": "Database"}, "icon": "database"},
+    },
+}
+
+
+@app.get(f"{settings.api_v1_prefix}/config/tool-display")
+async def get_tool_display_config():
+    """Return tool display configuration (labels, abbreviations, categories, servers)."""
+    from app.llamastack.orchestrator_prompts import ORCHESTRATOR_CONFIG
+
+    config = ORCHESTRATOR_CONFIG.get("tool_display", {})
+    # Merge: config overrides defaults per top-level key
+    merged = {}
+    for key in ("tools", "servers", "categories"):
+        default_section = _DEFAULT_TOOL_DISPLAY.get(key, {})
+        config_section = config.get(key, {})
+        merged[key] = {**default_section, **config_section}
+    return merged
 
 
 # =============================================================================

@@ -12,6 +12,13 @@ interface UseChatReturn {
   createSession: (agentId?: string) => Promise<void>
   sendMessage: (message: string) => Promise<ChatResponse | null>
   loadMessages: (sessionId: string) => Promise<void>
+  // Prompt editor
+  prompt: string | null
+  isPromptCustom: boolean
+  isPromptLoading: boolean
+  loadPrompt: () => Promise<void>
+  savePrompt: (text: string) => Promise<boolean>
+  resetPrompt: () => Promise<boolean>
 }
 
 export function useChat(initialSessionId?: string): UseChatReturn {
@@ -22,6 +29,15 @@ export function useChat(initialSessionId?: string): UseChatReturn {
   const [error, setError] = useState<string | null>(null)
   const [sessionNotFound, setSessionNotFound] = useState(false)
   const creatingRef = useRef(false)
+
+  // Prompt editor state
+  const [prompt, setPrompt] = useState<string | null>(null)
+  const [isPromptCustom, setIsPromptCustom] = useState(false)
+  const [isPromptLoading, setIsPromptLoading] = useState(false)
+
+  const getSessionId = useCallback(() => {
+    return session?.session_id || initialSessionId
+  }, [session, initialSessionId])
 
   const createSession = useCallback(async (agentId?: string) => {
     if (creatingRef.current) return
@@ -74,10 +90,12 @@ export function useChat(initialSessionId?: string): UseChatReturn {
     setIsSending(true)
     setError(null)
     try {
+      const startTime = Date.now()
       const response = await orchestratorApi.sendMessage(
         session.session_id,
         message
       )
+      const processingTimeMs = Date.now() - startTime
 
       // Add assistant response
       const assistantMsg: ChatMessage = {
@@ -86,6 +104,10 @@ export function useChat(initialSessionId?: string): UseChatReturn {
         content: response.message,
         agent_id: response.agent_id || undefined,
         suggested_actions: response.suggested_actions,
+        tool_calls: response.tool_calls,
+        token_usage: response.token_usage,
+        processing_time_ms: processingTimeMs,
+        model_id: response.model_id || undefined,
         created_at: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, assistantMsg])
@@ -100,6 +122,50 @@ export function useChat(initialSessionId?: string): UseChatReturn {
       setIsSending(false)
     }
   }, [session])
+
+  // Prompt editor actions (lazy loading)
+  const loadPrompt = useCallback(async () => {
+    const sid = getSessionId()
+    if (!sid) return
+    setIsPromptLoading(true)
+    try {
+      const result = await orchestratorApi.getSessionPrompt(sid)
+      setPrompt(result.prompt)
+      setIsPromptCustom(result.is_custom)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load prompt')
+    } finally {
+      setIsPromptLoading(false)
+    }
+  }, [getSessionId])
+
+  const savePrompt = useCallback(async (text: string): Promise<boolean> => {
+    const sid = getSessionId()
+    if (!sid) return false
+    try {
+      const result = await orchestratorApi.setSessionPrompt(sid, text)
+      setPrompt(result.prompt)
+      setIsPromptCustom(result.is_custom)
+      return true
+    } catch (err: any) {
+      setError(err.message || 'Failed to save prompt')
+      return false
+    }
+  }, [getSessionId])
+
+  const resetPrompt = useCallback(async (): Promise<boolean> => {
+    const sid = getSessionId()
+    if (!sid) return false
+    try {
+      const result = await orchestratorApi.resetSessionPrompt(sid)
+      setPrompt(result.prompt)
+      setIsPromptCustom(result.is_custom)
+      return true
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset prompt')
+      return false
+    }
+  }, [getSessionId])
 
   // Auto-load messages if initial session ID provided
   useEffect(() => {
@@ -118,5 +184,12 @@ export function useChat(initialSessionId?: string): UseChatReturn {
     createSession,
     sendMessage,
     loadMessages,
+    // Prompt editor
+    prompt,
+    isPromptCustom,
+    isPromptLoading,
+    loadPrompt,
+    savePrompt,
+    resetPrompt,
   }
 }

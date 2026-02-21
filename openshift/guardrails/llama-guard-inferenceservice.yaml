@@ -4,7 +4,7 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: llama-guard-detector
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     trustyai/detector: "true"  # Label for auto-discovery
     app: claims-processing

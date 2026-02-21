@@ -5,8 +5,8 @@ echo "=========================================="
 echo "Déploiement RAG Server + Vector Store"
 echo "=========================================="
 
-NAMESPACE="claims-demo"
-RAG_SERVER_DIR="/Users/mouchan/projects/agentic-claim-demo/backend/mcp_servers/rag_server"
+NAMESPACE="multi-agents"
+RAG_SERVER_DIR="/Users/mouchan/projects/multi-agents/backend/mcp_servers/rag_server"
 
 # Couleurs pour les logs
 GREEN='\033[0;32m'
@@ -36,7 +36,7 @@ echo -e "\n${YELLOW}[3/6] Vérification des ConfigMaps et Secrets...${NC}"
 oc get configmap init-vectorstore-script -n ${NAMESPACE} || {
   echo "Création du ConfigMap..."
   oc create configmap init-vectorstore-script \
-    --from-file=init_vectorstore.py=/Users/mouchan/projects/agentic-claim-demo/database/scripts/init_vectorstore.py \
+    --from-file=init_vectorstore.py=/Users/mouchan/projects/multi-agents/database/scripts/init_vectorstore.py \
     -n ${NAMESPACE}
 }
 echo -e "${GREEN}✓ ConfigMap présent${NC}"
@@ -45,7 +45,7 @@ echo -e "\n${YELLOW}[4/6] Lancement du job d'initialisation du vector store...${
 # Supprimer le job précédent s'il existe
 oc delete job init-vectorstore -n ${NAMESPACE} --ignore-not-found=true
 echo "Démarrage du job..."
-oc apply -f /Users/mouchan/projects/agentic-claim-demo/openshift/jobs/init-vectorstore-job.yaml
+oc apply -f /Users/mouchan/projects/multi-agents/openshift/jobs/init-vectorstore-job.yaml
 
 echo "Attente de la complétion du job (max 5min)..."
 oc wait --for=condition=complete job/init-vectorstore -n ${NAMESPACE} --timeout=300s

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rag-server
-  namespace: claims-demo
+  namespace: multi-agents
   labels:
     app: rag-server
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: rag-server
-        image: quay.io/mouachan/agentic-claims-demo/rag-server:latest
+        image: quay.io/your-org/multi-agents/rag-server:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -25,11 +25,11 @@ spec:
           protocol: TCP
         env:
         - name: LLAMASTACK_ENDPOINT
-          value: "http://claims-llamastack-service.claims-demo.svc.cluster.local:8321"
+          value: "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321"
         - name: EMBEDDING_URL
-          value: "https://embeddinggemma-300m-edg-demo.apps.cluster-rk6mx.rk6mx.sandbox492.opentlc.com"
+          value: "https://embedding-service.apps.your-cluster.example.com"
         - name: POSTGRES_HOST
-          value: "postgresql.claims-demo.svc.cluster.local"
+          value: "postgresql.multi-agents.svc.cluster.local"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_USER

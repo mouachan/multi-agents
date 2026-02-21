@@ -5,7 +5,7 @@ INSERT INTO tenders (
     metadata, created_at
 ) VALUES (
     gen_random_uuid(),
-    'VINCI-PACA',
+    'ENT-PACA',
     'AO-2026-0047',
     'Marche public',
     '/claim_documents/ao/ao_2026_0047.pdf',
@@ -20,7 +20,7 @@ INSERT INTO tenders (
     metadata, created_at
 ) VALUES (
     gen_random_uuid(),
-    'VINCI-DROM',
+    'ENT-DROM',
     'AO-2026-0048',
     'Marche public',
     '/claim_documents/ao/ao_2026_0048.pdf',
@@ -35,7 +35,7 @@ INSERT INTO tenders (
     metadata, created_at
 ) VALUES (
     gen_random_uuid(),
-    'VINCI-NAQ',
+    'ENT-NAQ',
     'AO-2026-0049',
     'Marche public',
     '/claim_documents/ao/ao_2026_0049.pdf',
@@ -50,7 +50,7 @@ INSERT INTO tenders (
     metadata, created_at
 ) VALUES (
     gen_random_uuid(),
-    'VINCI-ARA',
+    'ENT-ARA',
     'AO-2026-0050',
     'Marche public',
     '/claim_documents/ao/ao_2026_0050.pdf',
@@ -65,7 +65,7 @@ INSERT INTO tenders (
     metadata, created_at
 ) VALUES (
     gen_random_uuid(),
-    'VINCI-IDF',
+    'ENT-IDF',
     'AO-2026-0051',
     'Marche prive',
     '/claim_documents/ao/ao_2026_0051.pdf',

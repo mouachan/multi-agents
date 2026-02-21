@@ -3,9 +3,9 @@
 # Description: Generate embeddings for knowledge base and claims after database init
 # Inputs:
 #    embedding_model: str [Default: 'gemma-300m']
-#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321']
+#    llamastack_endpoint: str [Default: 'http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321']
 #    postgres_db: str [Default: 'claims_db']
-#    postgres_host: str [Default: 'postgresql.claims-demo.svc.cluster.local']
+#    postgres_host: str [Default: 'postgresql.multi-agents.svc.cluster.local']
 #    postgres_password: str [Default: '']
 #    postgres_port: str [Default: '5432']
 #    postgres_user: str [Default: 'claims_user']
@@ -215,7 +215,7 @@ root:
         isOptional: true
         parameterType: STRING
       llamastack_endpoint:
-        defaultValue: http://llamastack-rhoai-service.claims-demo.svc.cluster.local:8321
+        defaultValue: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
         isOptional: true
         parameterType: STRING
       postgres_db:
@@ -223,7 +223,7 @@ root:
         isOptional: true
         parameterType: STRING
       postgres_host:
-        defaultValue: postgresql.claims-demo.svc.cluster.local
+        defaultValue: postgresql.multi-agents.svc.cluster.local
         isOptional: true
         parameterType: STRING
       postgres_password:

@@ -1,8 +1,8 @@
 """
-Responses API Orchestrator for LlamaStack.
+LlamaStack Responses API orchestrator.
 
-Drop-in replacement for AgentOrchestrator that uses /v1/responses instead of /v1/agents.
-Automatic tool execution - no manual loops needed.
+Handles stateful multi-turn conversations via previous_response_id
+with automatic MCP tool execution.
 """
 import httpx
 import json
@@ -129,38 +129,39 @@ class ResponsesOrchestrator:
         agent_config: Dict[str, Any],
         input_message: Any,  # Can be str or List[Dict]
         tools: Optional[List[str]] = None,
-        session_name: Optional[str] = None,
-        cleanup: bool = True,
         max_infer_iters: int = 10,
+        previous_response_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        High-level method to process a task with an agent.
+        Process a task using the Responses API.
 
-        Compatibility method matching AgentOrchestrator interface.
-        Uses Responses API instead of Agents API.
+        When previous_response_id is provided, LlamaStack manages conversation
+        context server-side — no need to send full history.
 
         Args:
             agent_config: Agent configuration with instructions
-            input_message: Input message (str) or conversation history (List[Dict])
+            input_message: New user message (str) or conversation (List[Dict])
             tools: Optional list of tools to enable
-            session_name: Optional session name (ignored - for compatibility)
-            cleanup: Whether to cleanup (ignored - for compatibility)
+            max_infer_iters: Max tool-calling iterations
+            previous_response_id: Chain from a previous response for multi-turn
 
         Returns:
-            Agent response with output
-
-        Raises:
-            httpx.HTTPError: If any step fails
+            Agent response with output and response_id for chaining
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # Build request payload
             payload = {
                 "model": agent_config.get("model", self.model),
-                "input": input_message,  # Can be string or array of messages
+                "input": input_message,
                 "stream": False,
+                "store": True,
                 "max_infer_iters": max_infer_iters,
-                "max_tokens": settings.llamastack_max_tokens  # Configurable via env var
+                "max_tokens": settings.llamastack_max_tokens,
             }
+
+            # Chain conversation via previous_response_id
+            if previous_response_id:
+                payload["previous_response_id"] = previous_response_id
 
             # Add instructions from agent_config
             if "instructions" in agent_config:
@@ -170,13 +171,9 @@ class ResponsesOrchestrator:
             if tools:
                 payload["tools"] = self._build_mcp_tools(tools)
 
-            # Log input type
-            input_type = "message_array" if isinstance(input_message, list) else "string"
-            logger.info(f"Calling Responses API with {len(tools or [])} tools, input_type={input_type}")
-            if isinstance(input_message, str):
-                logger.debug(f"Input: {input_message[:100]}")
-            else:
-                logger.debug(f"Input: {len(input_message)} messages in conversation")
+            # Log
+            has_chain = "chained" if previous_response_id else "new"
+            logger.info(f"Calling Responses API with {len(tools or [])} tools, {has_chain} conversation")
 
             # Call Responses API
             response = await client.post(
@@ -227,16 +224,9 @@ class ResponsesOrchestrator:
             logger.info(f"Response completed: tools_used={len(tool_calls)}, messages={len(all_message_texts)}")
             logger.info(f"Full output text ({len(output_text)} chars):\n{output_text[:2000]}")
 
-            # Return in AgentOrchestrator-compatible format
             return {
                 "response_id": result.get("id"),
-                "turn_result": {
-                    "response": {
-                        "content": output_text
-                    },
-                    "tool_calls": tool_calls
-                },
                 "output": output_text,
-                "tool_calls": tool_calls,  # Also at root for easy access
-                "usage": result.get("usage", {})
+                "tool_calls": tool_calls,
+                "usage": result.get("usage", {}),
             }

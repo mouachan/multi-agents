@@ -46,14 +46,14 @@ mcp = FastMCP(
 )
 
 # Configuration
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.claims-demo.svc.cluster.local")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.multi-agents.svc.cluster.local")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "ClaimsDemo2025!")
 LLAMASTACK_ENDPOINT = os.getenv(
     "LLAMASTACK_ENDPOINT",
-    "http://llamastack-test-v035.claims-demo.svc.cluster.local:8321"
+    "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
 )
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemma-300m")
 
@@ -612,7 +612,7 @@ async def retrieve_similar_references(
     min_similarity: float = 0.5
 ) -> str:
     """
-    Find similar Vinci project references using vector similarity search.
+    Find similar company project references using vector similarity search.
 
     This tool performs ONLY retrieval. No LLM analysis.
     The LlamaStack agent will analyze the similar references.
@@ -656,7 +656,7 @@ async def retrieve_similar_references(
                 region,
                 LEFT(description, 200) as description,
                 1 - (embedding <=> CAST(:query_embedding AS vector)) AS similarity
-            FROM vinci_references
+            FROM company_references
             WHERE embedding IS NOT NULL
             ORDER BY embedding <=> CAST(:query_embedding AS vector)
             LIMIT :top_k
@@ -826,7 +826,7 @@ async def retrieve_capabilities(
     top_k: int = 10
 ) -> str:
     """
-    Retrieve Vinci internal capabilities, certifications, and resources.
+    Retrieve Company internal capabilities, certifications, and resources.
 
     This tool performs ONLY retrieval. No LLM analysis.
     The LlamaStack agent will assess capability adequacy.
@@ -867,7 +867,7 @@ async def retrieve_capabilities(
                 region,
                 availability,
                 1 - (embedding <=> CAST(:query_embedding AS vector)) AS similarity
-            FROM vinci_capabilities
+            FROM company_capabilities
             WHERE is_active = true
                 AND embedding IS NOT NULL
                 AND (:category IS NULL OR category = :category)
@@ -1040,9 +1040,9 @@ if __name__ == "__main__":
     logger.info("  - retrieve_user_info: Get user + contracts (vector search)")
     logger.info("  - retrieve_similar_claims: Find similar claims (vector search)")
     logger.info("  - search_knowledge_base: Search KB articles (vector search)")
-    logger.info("  - retrieve_similar_references: Find similar Vinci project references (vector search)")
+    logger.info("  - retrieve_similar_references: Find similar company project references (vector search)")
     logger.info("  - retrieve_historical_tenders: Find historical tenders won/lost (vector search)")
-    logger.info("  - retrieve_capabilities: Get Vinci certifications and capabilities (vector search)")
+    logger.info("  - retrieve_capabilities: Get company certifications and capabilities (vector search)")
     logger.info("  - rag_health_check: Check server health")
 
     # Run uvicorn with FastMCP SSE app

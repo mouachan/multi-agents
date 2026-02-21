@@ -7,13 +7,13 @@ metadata:
     helm.sh/hook-weight: '10'
     helm.sh/hook-delete-policy: before-hook-creation
   labels:
-    helm.sh/chart: agentic-claims-demo-1.0.0
-    app.kubernetes.io/name: agentic-claims-demo
-    app.kubernetes.io/instance: agentic-claims-demo
+    helm.sh/chart: multi-agents-1.0.0
+    app.kubernetes.io/name: multi-agents
+    app.kubernetes.io/instance: multi-agents
     app.kubernetes.io/version: 1.0.0
     app.kubernetes.io/managed-by: Helm
   name: llamastack-rhoai
-  namespace: claims-demo
+  namespace: multi-agents
 spec:
   replicas: 1
   server:
@@ -22,7 +22,7 @@ spec:
       - name: INFERENCE_MODEL
         value: llama-3-3-70b-instruct-quantized-w8a8
       - name: VLLM_URL
-        value: https://llama-llama-3-3-70b.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com/v1
+        value: https://llama-llama-3-3-70b.apps.your-cluster.example.com/v1
       - name: VLLM_TLS_VERIFY
         value: 'false'
       - name: VLLM_API_TOKEN
@@ -34,7 +34,7 @@ spec:
       - name: EMBEDDING_PROVIDER_MODEL_ID
         value: embeddinggemma-300m
       - name: VLLM_EMBEDDING_URL
-        value: https://gemma-embeddinggemma-300m.apps.cluster-xxxxx.xxxxx.sandboxYYYY.opentlc.com/v1
+        value: https://gemma-embeddinggemma-300m.apps.your-cluster.example.com/v1
       - name: VLLM_EMBEDDING_TLS_VERIFY
         value: 'false'
       - name: VLLM_EMBEDDING_API_TOKEN
@@ -42,7 +42,7 @@ spec:
       - name: VLLM_EMBEDDING_MAX_TOKENS
         value: '512'
       - name: POSTGRES_HOST
-        value: postgresql.claims-demo.svc.cluster.local
+        value: postgresql.multi-agents.svc.cluster.local
       - name: POSTGRES_PORT
         value: '5432'
       - name: POSTGRES_DB
@@ -63,7 +63,7 @@ spec:
       - name: ENABLE_PGVECTOR
         value: 'true'
       - name: FMS_ORCHESTRATOR_URL
-        value: https://guardrails-orchestrator-service.claims-demo.svc.cluster.local:8032
+        value: https://guardrails-orchestrator-service.multi-agents.svc.cluster.local:8032
       name: llama-stack
       port: 8321
       resources:
