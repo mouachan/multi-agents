@@ -46,6 +46,12 @@ data:
 
   DOCUMENTS_STORAGE_PATH: "/claim_documents"
   MAX_UPLOAD_SIZE_MB: "10"
+{{- if .Values.minio.enabled }}
+  S3_ENDPOINT_URL: "http://{{ include "multi-agents.fullname" . }}-minio.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.minio.service.apiPort }}"
+  S3_REGION: "us-east-1"
+  S3_BUCKET_CLAIMS: {{ .Values.minio.documentBuckets.claims | quote }}
+  S3_BUCKET_TENDERS: {{ .Values.minio.documentBuckets.tenders | quote }}
+{{- end }}
 
   MAX_PROCESSING_TIME_SECONDS: "300"
   DEFAULT_WORKFLOW_TYPE: "standard"

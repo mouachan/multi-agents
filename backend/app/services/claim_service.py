@@ -32,10 +32,12 @@ CLAIM_TOOLS = [
     "get_claim_documents",
     "analyze_claim",
     "get_claim_statistics",
+    "save_claim_decision",
     # RAG/semantic (rag-server)
     "retrieve_user_info",
     "retrieve_similar_claims",
     "search_knowledge_base",
+    "generate_document_embedding",
     # OCR (ocr-server)
     "ocr_document",
 ]

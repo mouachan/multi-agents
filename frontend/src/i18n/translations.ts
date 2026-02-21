@@ -72,6 +72,8 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       deleteAll: 'Tout supprimer',
       confirmDeleteAll: 'Supprimer toutes les sessions ?',
       suggestedActions: 'Actions suggerees :',
+      streamEnabled: 'Streaming active',
+      streamDisabled: 'Streaming desactive',
     },
     prompt: {
       systemPrompt: 'Prompt Systeme',
@@ -422,6 +424,8 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       deleteAll: 'Delete all',
       confirmDeleteAll: 'Delete all sessions?',
       suggestedActions: 'Suggested actions:',
+      streamEnabled: 'Streaming enabled',
+      streamDisabled: 'Streaming disabled',
     },
     prompt: {
       systemPrompt: 'System Prompt',

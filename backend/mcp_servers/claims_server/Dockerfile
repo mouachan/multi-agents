@@ -6,11 +6,12 @@ USER 0
 WORKDIR /app
 
 # Copy requirements
-COPY requirements.txt .
+COPY claims_server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server code
-COPY server.py .
+# Copy shared utilities and server code
+COPY shared/ ./shared/
+COPY claims_server/server.py .
 
 RUN chmod -R 755 /app
 

@@ -46,6 +46,18 @@ spec:
                 name: backend-config
           env:
             {{- include "postgres.env" . | nindent 12 }}
+{{- if .Values.minio.enabled }}
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+{{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           livenessProbe:

@@ -92,6 +92,105 @@ export const orchestratorApi = {
     return response.data
   },
 
+  // Send a message with SSE streaming
+  sendMessageStream: (
+    sessionId: string,
+    message: string,
+    callbacks: {
+      onTextDelta?: (delta: string) => void
+      onTextReplace?: (text: string) => void
+      onToolCall?: (info: { name: string; server: string }) => void
+      onToolResult?: (info: { name: string; status: string }) => void
+      onAgentResolved?: (agentId: string) => void
+      onDone?: (response: ChatResponse) => void
+      onError?: (error: string) => void
+    }
+  ): { cancel: () => void } => {
+    const controller = new AbortController()
+
+    const run = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/orchestrator/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, message }),
+          signal: controller.signal,
+        })
+
+        if (!response.ok || !response.body) {
+          callbacks.onError?.(`HTTP ${response.status}`)
+          return
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+
+          // Process complete SSE lines
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+
+            try {
+              const event = JSON.parse(trimmed.slice(6))
+
+              switch (event.type) {
+                case 'text_delta':
+                  callbacks.onTextDelta?.(event.delta)
+                  break
+                case 'text_replace':
+                  callbacks.onTextReplace?.(event.text)
+                  break
+                case 'tool_call':
+                  callbacks.onToolCall?.({ name: event.name, server: event.server })
+                  break
+                case 'tool_result':
+                  callbacks.onToolResult?.({ name: event.name, status: event.status })
+                  break
+                case 'agent_resolved':
+                  callbacks.onAgentResolved?.(event.agent_id)
+                  break
+                case 'done':
+                  callbacks.onDone?.({
+                    session_id: sessionId,
+                    intent: 'agent_request',
+                    agent_id: event.agent_id,
+                    message: '',  // text was already streamed via deltas
+                    suggested_actions: event.suggested_actions || [],
+                    tool_calls: event.tool_calls,
+                    token_usage: event.usage,
+                    model_id: event.model_id,
+                  })
+                  break
+                case 'error':
+                  callbacks.onError?.(event.message)
+                  break
+              }
+            } catch {
+              // Skip malformed JSON lines
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          callbacks.onError?.(err.message || 'Stream failed')
+        }
+      }
+    }
+
+    run()
+    return { cancel: () => controller.abort() }
+  },
+
   // List available agents
   getAgents: async (): Promise<AgentInfo[]> => {
     const response = await apiClient.get('/agents')

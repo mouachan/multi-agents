@@ -31,11 +31,13 @@ TENDER_TOOLS = [
     "get_tender_documents",
     "analyze_tender",
     "get_tender_statistics",
+    "save_tender_decision",
     # RAG/semantic (rag-server)
     "retrieve_similar_references",
     "retrieve_historical_tenders",
     "retrieve_capabilities",
     "search_knowledge_base",
+    "generate_document_embedding",
     # OCR (ocr-server)
     "ocr_document",
 ]

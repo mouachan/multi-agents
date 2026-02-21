@@ -59,24 +59,22 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
         )
 
-    # LlamaStack (OpenShift AI)
-    llamastack_endpoint: str = "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
+    # LlamaStack — all URLs configured via env vars (no hardcoded cluster addresses)
+    llamastack_endpoint: str  # LLAMASTACK_ENDPOINT (required)
     llamastack_api_key: Optional[str] = None
-    llamastack_default_model: str = "litemaas/Llama-4-Scout-17B-16E-W4A16"  # Main model (tool calling + reasoning)
-    llamastack_embedding_model: str = "embeddinggemma-300m"
+    llamastack_default_model: str  # LLAMASTACK_DEFAULT_MODEL (required)
+    llamastack_embedding_model: str = "nomic-embed-text"
     llamastack_embedding_dimension: int = 768
-    llamastack_timeout: int = 300  # seconds
+    llamastack_timeout: int = 300
     llamastack_max_retries: int = 3
-    llamastack_max_tokens: int = 4096  # max tokens for responses (avoid exceeding model context)
+    llamastack_max_tokens: int = 2048
 
-    # MCP Servers
-    ocr_server_url: str = "http://ocr-server.multi-agents.svc.cluster.local:8080"
-    rag_server_url: str = "http://rag-server.multi-agents.svc.cluster.local:8080"
-    claims_server_url: str = "http://claims-server:8080"
-    tenders_server_url: str = "http://tenders-server:8080"
-    guardrails_server_url: str = (
-        "http://claims-guardrails.multi-agents.svc.cluster.local:8080"
-    )
+    # MCP Servers — configured via env vars
+    ocr_server_url: str  # OCR_SERVER_URL (required)
+    rag_server_url: str  # RAG_SERVER_URL (required)
+    claims_server_url: str  # CLAIMS_SERVER_URL (required)
+    tenders_server_url: str  # TENDERS_SERVER_URL (required)
+    guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional)
 
     # Guardrails/Shields Configuration
     enable_pii_detection: bool = True  # Enable PII detection and dual-level storage
@@ -94,9 +92,20 @@ class Settings(BaseSettings):
     #algorithm: str = "HS256"
     #access_token_expire_minutes: int = 30
 
-    # File Storage
+    # File Storage — S3/MinIO (preferred) with local filesystem fallback
     documents_storage_path: str = "/mnt/documents"
     max_upload_size_mb: int = 10
+    s3_endpoint_url: str = ""  # S3_ENDPOINT_URL — e.g. http://minio:9000 (empty = local filesystem)
+    s3_access_key_id: str = ""  # S3_ACCESS_KEY_ID
+    s3_secret_access_key: str = ""  # S3_SECRET_ACCESS_KEY
+    s3_region: str = "us-east-1"  # S3_REGION
+    s3_bucket_claims: str = "claims"  # S3_BUCKET_CLAIMS
+    s3_bucket_tenders: str = "tenders"  # S3_BUCKET_TENDERS
+
+    @property
+    def s3_enabled(self) -> bool:
+        """S3 is enabled when endpoint URL and credentials are configured."""
+        return bool(self.s3_endpoint_url and self.s3_access_key_id)
 
     # Processing
     max_processing_time_seconds: int = 300

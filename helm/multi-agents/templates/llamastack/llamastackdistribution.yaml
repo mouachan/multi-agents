@@ -67,6 +67,19 @@ spec:
               key: LLAMASTACK_PASSWORD
         - name: ENABLE_PGVECTOR
           value: "true"
+{{- if .Values.minio.enabled }}
+        # MinIO S3 credentials for Files API
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "multi-agents.fullname" . }}-minio-credentials
+              key: MINIO_ROOT_USER
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "multi-agents.fullname" . }}-minio-credentials
+              key: MINIO_ROOT_PASSWORD
+{{- end }}
 {{- if .Values.guardrails.enabled }}
         - name: FMS_ORCHESTRATOR_URL
           value: "https://guardrails-orchestrator-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8032"

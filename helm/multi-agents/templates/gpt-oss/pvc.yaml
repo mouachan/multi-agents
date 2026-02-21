@@ -1,0 +1,21 @@
+{{- if and .Values.gptoss.enabled (eq .Values.gptoss.model.source "huggingface") }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+  name: gpt-oss-model
+  namespace: {{ include "gptoss.namespace" . }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.gptoss.model.pvc.size }}
+  {{- if .Values.gptoss.model.pvc.storageClass }}
+  storageClassName: {{ .Values.gptoss.model.pvc.storageClass }}
+  {{- end }}
+{{- end }}

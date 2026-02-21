@@ -33,7 +33,7 @@ spec:
             - -c
             - |
               set -e
-              echo "=== Creating MinIO bucket for pipelines ==="
+              echo "=== Creating MinIO buckets ==="
 
               # Configure MinIO client
               mc alias set minio http://{{ include "multi-agents.fullname" . }}-minio:{{ .Values.minio.service.apiPort }} \
@@ -45,7 +45,7 @@ spec:
               elapsed=0
               while [ $elapsed -lt $timeout ]; do
                 if mc admin info minio &>/dev/null; then
-                  echo "✓ MinIO is ready"
+                  echo "MinIO is ready"
                   break
                 fi
                 echo "  Waiting... ($elapsed/$timeout seconds)"
@@ -54,26 +54,32 @@ spec:
               done
 
               if [ $elapsed -ge $timeout ]; then
-                echo "✗ Timeout waiting for MinIO"
+                echo "Timeout waiting for MinIO"
                 exit 1
               fi
 
-              # Create bucket if it doesn't exist
-              BUCKET_NAME="{{ .Values.dataSciencePipelines.objectStorage.bucket }}"
+              # Create all required buckets
+              for BUCKET_NAME in \
+                "{{ .Values.dataSciencePipelines.objectStorage.bucket }}" \
+                "{{ .Values.minio.documentBuckets.claims }}" \
+                "{{ .Values.minio.documentBuckets.tenders }}"; do
 
-              if mc ls minio/$BUCKET_NAME &>/dev/null; then
-                echo "✓ Bucket '$BUCKET_NAME' already exists"
-              else
-                echo "Creating bucket '$BUCKET_NAME'..."
-                mc mb minio/$BUCKET_NAME
-                echo "✓ Bucket '$BUCKET_NAME' created successfully"
-              fi
+                if [ -z "$BUCKET_NAME" ]; then
+                  continue
+                fi
 
-              # Set bucket policy to allow access
-              echo "Setting bucket policy..."
-              mc anonymous set download minio/$BUCKET_NAME || true
+                if mc ls minio/$BUCKET_NAME &>/dev/null; then
+                  echo "Bucket '$BUCKET_NAME' already exists"
+                else
+                  echo "Creating bucket '$BUCKET_NAME'..."
+                  mc mb minio/$BUCKET_NAME
+                  echo "Bucket '$BUCKET_NAME' created"
+                fi
 
-              echo "=== ✓ MinIO bucket setup completed ==="
+                mc anonymous set download minio/$BUCKET_NAME || true
+              done
+
+              echo "=== MinIO bucket setup completed ==="
           env:
             - name: HOME
               value: /tmp

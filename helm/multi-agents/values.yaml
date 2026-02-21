@@ -377,6 +377,17 @@ minio:
       tls:
         enabled: true  # Enable TLS edge termination
 
+  # Document storage buckets (S3-compatible, used by LlamaStack Files API)
+  documentBuckets:
+    claims: claims
+    tenders: tenders
+
+  # Seed documents from GitHub (downloaded and uploaded to MinIO on install)
+  seedDocuments:
+    enabled: true
+    # GitHub repo archive URL — the job extracts documents/ from this tarball
+    repoArchiveUrl: ""  # e.g. https://github.com/your-org/multi-agents/archive/refs/heads/feature/multi-agents.tar.gz
+
   # Persistence
   persistence:
     enabled: true
@@ -544,3 +555,44 @@ tekton:
   workspace:
     size: 5Gi
     storageClass: ""  # Use default storage class
+
+# =============================================================================
+# GPT-OSS 120B (llm-d / LLMInferenceService)
+# =============================================================================
+gptoss:
+  enabled: false  # Disabled by default - requires RHOAI 3.2 with llm-d operators
+  namespace: gpt-oss-120b
+  name: gpt-oss-120b
+
+  model:
+    source: huggingface  # huggingface or oci
+    address: RedHatAI/gpt-oss-120b
+    name: gpt-oss-120b
+    pvc:
+      size: 100Gi
+      storageClass: ""
+
+  replicas: 1
+
+  parallelism:
+    tensor: 4  # TP=4 => 4 GPUs in single pod via NCCL
+
+  vllm:
+    maxModelLen: "16384"
+    gpuMemoryUtilization: "0.95"
+    kvCacheDtype: fp8
+    toolCallParser: hermes
+
+  resources:
+    limits:
+      cpu: "32"
+      memory: 128Gi
+    requests:
+      cpu: "8"
+      memory: 32Gi
+
+  # Router config (uses default Gateway openshift-ai-inference + EPP scheduler)
+  router:
+    route: {}
+    gateway: {}
+    scheduler: {}

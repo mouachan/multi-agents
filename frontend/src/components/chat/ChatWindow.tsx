@@ -6,14 +6,22 @@ import { useTranslation } from '../../i18n/LanguageContext'
 interface ChatWindowProps {
   messages: ChatMessageType[]
   isSending: boolean
+  activeAgentId?: string
   onSendMessage: (message: string) => void
   onActionClick?: (action: SuggestedAction) => void
   placeholder?: string
 }
 
+const AGENT_BADGE: Record<string, { bg: string; label: string }> = {
+  orchestrator: { bg: 'bg-blue-600', label: 'HUB' },
+  claims: { bg: 'bg-emerald-500', label: 'SI' },
+  tenders: { bg: 'bg-amber-500', label: 'AO' },
+}
+
 export default function ChatWindow({
   messages,
   isSending,
+  activeAgentId,
   onSendMessage,
   onActionClick,
   placeholder,
@@ -71,9 +79,14 @@ export default function ChatWindow({
         {isSending && (
           <div className="flex justify-start mb-4">
             <div className="flex items-start gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-xs font-bold">HUB</span>
-              </div>
+              {(() => {
+                const badge = AGENT_BADGE[activeAgentId || 'orchestrator'] || AGENT_BADGE.orchestrator
+                return (
+                  <div className={`w-8 h-8 rounded-lg ${badge.bg} flex items-center justify-center flex-shrink-0`}>
+                    <span className="text-white text-xs font-bold">{badge.label}</span>
+                  </div>
+                )
+              })()}
               <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-2 text-gray-500">
                   <div className="flex gap-1">

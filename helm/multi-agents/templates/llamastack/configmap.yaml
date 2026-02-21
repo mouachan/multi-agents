@@ -115,6 +115,19 @@ data:
         config: {}
 
       files:
+{{- if .Values.minio.enabled }}
+      - provider_id: s3-files
+        provider_type: remote::s3
+        config:
+          bucket_name: {{ .Values.minio.documentBuckets.claims }}
+          region: us-east-1
+          endpoint_url: http://{{ include "multi-agents.fullname" . }}-minio.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.minio.service.apiPort }}
+          aws_access_key_id: ${env.AWS_ACCESS_KEY_ID}
+          aws_secret_access_key: ${env.AWS_SECRET_ACCESS_KEY}
+          metadata_store:
+            backend: sql_default
+            table_name: files_metadata
+{{- else }}
       - provider_id: meta-reference-files
         provider_type: inline::localfs
         config:
@@ -122,6 +135,7 @@ data:
           metadata_store:
             backend: sql_default
             table_name: files_metadata
+{{- end }}
 
       batches:
       - provider_id: reference

@@ -1,22 +1,25 @@
 """
-MCP Claims Server - CRUD operations on insurance_claims via PostgreSQL.
+MCP Claims Server - CRUD operations on insurance claims via PostgreSQL.
 
 Pure CRUD server (no RAG/embeddings). The RAG server handles vector operations.
 FastMCP implementation with Streamable HTTP transport (SSE).
 """
 
-import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
+
+from shared.db import (
+    POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+    check_database_connection, run_db_query, run_db_query_one, run_db_execute,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -32,64 +35,6 @@ mcp = FastMCP(
     json_response=True
 )
 
-# Configuration
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "claims_pass")
-
-# Database connection
-DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    pool_recycle=3600
-)
-SessionLocal = sessionmaker(bind=engine)
-
-
-def check_database_connection() -> bool:
-    """Verify database connectivity on startup."""
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("Database connection successful")
-        return True
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-
-
-async def run_db_query(query, params: dict) -> List[Any]:
-    """Execute database query in thread pool (non-blocking)."""
-    def _execute():
-        with SessionLocal() as session:
-            try:
-                result = session.execute(query, params).fetchall()
-                return result
-            except Exception as e:
-                session.rollback()
-                raise
-
-    return await asyncio.to_thread(_execute)
-
-
-async def run_db_query_one(query, params: dict) -> Optional[Any]:
-    """Execute database query and return single result."""
-    def _execute():
-        with SessionLocal() as session:
-            try:
-                result = session.execute(query, params).fetchone()
-                return result
-            except Exception as e:
-                session.rollback()
-                raise
-
-    return await asyncio.to_thread(_execute)
-
 
 # =============================================================================
 # MCP Tools - Claims CRUD
@@ -98,14 +43,14 @@ async def run_db_query_one(query, params: dict) -> Optional[Any]:
 @mcp.tool()
 async def list_claims(
     status: Optional[str] = None,
-    limit: int = 20
+    limit: int = 10
 ) -> str:
     """
     List insurance claims with optional status filter.
 
     Args:
         status: Optional status filter (pending, processing, completed, failed, manual_review)
-        limit: Maximum number of claims to return (default: 20)
+        limit: Maximum number of claims to return (default: 10)
 
     Returns:
         JSON string with list of claims
@@ -555,6 +500,112 @@ async def analyze_claim(claim_id: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
+@mcp.tool()
+async def save_claim_decision(
+    claim_id: str,
+    recommendation: str,
+    confidence: float,
+    reasoning: str,
+) -> str:
+    """
+    Save a claim decision (approve/deny/manual_review) and update claim status.
+
+    Args:
+        claim_id: The claim number (e.g., CLM-2024-0001)
+        recommendation: Decision - "approve", "deny", or "manual_review"
+        confidence: Confidence score between 0.0 and 1.0
+        reasoning: Explanation of the decision
+
+    Returns:
+        JSON string with save result
+    """
+    logger.info(f"Saving claim decision: {claim_id} -> {recommendation} ({confidence})")
+
+    if not claim_id or not claim_id.strip():
+        return json.dumps({"success": False, "error": "claim_id is required"})
+
+    valid_recommendations = {"approve", "deny", "manual_review"}
+    if recommendation not in valid_recommendations:
+        return json.dumps({"success": False, "error": f"recommendation must be one of: {valid_recommendations}"})
+
+    confidence = max(0.0, min(1.0, confidence))
+
+    try:
+        # Lookup claim by claim_number to get UUID
+        claim_result = await run_db_query_one(
+            text("SELECT id FROM claims WHERE claim_number = :cn"),
+            {"cn": claim_id.strip()},
+        )
+        if not claim_result:
+            return json.dumps({"success": False, "error": f"Claim {claim_id} not found"})
+
+        claim_uuid = claim_result.id
+
+        # Map recommendation to status
+        status_map = {"approve": "completed", "deny": "failed", "manual_review": "manual_review"}
+        new_status = status_map[recommendation]
+
+        # INSERT into claim_decisions
+        await run_db_execute(
+            text("""
+                INSERT INTO claim_decisions (
+                    claim_id, initial_decision, initial_confidence, initial_reasoning,
+                    initial_decided_at, decision, confidence, reasoning, llm_model,
+                    requires_manual_review
+                ) VALUES (
+                    :claim_uuid, :recommendation, :confidence, :reasoning,
+                    NOW(), :recommendation, :confidence, :reasoning, :llm_model,
+                    :requires_review
+                )
+            """),
+            {
+                "claim_uuid": claim_uuid,
+                "recommendation": recommendation,
+                "confidence": confidence,
+                "reasoning": reasoning,
+                "llm_model": os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown"),
+                "requires_review": recommendation == "manual_review",
+            },
+        )
+
+        # Build processing steps for the claim detail page
+        processing_steps = json.dumps([
+            {"step_name": "document_ocr", "agent_name": "claims", "status": "completed",
+             "output_data": {"description": "Document OCR extraction"}},
+            {"step_name": "claim_analysis", "agent_name": "claims", "status": "completed",
+             "output_data": {"description": "Claim evaluation and risk assessment"}},
+            {"step_name": "decision", "agent_name": "claims", "status": "completed",
+             "output_data": {"recommendation": recommendation, "confidence": confidence,
+                             "reasoning": reasoning[:200]}},
+        ])
+
+        # UPDATE claim status, processed_at, and processing steps in metadata
+        await run_db_execute(
+            text("""
+                UPDATE claims SET
+                    status = :status,
+                    processed_at = NOW(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('processing_steps', CAST(:steps AS jsonb))
+                WHERE id = :claim_uuid
+            """),
+            {"status": new_status, "claim_uuid": claim_uuid, "steps": processing_steps},
+        )
+
+        logger.info(f"Decision saved for {claim_id}: {recommendation} (confidence={confidence})")
+
+        return json.dumps({
+            "success": True,
+            "claim_number": claim_id.strip(),
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "status": new_status,
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving claim decision: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
 # =============================================================================
 # Health Check
 # =============================================================================
@@ -617,6 +668,6 @@ if __name__ == "__main__":
 
     logger.info(f"Starting MCP Claims Server on {host}:{port}")
     logger.info(f"Database: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
-    logger.info("Tools: list_claims, get_claim, get_claim_documents, get_claim_statistics, analyze_claim")
+    logger.info("Tools: list_claims, get_claim, get_claim_documents, get_claim_statistics, analyze_claim, save_claim_decision")
 
     uvicorn.run(app, host=host, port=port)

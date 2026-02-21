@@ -1,5 +1,4 @@
-# MCP RAG Server Dockerfile - Centralized via LlamaStack
-# No direct DB access - everything via LlamaStack APIs
+# MCP RAG Server Dockerfile - Vector retrieval via LlamaStack + pgvector
 FROM registry.access.redhat.com/ubi9/python-311:latest
 
 USER 0
@@ -7,11 +6,12 @@ USER 0
 WORKDIR /app
 
 # Copy requirements
-COPY requirements.txt .
+COPY rag_server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy consolidated server code (all in server.py)
-COPY server.py .
+# Copy shared utilities and server code
+COPY shared/ ./shared/
+COPY rag_server/server.py .
 
 RUN chmod -R 755 /app
 

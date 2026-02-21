@@ -44,6 +44,12 @@ export default function ChatPage() {
   const [promptSaveStatus, setPromptSaveStatus] = useState<string | null>(null)
   const promptLoadedRef = useRef(false)
 
+  // Streaming toggle
+  const [streamEnabled, setStreamEnabled] = useState(() => {
+    const stored = localStorage.getItem('chat-stream-enabled')
+    return stored !== null ? stored === 'true' : true  // default: enabled
+  })
+
   // Load session list
   useEffect(() => {
     orchestratorApi.listSessions().then((data) => {
@@ -124,9 +130,17 @@ export default function ChatPage() {
     }
   }
 
+  const handleToggleStream = () => {
+    setStreamEnabled((prev) => {
+      const next = !prev
+      localStorage.setItem('chat-stream-enabled', String(next))
+      return next
+    })
+  }
+
   const handleSendMessage = async (message: string) => {
     setActiveTools([])
-    const response = await sendMessage(message)
+    const response = await sendMessage(message, streamEnabled)
     if (response?.agent_id) {
       const agent = agents.find((a) => a.id === response.agent_id)
       if (agent) {
@@ -350,6 +364,21 @@ export default function ChatPage() {
                 </span>
               )
             })()}
+            {/* Streaming toggle */}
+            <button
+              onClick={handleToggleStream}
+              className={`p-1.5 rounded transition-colors flex items-center gap-1 ${
+                streamEnabled
+                  ? 'bg-green-100 text-green-700'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+              }`}
+              title={streamEnabled ? t('chat.streamEnabled') : t('chat.streamDisabled')}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-[10px] font-medium">SSE</span>
+            </button>
             {/* Prompt editor toggle */}
             <button
               onClick={handleTogglePromptEditor}
@@ -449,6 +478,7 @@ export default function ChatPage() {
           <ChatWindow
             messages={messages}
             isSending={isSending}
+            activeAgentId={currentAgent?.id}
             onSendMessage={handleSendMessage}
             onActionClick={handleActionClick}
             placeholder={

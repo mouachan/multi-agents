@@ -8,7 +8,7 @@ import httpx
 import json
 import logging
 import re
-from typing import Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, List, Optional
 
 from app.core.config import settings
 
@@ -66,6 +66,11 @@ class ResponsesOrchestrator:
         "get_tender_documents": "tenders-server",
         "analyze_tender": "tenders-server",
         "get_tender_statistics": "tenders-server",
+        # Decision persistence
+        "save_claim_decision": "claims-server",
+        "save_tender_decision": "tenders-server",
+        # Embedding generation
+        "generate_document_embedding": "rag-server",
     }
 
     def __init__(
@@ -229,4 +234,190 @@ class ResponsesOrchestrator:
                 "output": output_text,
                 "tool_calls": tool_calls,
                 "usage": result.get("usage", {}),
+            }
+
+    async def process_with_agent_stream(
+        self,
+        agent_config: Dict[str, Any],
+        input_message: Any,
+        tools: Optional[List[str]] = None,
+        max_infer_iters: int = 10,
+        previous_response_id: Optional[str] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Stream a task using the Responses API with SSE.
+
+        Yields structured events:
+        - {"type": "tool_call", "name": "...", "server": "..."}
+        - {"type": "tool_result", "name": "...", "status": "completed"|"error"}
+        - {"type": "text_delta", "delta": "..."}
+        - {"type": "done", "response_id": "...", "usage": {...}, "tool_calls": [...], "output": "..."}
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            payload = {
+                "model": agent_config.get("model", self.model),
+                "input": input_message,
+                "stream": True,
+                "store": True,
+                "max_infer_iters": max_infer_iters,
+                "max_tokens": settings.llamastack_max_tokens,
+            }
+
+            if previous_response_id:
+                payload["previous_response_id"] = previous_response_id
+            if "instructions" in agent_config:
+                payload["instructions"] = agent_config["instructions"]
+            if tools:
+                payload["tools"] = self._build_mcp_tools(tools)
+
+            has_chain = "chained" if previous_response_id else "new"
+            logger.info(f"Streaming Responses API with {len(tools or [])} tools, {has_chain} conversation")
+
+            # Accumulators for the final done event
+            full_text = []
+            tool_calls = []
+            response_id = None
+            usage = {}
+
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/v1/responses",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                buffer = ""
+
+                async for chunk in response.aiter_text():
+                    buffer += chunk
+                    # Process complete SSE lines
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+
+                        if not line or line.startswith(":"):
+                            continue
+
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                continue
+
+                            try:
+                                event = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+
+                            event_type = event.get("type", "")
+
+                            # Response completed event
+                            if event_type == "response.completed":
+                                resp = event.get("response", {})
+                                response_id = resp.get("id")
+                                usage = resp.get("usage", {})
+                                # Extract any remaining output from the completed response
+                                for item in resp.get("output", []):
+                                    if item.get("type") == "message":
+                                        for ci in item.get("content", []):
+                                            if ci.get("type") == "output_text":
+                                                t = ci.get("text", "")
+                                                if t.strip() and t not in full_text:
+                                                    full_text.append(t)
+                                    elif item.get("type") == "mcp_call":
+                                        tc = {
+                                            "name": item.get("name"),
+                                            "server": item.get("server_label"),
+                                            "output": item.get("output"),
+                                            "error": item.get("error"),
+                                        }
+                                        if tc not in tool_calls:
+                                            tool_calls.append(tc)
+                                continue
+
+                            # Helper: extract name/server from event or nested item
+                            def _extract_mcp_info(ev: dict) -> tuple:
+                                item = ev.get("item", {})
+                                name = ev.get("name") or item.get("name", "")
+                                server = ev.get("server_label") or item.get("server_label", "")
+                                return name, server
+
+                            # MCP tool call started (flat or nested format)
+                            if event_type in (
+                                "response.mcp_call.in_progress",
+                                "response.mcp_call_in_progress",
+                            ):
+                                name, server = _extract_mcp_info(event)
+                                if name:
+                                    yield {"type": "tool_call", "name": name, "server": server}
+
+                            # Output item added — detect mcp_call start
+                            elif event_type == "response.output_item.added":
+                                item = event.get("item", {})
+                                if item.get("type") == "mcp_call":
+                                    name = item.get("name", "")
+                                    server = item.get("server_label", "")
+                                    if name:
+                                        yield {"type": "tool_call", "name": name, "server": server}
+
+                            # Output item done — detect mcp_call completion
+                            elif event_type == "response.output_item.done":
+                                item = event.get("item", {})
+                                if item.get("type") == "mcp_call":
+                                    name = item.get("name", "")
+                                    server = item.get("server_label", "")
+                                    error = item.get("error")
+                                    tc = {
+                                        "name": name,
+                                        "server": server,
+                                        "output": item.get("output"),
+                                        "error": error,
+                                    }
+                                    tool_calls.append(tc)
+                                    status = "error" if error else "completed"
+                                    yield {"type": "tool_result", "name": name, "status": status}
+
+                            # MCP tool call completed (flat format)
+                            elif event_type in (
+                                "response.mcp_call.completed",
+                                "response.mcp_call_completed",
+                            ):
+                                name, server = _extract_mcp_info(event)
+                                error = event.get("error") or event.get("item", {}).get("error")
+                                tc = {
+                                    "name": name,
+                                    "server": server,
+                                    "output": event.get("output") or event.get("item", {}).get("output"),
+                                    "error": error,
+                                }
+                                tool_calls.append(tc)
+                                status = "error" if error else "completed"
+                                yield {"type": "tool_result", "name": name, "status": status}
+
+                            # Text output delta
+                            elif event_type == "response.output_text.delta":
+                                delta = event.get("delta", "")
+                                if delta:
+                                    full_text.append(delta)
+                                    yield {"type": "text_delta", "delta": delta}
+
+                            # Also handle content part deltas
+                            elif event_type == "response.content_part.delta":
+                                delta = event.get("delta", {})
+                                if isinstance(delta, dict):
+                                    text_val = delta.get("text", "")
+                                else:
+                                    text_val = str(delta)
+                                if text_val:
+                                    full_text.append(text_val)
+                                    yield {"type": "text_delta", "delta": text_val}
+
+            # Final done event
+            output_text = "".join(full_text)
+            logger.info(f"Stream completed: tools={len(tool_calls)}, text={len(output_text)} chars")
+
+            yield {
+                "type": "done",
+                "response_id": response_id,
+                "usage": usage,
+                "tool_calls": tool_calls,
+                "output": output_text,
             }

@@ -1,0 +1,59 @@
+{{- if .Values.gptoss.enabled }}
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: {{ .Values.gptoss.name }}
+  namespace: {{ include "gptoss.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    openshift.io/display-name: "GPT-OSS 120B (MXFP4 - llm-d)"
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  model:
+    name: {{ .Values.gptoss.model.name }}
+{{- if eq .Values.gptoss.model.source "oci" }}
+    uri: oci://{{ .Values.gptoss.model.address }}
+{{- else }}
+    uri: pvc://gpt-oss-model/{{ .Values.gptoss.model.name }}
+{{- end }}
+  replicas: {{ .Values.gptoss.replicas }}
+  template:
+    containers:
+      - name: main
+        env:
+          - name: VLLM_ADDITIONAL_ARGS
+            value: >-
+              --max-model-len {{ .Values.gptoss.vllm.maxModelLen }}
+              --gpu-memory-utilization {{ .Values.gptoss.vllm.gpuMemoryUtilization }}
+              --kv-cache-dtype {{ .Values.gptoss.vllm.kvCacheDtype }}
+              --enforce-eager
+              --enable-prefix-caching
+              --dtype auto
+              --enable-auto-tool-choice
+              --tool-call-parser {{ .Values.gptoss.vllm.toolCallParser }}
+              --tensor-parallel-size {{ .Values.gptoss.parallelism.tensor }}
+        resources:
+          limits:
+            nvidia.com/gpu: {{ quote .Values.gptoss.parallelism.tensor }}
+            cpu: {{ quote .Values.gptoss.resources.limits.cpu }}
+            memory: {{ .Values.gptoss.resources.limits.memory }}
+          requests:
+            nvidia.com/gpu: {{ quote .Values.gptoss.parallelism.tensor }}
+            cpu: {{ quote .Values.gptoss.resources.requests.cpu }}
+            memory: {{ .Values.gptoss.resources.requests.memory }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 240
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5
+  {{- with .Values.gptoss.router }}
+  router:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

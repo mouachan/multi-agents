@@ -749,7 +749,7 @@ INSERT INTO tenders (
     'ENT-IDF',
     'AO-2026-0042',
     'Marche public',
-    '/claim_documents/ao/ao_2026_0042.pdf',
+    'tenders/ao_2026_0042.pdf',
     'pending',
     '{
         "titre": "Construction de 80 logements collectifs - Programme ANRU Nanterre",
@@ -776,7 +776,7 @@ INSERT INTO tenders (
     'ENT-IDF',
     'AO-2026-0043',
     'Marche prive',
-    '/claim_documents/ao/ao_2026_0043.pdf',
+    'tenders/ao_2026_0043.pdf',
     'pending',
     '{
         "titre": "Rehabilitation de l''immeuble de bureaux Tour Sequoia - La Defense",
@@ -803,7 +803,7 @@ INSERT INTO tenders (
     'ENT-ARA',
     'AO-2026-0044',
     'Conception-realisation',
-    '/claim_documents/ao/ao_2026_0044.pdf',
+    'tenders/ao_2026_0044.pdf',
     'pending',
     '{
         "titre": "Conception-realisation du gymnase municipal Nelson Mandela - Villeurbanne",
@@ -830,7 +830,7 @@ INSERT INTO tenders (
     'ENT-IDF',
     'AO-2026-0045',
     'Marche public',
-    '/claim_documents/ao/ao_2026_0045.pdf',
+    'tenders/ao_2026_0045.pdf',
     'pending',
     '{
         "titre": "Remplacement de l''ouvrage d''art n47 - Echangeur A86/A4 Joinville-le-Pont",
@@ -857,7 +857,7 @@ INSERT INTO tenders (
     'ENT-NAQ',
     'AO-2026-0046',
     'Marche public',
-    '/claim_documents/ao/ao_2026_0046.pdf',
+    'tenders/ao_2026_0046.pdf',
     'pending',
     '{
         "titre": "Amenagement de la ZAC Bordeaux Euratlantique - Secteur Armagnac Phase 3",

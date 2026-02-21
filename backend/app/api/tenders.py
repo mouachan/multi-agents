@@ -15,12 +15,11 @@ Endpoints:
 
 import json
 import logging
-import os
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,36 +29,11 @@ from app.core.database import get_db
 from app.models import tender as models
 from app.llamastack.ao_prompts import AO_PROCESSING_AGENT_INSTRUCTIONS
 from app.services.tender_service import TenderService
+from app.services.document_storage import get_document
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _resolve_document_path(stored_path: str) -> str | None:
-    """Resolve document path trying multiple base directories."""
-    candidates = [
-        stored_path,
-        # Docker: ./documents:/documents
-        os.path.join("/documents", stored_path.lstrip("/")),
-    ]
-    # /mnt/documents/... -> /documents/... (Docker) and /claim_documents/... (OpenShift)
-    if stored_path.startswith("/mnt/documents/"):
-        candidates.append(stored_path.replace("/mnt/documents/", "/documents/", 1))
-        candidates.append(stored_path.replace("/mnt/documents/", "/claim_documents/", 1))
-    # /claim_documents/... -> /documents/claim_documents/... (Docker path)
-    if stored_path.startswith("/claim_documents/"):
-        candidates.append("/documents" + stored_path)
-    # Try just the filename under common subdirectories (Docker + OpenShift)
-    basename = os.path.basename(stored_path)
-    for base in ["/documents", "/claim_documents"]:
-        for subdir in ["", "claim_documents/ao", "ao", "tenders", "claim_documents", "claims"]:
-            candidates.append(os.path.join(base, subdir, basename) if subdir else os.path.join(base, basename))
-
-    for path in candidates:
-        if os.path.exists(path):
-            return path
-    return None
 
 # Initialize service
 tender_service = TenderService()
@@ -485,7 +459,6 @@ async def view_tender_document(
 ):
     """View tender document PDF. Accepts UUID or tender_number."""
     try:
-        # Try UUID first, fallback to tender_number
         try:
             tender_uuid = UUID(tender_id)
             result = await db.execute(
@@ -499,24 +472,23 @@ async def view_tender_document(
 
         if not tender:
             raise HTTPException(status_code=404, detail="Tender not found")
-
         if not tender.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this tender")
 
-        # Resolve document path - try multiple locations
-        doc_path = _resolve_document_path(tender.document_path)
-        if not doc_path:
-            logger.error(f"Document file not found for tender {tender_id}: {tender.document_path}")
+        doc = get_document(tender.document_path, entity_type="tender")
+        if not doc:
+            logger.error(f"Document not found for tender {tender_id}")
             raise HTTPException(status_code=404, detail="Document file not found")
 
-        return FileResponse(
-            doc_path,
+        data, filename = doc
+        return Response(
+            content=data,
             media_type="application/pdf",
-            filename=os.path.basename(doc_path)
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error viewing tender document: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error viewing tender document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

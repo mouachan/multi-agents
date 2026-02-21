@@ -1,16 +1,10 @@
 import type { Tender, TenderStatusResponse, ProcessingStepLog } from '../../types/tender'
+import { useTranslation } from '../../i18n/LanguageContext'
 
 interface TenderProcessingStepsProps {
   tender: Tender
   status: TenderStatusResponse | null
   logs: ProcessingStepLog[]
-}
-
-const STEP_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  ocr_document: { label: 'Extraction du Document (OCR)', icon: 'doc', color: 'blue' },
-  retrieve_similar_references: { label: 'References Projets Similaires', icon: 'search', color: 'purple' },
-  retrieve_historical_tenders: { label: 'Historique AO (Gagne/Perdu)', icon: 'history', color: 'amber' },
-  retrieve_capabilities: { label: 'Capacites Internes', icon: 'shield', color: 'green' },
 }
 
 function formatAmount(amount: number | null | undefined) {
@@ -24,9 +18,9 @@ function formatSimilarity(score: number | null | undefined) {
 }
 
 // ---- OCR Rendering (collapsible) ----
-function OcrResult({ data }: { data: Record<string, any> }) {
+function OcrResult({ data, t }: { data: Record<string, any>; t: (key: string) => string }) {
   if (!data?.success) {
-    return <p className="text-sm text-red-600">Echec de l'extraction OCR</p>
+    return <p className="text-sm text-red-600">{t('tenderSteps.ocrFailed')}</p>
   }
 
   const structured = data.structured_data || {}
@@ -35,7 +29,6 @@ function OcrResult({ data }: { data: Record<string, any> }) {
   const pages = data.pages_processed || data.page_count || 1
   const time = data.processing_time_seconds
 
-  // Extract key info from structured data or raw text
   const keyInfo: Record<string, string> = {}
   if (typeof fields === 'object' && Object.keys(fields).length > 0) {
     for (const [k, v] of Object.entries(fields)) {
@@ -50,8 +43,8 @@ function OcrResult({ data }: { data: Record<string, any> }) {
   return (
     <details className="bg-blue-50 p-3 rounded-lg border border-blue-200">
       <summary className="text-sm font-semibold text-blue-900 cursor-pointer hover:text-blue-700">
-        Extraction OCR - {pages} page(s){time ? ` en ${time.toFixed(1)}s` : ''}
-        {data.confidence ? ` - Confiance ${(data.confidence * 100).toFixed(0)}%` : ''}
+        {t('tenderSteps.ocrExtraction')} - {pages} page(s){time ? ` - ${time.toFixed(1)}s` : ''}
+        {data.confidence ? ` - ${t('tenderDecision.confidence')} ${(data.confidence * 100).toFixed(0)}%` : ''}
       </summary>
       <div className="mt-3 space-y-2">
         {Object.keys(keyInfo).length > 0 && (
@@ -67,7 +60,7 @@ function OcrResult({ data }: { data: Record<string, any> }) {
         {rawText && (
           <details className="bg-gray-50 p-2 rounded border border-gray-200">
             <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 font-medium">
-              Texte extrait ({rawText.length} caracteres)
+              {t('tenderSteps.extractedText')} ({rawText.length} {t('tenderSteps.chars')})
             </summary>
             <pre className="mt-2 text-xs text-gray-700 whitespace-pre-wrap max-h-40 overflow-auto">
               {rawText.substring(0, 2000)}
@@ -81,16 +74,16 @@ function OcrResult({ data }: { data: Record<string, any> }) {
 }
 
 // ---- References Rendering (collapsible cards) ----
-function ReferencesResult({ data }: { data: Record<string, any> }) {
+function ReferencesResult({ data, t }: { data: Record<string, any>; t: (key: string) => string }) {
   const refs = data?.references || []
   if (!data?.success || refs.length === 0) {
-    return <p className="text-sm text-gray-500 italic">Aucune reference similaire trouvee</p>
+    return <p className="text-sm text-gray-500 italic">{t('tenderSteps.noSimilarRefs')}</p>
   }
 
   return (
     <details className="bg-purple-50 p-3 rounded-lg border border-purple-200" open>
       <summary className="text-sm font-semibold text-purple-900 cursor-pointer hover:text-purple-700">
-        References similaires : {data.total_found}
+        {t('tenderSteps.similarRefs')} : {data.total_found}
       </summary>
       <div className="mt-3 space-y-2">
         {refs.slice(0, 5).map((ref: any, i: number) => (
@@ -104,10 +97,10 @@ function ReferencesResult({ data }: { data: Record<string, any> }) {
               </span>
             </div>
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-              {ref.maitre_ouvrage && <span>Client: {ref.maitre_ouvrage}</span>}
-              {ref.nature_travaux && <span>Nature: {ref.nature_travaux}</span>}
-              {ref.montant && <span>Montant: {formatAmount(ref.montant)}</span>}
-              {ref.region && <span>Region: {ref.region}</span>}
+              {ref.maitre_ouvrage && <span>{ref.maitre_ouvrage}</span>}
+              {ref.nature_travaux && <span>{ref.nature_travaux}</span>}
+              {ref.montant && <span>{formatAmount(ref.montant)}</span>}
+              {ref.region && <span>{ref.region}</span>}
             </div>
             {ref.description && (
               <p className="text-xs text-gray-500 mt-1 line-clamp-2">{ref.description}</p>
@@ -115,7 +108,7 @@ function ReferencesResult({ data }: { data: Record<string, any> }) {
           </div>
         ))}
         {refs.length > 5 && (
-          <p className="text-xs text-gray-500 italic">+ {refs.length - 5} autres references</p>
+          <p className="text-xs text-gray-500 italic">+ {refs.length - 5} {t('tenderSteps.others')}</p>
         )}
       </div>
     </details>
@@ -123,56 +116,56 @@ function ReferencesResult({ data }: { data: Record<string, any> }) {
 }
 
 // ---- Historical Tenders Rendering (collapsible cards) ----
-function HistoricalResult({ data }: { data: Record<string, any> }) {
+function HistoricalResult({ data, t }: { data: Record<string, any>; t: (key: string) => string }) {
   const tenders = data?.historical_tenders || []
   if (!data?.success || tenders.length === 0) {
-    return <p className="text-sm text-gray-500 italic">Aucun historique d'AO trouve</p>
+    return <p className="text-sm text-gray-500 italic">{t('tenderSteps.noHistorical')}</p>
   }
 
   const winRate = data.win_rate_percentage || 0
-  const won = tenders.filter((t: any) => t.resultat === 'gagne').length
-  const lost = tenders.filter((t: any) => t.resultat !== 'gagne').length
+  const won = tenders.filter((tt: any) => tt.resultat === 'gagne').length
+  const lost = tenders.filter((tt: any) => tt.resultat !== 'gagne').length
 
   return (
     <details className="bg-amber-50 p-3 rounded-lg border border-amber-200" open>
       <summary className="text-sm font-semibold text-amber-900 cursor-pointer hover:text-amber-700">
-        Historique AO : {data.total_found} -
+        {t('tenderSteps.historicalAO')} : {data.total_found} -
         <span className={`ml-1 ${winRate >= 50 ? 'text-green-700' : winRate >= 25 ? 'text-amber-700' : 'text-red-700'}`}>
-          Taux de succes {winRate.toFixed(0)}%
+          {t('tenderSteps.successRate')} {winRate.toFixed(0)}%
         </span>
-        <span className="ml-1 text-xs font-normal text-gray-600">({won} gagnes / {lost} perdus)</span>
+        <span className="ml-1 text-xs font-normal text-gray-600">({won} {t('tenderSteps.won')} / {lost} {t('tenderSteps.lost')})</span>
       </summary>
       <div className="mt-3 space-y-2">
-        {tenders.slice(0, 5).map((t: any, i: number) => (
+        {tenders.slice(0, 5).map((tt: any, i: number) => (
           <div key={i} className={`bg-white p-3 rounded border ${
-            t.resultat === 'gagne' ? 'border-l-4 border-l-green-500 border-green-100' : 'border-l-4 border-l-red-400 border-red-100'
+            tt.resultat === 'gagne' ? 'border-l-4 border-l-green-500 border-green-100' : 'border-l-4 border-l-red-400 border-red-100'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                  t.resultat === 'gagne' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  tt.resultat === 'gagne' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {t.resultat === 'gagne' ? 'GAGNE' : 'PERDU'}
+                  {tt.resultat === 'gagne' ? 'WON' : 'LOST'}
                 </span>
-                <p className="text-sm font-semibold text-gray-900">{t.ao_number}</p>
+                <p className="text-sm font-semibold text-gray-900">{tt.ao_number}</p>
               </div>
-              <span className={`text-xs font-bold ${(t.similarity || 0) >= 0.3 ? 'text-green-600' : 'text-gray-400'}`}>
-                {formatSimilarity(t.similarity)}
+              <span className={`text-xs font-bold ${(tt.similarity || 0) >= 0.3 ? 'text-green-600' : 'text-gray-400'}`}>
+                {formatSimilarity(tt.similarity)}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-              {t.nature_travaux && <span>{t.nature_travaux}</span>}
-              {t.montant_estime && <span>Montant: {formatAmount(t.montant_estime)}</span>}
-              {t.note_technique != null && <span>Notes: {t.note_technique}/{t.note_prix}</span>}
-              {t.region && <span>{t.region}</span>}
+              {tt.nature_travaux && <span>{tt.nature_travaux}</span>}
+              {tt.montant_estime && <span>{formatAmount(tt.montant_estime)}</span>}
+              {tt.note_technique != null && <span>Notes: {tt.note_technique}/{tt.note_prix}</span>}
+              {tt.region && <span>{tt.region}</span>}
             </div>
-            {t.raison_resultat && (
-              <p className="text-xs text-gray-500 mt-1 italic">{t.raison_resultat}</p>
+            {tt.raison_resultat && (
+              <p className="text-xs text-gray-500 mt-1 italic">{tt.raison_resultat}</p>
             )}
           </div>
         ))}
         {tenders.length > 5 && (
-          <p className="text-xs text-gray-500 italic">+ {tenders.length - 5} autres AO</p>
+          <p className="text-xs text-gray-500 italic">+ {tenders.length - 5} {t('tenderSteps.others')}</p>
         )}
       </div>
     </details>
@@ -180,11 +173,11 @@ function HistoricalResult({ data }: { data: Record<string, any> }) {
 }
 
 // ---- Capabilities Rendering (collapsible cards by category) ----
-function CapabilitiesResult({ data }: { data: Record<string, any> }) {
+function CapabilitiesResult({ data, t }: { data: Record<string, any>; t: (key: string) => string }) {
   const caps = data?.capabilities || []
 
   if (!data?.success || caps.length === 0) {
-    return <p className="text-sm text-gray-500 italic">Aucune capacite trouvee</p>
+    return <p className="text-sm text-gray-500 italic">{t('tenderSteps.noCapabilities')}</p>
   }
 
   // Group by category
@@ -195,24 +188,24 @@ function CapabilitiesResult({ data }: { data: Record<string, any> }) {
     byCategory[cat].push(cap)
   }
 
-  const categoryLabels: Record<string, { label: string; color: string }> = {
-    certification: { label: 'Certifications & Qualifications', color: 'blue' },
-    materiel: { label: 'Moyens Materiels', color: 'purple' },
-    personnel: { label: 'Moyens Humains', color: 'green' },
+  const categoryLabels: Record<string, string> = {
+    certification: t('tenderSteps.certifications'),
+    materiel: t('tenderSteps.equipment'),
+    personnel: t('tenderSteps.personnel'),
   }
 
   return (
     <details className="bg-green-50 p-3 rounded-lg border border-green-200" open>
       <summary className="text-sm font-semibold text-green-900 cursor-pointer hover:text-green-700">
-        Capacites internes : {data.total_found} ({data.categories_found?.length || Object.keys(byCategory).length} categories)
+        {t('tenderSteps.internalCaps')} : {data.total_found} ({data.categories_found?.length || Object.keys(byCategory).length} {t('tenderSteps.categories')})
       </summary>
       <div className="mt-3 space-y-3">
         {Object.entries(byCategory).map(([category, items]) => {
-          const catMeta = categoryLabels[category] || { label: category, color: 'gray' }
+          const catLabel = categoryLabels[category] || category
           return (
             <div key={category}>
               <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                {catMeta.label} ({items.length})
+                {catLabel} ({items.length})
               </p>
               <div className="space-y-1">
                 {items.slice(0, 5).map((cap: any, i: number) => (
@@ -220,7 +213,7 @@ function CapabilitiesResult({ data }: { data: Record<string, any> }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-900">{cap.name}</p>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-0.5">
-                        {cap.valid_until && <span>Valide: {cap.valid_until}</span>}
+                        {cap.valid_until && <span>{cap.valid_until}</span>}
                         {cap.region && <span>{cap.region}</span>}
                         {cap.availability && <span>{cap.availability}</span>}
                       </div>
@@ -229,7 +222,7 @@ function CapabilitiesResult({ data }: { data: Record<string, any> }) {
                   </div>
                 ))}
                 {items.length > 5 && (
-                  <p className="text-xs text-gray-500 italic">+ {items.length - 5} autres</p>
+                  <p className="text-xs text-gray-500 italic">+ {items.length - 5} {t('tenderSteps.others')}</p>
                 )}
               </div>
             </div>
@@ -241,23 +234,23 @@ function CapabilitiesResult({ data }: { data: Record<string, any> }) {
 }
 
 // ---- Step Content Router ----
-function StepContent({ step }: { step: ProcessingStepLog }) {
+function StepContent({ step, t }: { step: ProcessingStepLog; t: (key: string) => string }) {
   if (!step.output_data) return null
 
   switch (step.step_name) {
     case 'ocr_document':
-      return <OcrResult data={step.output_data} />
+      return <OcrResult data={step.output_data} t={t} />
     case 'retrieve_similar_references':
-      return <ReferencesResult data={step.output_data} />
+      return <ReferencesResult data={step.output_data} t={t} />
     case 'retrieve_historical_tenders':
-      return <HistoricalResult data={step.output_data} />
+      return <HistoricalResult data={step.output_data} t={t} />
     case 'retrieve_capabilities':
-      return <CapabilitiesResult data={step.output_data} />
+      return <CapabilitiesResult data={step.output_data} t={t} />
     default:
       return (
         <details className="bg-gray-50 p-3 rounded border border-gray-200">
           <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 font-medium">
-            Donnees ({step.step_name})
+            {t('tenderSteps.data')} ({step.step_name})
           </summary>
           <pre className="mt-2 text-xs text-gray-700 overflow-auto max-h-48">
             {JSON.stringify(step.output_data, null, 2)}
@@ -297,6 +290,15 @@ function StepIcon({ status }: { status: string }) {
 }
 
 export default function TenderProcessingSteps({ tender, status, logs }: TenderProcessingStepsProps) {
+  const { t } = useTranslation()
+
+  const STEP_LABELS: Record<string, string> = {
+    ocr_document: t('tenderSteps.ocrExtraction'),
+    retrieve_similar_references: t('tenderSteps.similarReferences'),
+    retrieve_historical_tenders: t('tenderSteps.historicalTenders'),
+    retrieve_capabilities: t('tenderSteps.internalCapabilities'),
+  }
+
   if (!['processing', 'completed', 'manual_review', 'failed'].includes(tender.status) && logs.length === 0) {
     return null
   }
@@ -307,12 +309,12 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">Etapes de Traitement</h3>
+      <h3 className="text-xl font-bold text-gray-900 mb-4">{t('tenderSteps.title')}</h3>
 
       {status && tender.status === 'processing' && (
         <div className="mb-4 p-4 bg-amber-50 rounded-lg">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-amber-800">Analyse en cours...</p>
+            <p className="text-sm font-medium text-amber-800">{t('tenderSteps.analysisInProgress')}</p>
             <p className="text-sm font-bold text-amber-800">{status.progress_percentage || 0}%</p>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
@@ -326,7 +328,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
 
       <div className="space-y-4">
         {steps.map((step: ProcessingStepLog, index: number) => {
-          const meta = STEP_LABELS[step.step_name] || { label: step.step_name, color: 'gray' }
+          const label = STEP_LABELS[step.step_name] || step.step_name
 
           return (
             <div key={index} className="border border-gray-200 rounded-lg p-4">
@@ -334,7 +336,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
                 <StepIcon status={step.status} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">{meta.label}</p>
+                    <p className="text-sm font-semibold text-gray-900">{label}</p>
                     <div className="flex items-center gap-2">
                       {step.duration_ms != null && (
                         <span className="text-xs text-amber-600 font-medium">
@@ -350,7 +352,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
                           ? 'bg-red-100 text-red-700'
                           : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {step.status === 'completed' ? 'OK' : step.status === 'failed' ? 'Erreur' : step.status}
+                        {step.status === 'completed' ? t('tenderSteps.ok') : step.status === 'failed' ? t('tenderSteps.error') : step.status}
                       </span>
                     </div>
                   </div>
@@ -360,7 +362,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
                   )}
 
                   <div className="mt-3">
-                    <StepContent step={step} />
+                    <StepContent step={step} t={t} />
                   </div>
                 </div>
               </div>
@@ -373,7 +375,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
             <svg className="h-8 w-8 text-gray-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-gray-600">En attente du lancement de l'analyse...</p>
+            <p className="text-gray-600">{t('tenderSteps.waitingForAnalysis')}</p>
           </div>
         )}
       </div>

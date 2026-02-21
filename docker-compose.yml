@@ -46,8 +46,7 @@ services:
       - ./llamastack/run.yaml:/config/run.yaml:ro
       - llamastack_data:/data
     depends_on:
-      postgresql:
-        condition: service_healthy
+      - postgresql
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
       interval: 15s
@@ -80,14 +79,19 @@ services:
       CLAIMS_SERVER_URL: http://claims-server:8080
       TENDERS_SERVER_URL: http://tenders-server:8080
       GUARDRAILS_SERVER_URL: ${GUARDRAILS_SERVER_URL:-https://guardrails-orchestrator-your-namespace.apps.your-cluster.example.com}
+      # S3/MinIO document storage
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
+      S3_BUCKET_CLAIMS: claims
+      S3_BUCKET_TENDERS: tenders
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
     ports:
       - "8000:8000"
     depends_on:
-      postgresql:
-        condition: service_healthy
-      llamastack:
-        condition: service_healthy
+      - postgresql
+      - llamastack
+      - minio
     volumes:
       - ./backend/app:/opt/app-root/src/app
       - ./documents:/documents
@@ -114,8 +118,8 @@ services:
   # MCP RAG Server
   rag-server:
     build:
-      context: ./backend/mcp_servers/rag_server
-      dockerfile: Dockerfile
+      context: ./backend/mcp_servers
+      dockerfile: rag_server/Dockerfile
     container_name: multi-agents-rag-server
     environment:
       POSTGRES_HOST: postgresql
@@ -124,21 +128,21 @@ services:
       POSTGRES_USER: claims_user
       POSTGRES_PASSWORD: claims_pass
       LLAMASTACK_ENDPOINT: http://llamastack:8321
+      EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-nomic-embed-text}
       VECTOR_DIMENSION: 768
       LOG_LEVEL: INFO
     ports:
       - "8082:8080"
     depends_on:
-      postgresql:
-        condition: service_healthy
+      - postgresql
     networks:
       - multi-agents-network
 
   # MCP Claims Server (CRUD)
   claims-server:
     build:
-      context: ./backend/mcp_servers/claims_server
-      dockerfile: Dockerfile
+      context: ./backend/mcp_servers
+      dockerfile: claims_server/Dockerfile
     container_name: multi-agents-claims-server
     environment:
       POSTGRES_HOST: postgresql
@@ -150,16 +154,15 @@ services:
     ports:
       - "8083:8080"
     depends_on:
-      postgresql:
-        condition: service_healthy
+      - postgresql
     networks:
       - multi-agents-network
 
   # MCP Tenders Server (CRUD)
   tenders-server:
     build:
-      context: ./backend/mcp_servers/tenders_server
-      dockerfile: Dockerfile
+      context: ./backend/mcp_servers
+      dockerfile: tenders_server/Dockerfile
     container_name: multi-agents-tenders-server
     environment:
       POSTGRES_HOST: postgresql
@@ -171,8 +174,58 @@ services:
     ports:
       - "8084:8080"
     depends_on:
-      postgresql:
-        condition: service_healthy
+      - postgresql
+    networks:
+      - multi-agents-network
+
+  # MinIO (S3-compatible object storage)
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: multi-agents-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - multi-agents-network
+
+  # MinIO bucket creation + document upload
+  minio-setup:
+    image: quay.io/minio/mc:latest
+    container_name: multi-agents-minio-setup
+    depends_on:
+      - minio
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        echo "Waiting for MinIO..."
+        until mc alias set minio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} 2>/dev/null; do
+          sleep 2
+        done
+        mc mb --ignore-existing minio/claims
+        mc mb --ignore-existing minio/tenders
+        mc cp --recursive /documents/claims/ minio/claims/
+        mc cp --recursive /documents/tenders/ minio/tenders/
+        echo "=== Buckets created and documents uploaded ==="
+        mc ls minio/claims/
+        mc ls minio/tenders/
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+    volumes:
+      - ./documents:/documents:ro
     networks:
       - multi-agents-network
 
@@ -202,6 +255,8 @@ volumes:
   postgres_data:
     driver: local
   llamastack_data:
+    driver: local
+  minio_data:
     driver: local
 
 networks:

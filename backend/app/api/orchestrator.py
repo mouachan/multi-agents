@@ -3,11 +3,14 @@ Orchestrator API endpoints.
 
 - POST /sessions          - Create a session (optionally pre-routed)
 - POST /chat              - Send a message
+- POST /chat/stream       - Send a message with SSE streaming
 - GET  /sessions/{id}/messages - Get session history
 """
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.orchestrator_schemas import (
@@ -70,6 +73,38 @@ async def send_message(
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/stream")
+async def send_message_stream(
+    request: ChatMessageRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message and stream the agent response via SSE."""
+    async def event_generator():
+        try:
+            async for event in orchestrator_service.process_message_stream(
+                db=db,
+                session_id=request.session_id,
+                message=request.message,
+                user_id=request.user_id,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except ValueError as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        except Exception as e:
+            logger.error(f"Stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/sessions", response_model=SessionListResponse)

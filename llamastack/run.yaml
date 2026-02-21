@@ -14,21 +14,21 @@ apis:
 
 providers:
   inference:
-  # LiteMaaS - LLM models (Mistral-Small-24B + Llama-4-Scout-17B)
-  - provider_id: litemaas
+  # GPT-OSS 120B via llm-d on OpenShift
+  - provider_id: gpt-oss
     provider_type: remote::vllm
     config:
-      url: ${env.LITEMAAS_URL:=https://your-llm-endpoint.example.com/v1}
+      url: ${env.LLM_URL:=https://openshift-ai-inference.apps.example.com/gpt-oss-120b/gpt-oss-120b/v1}
       max_tokens: 4096
-      api_token: ${env.LITEMAAS_API_KEY:=sk-placeholder}
+      api_token: ${env.LLM_API_KEY:=fake}
       tls_verify: false
-  # LiteMaaS - Embeddings + Safety (nomic-embed-text + Llama-Guard)
-  - provider_id: litemaas-embedding
+  # Gemma Embedding 300M on OpenShift
+  - provider_id: gemma-embedding
     provider_type: remote::vllm
     config:
-      url: ${env.LITEMAAS_EMBEDDING_URL:=https://your-embedding-endpoint.example.com/v1}
+      url: ${env.EMBEDDING_URL:=https://gemma-embeddinggemma-300m.apps.example.com/v1}
       max_tokens: 512
-      api_token: ${env.LITEMAAS_EMBEDDING_API_KEY:=sk-placeholder}
+      api_token: ${env.EMBEDDING_API_KEY:=fake}
       tls_verify: false
 
   vector_io:
@@ -97,6 +97,15 @@ providers:
     config: {}
 
   files:
+  # Local dev: localfs. Kubernetes: remote::s3 pointing to MinIO
+  # To use S3 locally, add MinIO to docker-compose and use:
+  #   provider_type: remote::s3
+  #   config:
+  #     bucket_name: claims
+  #     region: us-east-1
+  #     endpoint_url: http://minio:9000
+  #     aws_access_key_id: ${env.AWS_ACCESS_KEY_ID}
+  #     aws_secret_access_key: ${env.AWS_SECRET_ACCESS_KEY}
   - provider_id: meta-reference-files
     provider_type: inline::localfs
     config:
@@ -148,36 +157,21 @@ storage:
 
 registered_resources:
   models:
-  # Reasoning model - Mistral Small 24B (complex ReAct, tool calling, decisions)
+  # GPT-OSS 120B (MXFP4, TP=4, tool calling)
   - metadata: {}
-    model_id: mistral-small-24b
-    provider_id: litemaas
-    provider_model_id: Mistral-Small-24B-W8A8
+    model_id: gpt-oss-120b
+    provider_id: gpt-oss
+    provider_model_id: gpt-oss-120b
     model_type: llm
-  # Routing model - Llama 4 Scout 17B MoE (intent classification, simple queries)
-  - metadata: {}
-    model_id: llama-4-scout-17b
-    provider_id: litemaas
-    provider_model_id: Llama-4-Scout-17B-16E-W4A16
-    model_type: llm
-  # Embeddings - Nomic Embed Text v1.5 (768-dim, free)
+  # Embeddings - Google Gemma 300M (768-dim)
   - metadata:
       embedding_dimension: 768
     model_id: nomic-embed-text
-    provider_id: litemaas-embedding
-    provider_model_id: nomic-embed-text-v1-5
+    provider_id: gemma-embedding
+    provider_model_id: embeddinggemma-300m
     model_type: embedding
-  # Safety - Llama Guard 3 1B (free)
-  - metadata: {}
-    model_id: llama-guard-3
-    provider_id: litemaas-embedding
-    provider_model_id: Llama-Guard-3-1B
-    model_type: llm
 
-  shields:
-  - shield_id: llama-guard
-    provider_id: llama-guard
-    provider_shield_id: llama-guard-3
+  shields: []
   vector_dbs: []
   datasets: []
   scoring_fns: []

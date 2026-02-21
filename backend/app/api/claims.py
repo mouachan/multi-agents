@@ -15,7 +15,6 @@ Endpoints:
 
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -23,7 +22,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -36,28 +35,14 @@ from app.llamastack.prompts import (
     CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
     USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
     AGENT_CONFIG,
-    format_prompt
 )
 from app.services.claim_service import ClaimService
+from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _resolve_document_path(stored_path: str) -> str | None:
-    """Resolve document path trying multiple base directories."""
-    if os.path.exists(stored_path):
-        return stored_path
-    alt = os.path.join("/documents", stored_path.lstrip("/"))
-    if os.path.exists(alt):
-        return alt
-    if stored_path.startswith("/mnt/documents/"):
-        alt = stored_path.replace("/mnt/documents/", "/documents/", 1)
-        if os.path.exists(alt):
-            return alt
-    return None
 
 # Initialize service
 claim_service = ClaimService()
@@ -591,7 +576,6 @@ async def view_claim_document(
 ):
     """View claim document PDF. Accepts UUID or claim_number (e.g. CLM-2024-0019)."""
     try:
-        # Try UUID first, fallback to claim_number
         try:
             claim_uuid = UUID(claim_id)
             result = await db.execute(
@@ -605,24 +589,23 @@ async def view_claim_document(
 
         if not claim:
             raise HTTPException(status_code=404, detail="Claim not found")
-
         if not claim.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this claim")
 
-        # Resolve document path - try multiple locations
-        doc_path = _resolve_document_path(claim.document_path)
-        if not doc_path:
-            logger.error(f"Document file not found for claim {claim_id}: {claim.document_path}")
+        doc = get_document(claim.document_path, entity_type="claim")
+        if not doc:
+            logger.error(f"Document not found for claim {claim_id}")
             raise HTTPException(status_code=404, detail="Document file not found")
 
-        return FileResponse(
-            doc_path,
+        data, filename = doc
+        return Response(
+            content=data,
             media_type="application/pdf",
-            filename=os.path.basename(doc_path)
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error viewing document: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error viewing document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

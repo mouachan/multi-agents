@@ -195,6 +195,9 @@ _DEFAULT_TOOL_DISPLAY = {
         "get_tender_documents": {"label": {"fr": "Documents AO", "en": "Tender Documents"}, "short": "DOC", "category": "crud"},
         "get_tender_statistics": {"label": {"fr": "Statistiques AO", "en": "Tender Statistics"}, "short": "STA", "category": "crud"},
         "analyze_tender": {"label": {"fr": "Analyser AO", "en": "Analyze Tender"}, "short": "ANL", "category": "crud"},
+        "save_claim_decision": {"label": {"fr": "Sauvegarder Decision", "en": "Save Decision"}, "short": "SAV", "category": "crud"},
+        "save_tender_decision": {"label": {"fr": "Sauvegarder Decision AO", "en": "Save Tender Decision"}, "short": "SAV", "category": "crud"},
+        "generate_document_embedding": {"label": {"fr": "Generer Embedding", "en": "Generate Embedding"}, "short": "EMB", "category": "rag"},
     },
     "servers": {
         "ocr-server": {"label": "OCR", "color": "blue"},

@@ -5,18 +5,21 @@ Pure CRUD server (no RAG/embeddings). The RAG server handles vector operations.
 FastMCP implementation with Streamable HTTP transport (SSE).
 """
 
-import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
+
+from shared.db import (
+    POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+    check_database_connection, run_db_query, run_db_query_one, run_db_execute,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -32,64 +35,6 @@ mcp = FastMCP(
     json_response=True
 )
 
-# Configuration
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "claims_pass")
-
-# Database connection
-DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    pool_recycle=3600
-)
-SessionLocal = sessionmaker(bind=engine)
-
-
-def check_database_connection() -> bool:
-    """Verify database connectivity on startup."""
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("Database connection successful")
-        return True
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-
-
-async def run_db_query(query, params: dict) -> List[Any]:
-    """Execute database query in thread pool (non-blocking)."""
-    def _execute():
-        with SessionLocal() as session:
-            try:
-                result = session.execute(query, params).fetchall()
-                return result
-            except Exception as e:
-                session.rollback()
-                raise
-
-    return await asyncio.to_thread(_execute)
-
-
-async def run_db_query_one(query, params: dict) -> Optional[Any]:
-    """Execute database query and return single result."""
-    def _execute():
-        with SessionLocal() as session:
-            try:
-                result = session.execute(query, params).fetchone()
-                return result
-            except Exception as e:
-                session.rollback()
-                raise
-
-    return await asyncio.to_thread(_execute)
-
 
 # =============================================================================
 # MCP Tools - Tenders CRUD
@@ -98,7 +43,7 @@ async def run_db_query_one(query, params: dict) -> Optional[Any]:
 @mcp.tool()
 async def list_tenders(
     status: Optional[str] = None,
-    limit: int = 20
+    limit: int = 10
 ) -> str:
     """
     List tenders (appels d'offres) with optional status filter.
@@ -544,6 +489,118 @@ async def analyze_tender(tender_id: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
+@mcp.tool()
+async def save_tender_decision(
+    tender_id: str,
+    recommendation: str,
+    confidence: float,
+    reasoning: str,
+) -> str:
+    """
+    Save a tender Go/No-Go decision and update tender status.
+
+    Args:
+        tender_id: The tender number (e.g., AO-2025-IDF-001)
+        recommendation: Decision - "go", "no_go", or "a_approfondir"
+        confidence: Confidence score between 0.0 and 1.0
+        reasoning: Explanation of the decision
+
+    Returns:
+        JSON string with save result
+    """
+    logger.info(f"Saving tender decision: {tender_id} -> {recommendation} ({confidence})")
+
+    if not tender_id or not tender_id.strip():
+        return json.dumps({"success": False, "error": "tender_id is required"})
+
+    valid_recommendations = {"go", "no_go", "a_approfondir"}
+    if recommendation not in valid_recommendations:
+        return json.dumps({"success": False, "error": f"recommendation must be one of: {valid_recommendations}"})
+
+    confidence = max(0.0, min(1.0, confidence))
+
+    try:
+        # Lookup tender by tender_number to get UUID
+        tender_result = await run_db_query_one(
+            text("SELECT id FROM tenders WHERE tender_number = :tn"),
+            {"tn": tender_id.strip()},
+        )
+        if not tender_result:
+            return json.dumps({"success": False, "error": f"Tender {tender_id} not found"})
+
+        tender_uuid = tender_result.id
+
+        # Map recommendation to status
+        status_map = {"go": "completed", "no_go": "failed", "a_approfondir": "manual_review"}
+        new_status = status_map[recommendation]
+
+        # DELETE existing decision to avoid duplicates
+        await run_db_execute(
+            text("DELETE FROM tender_decisions WHERE tender_id = :tender_uuid"),
+            {"tender_uuid": tender_uuid},
+        )
+
+        # INSERT into tender_decisions
+        await run_db_execute(
+            text("""
+                INSERT INTO tender_decisions (
+                    tender_id, initial_decision, initial_confidence, initial_reasoning,
+                    initial_decided_at, decision, confidence, reasoning, llm_model,
+                    requires_manual_review
+                ) VALUES (
+                    :tender_uuid, :recommendation, :confidence, :reasoning,
+                    NOW(), :recommendation, :confidence, :reasoning, :llm_model,
+                    :requires_review
+                )
+            """),
+            {
+                "tender_uuid": tender_uuid,
+                "recommendation": recommendation,
+                "confidence": confidence,
+                "reasoning": reasoning,
+                "llm_model": os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown"),
+                "requires_review": recommendation == "a_approfondir",
+            },
+        )
+
+        # Build processing steps for the tender detail page
+        processing_steps = json.dumps([
+            {"step_name": "document_ocr", "agent_name": "tenders", "status": "completed",
+             "output_data": {"description": "Document OCR extraction"}},
+            {"step_name": "tender_analysis", "agent_name": "tenders", "status": "completed",
+             "output_data": {"description": "Go/No-Go evaluation and risk assessment"}},
+            {"step_name": "decision", "agent_name": "tenders", "status": "completed",
+             "output_data": {"recommendation": recommendation, "confidence": confidence,
+                             "reasoning": reasoning[:200]}},
+        ])
+
+        # UPDATE tender status, processed_at, and processing steps in metadata
+        await run_db_execute(
+            text("""
+                UPDATE tenders SET
+                    status = :status,
+                    processed_at = NOW(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('processing_steps', CAST(:steps AS jsonb))
+                WHERE id = :tender_uuid
+            """),
+            {"status": new_status, "tender_uuid": tender_uuid, "steps": processing_steps},
+        )
+
+        logger.info(f"Decision saved for {tender_id}: {recommendation} (confidence={confidence})")
+
+        return json.dumps({
+            "success": True,
+            "tender_number": tender_id.strip(),
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "status": new_status,
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving tender decision: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
 # =============================================================================
 # Health Check
 # =============================================================================
@@ -606,6 +663,6 @@ if __name__ == "__main__":
 
     logger.info(f"Starting MCP Tenders Server on {host}:{port}")
     logger.info(f"Database: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
-    logger.info("Tools: list_tenders, get_tender, get_tender_documents, get_tender_statistics, analyze_tender")
+    logger.info("Tools: list_tenders, get_tender, get_tender_documents, get_tender_statistics, analyze_tender, save_tender_decision")
 
     uvicorn.run(app, host=host, port=port)

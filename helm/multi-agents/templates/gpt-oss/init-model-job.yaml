@@ -1,0 +1,60 @@
+{{- if and .Values.gptoss.enabled (eq .Values.gptoss.model.source "huggingface") }}
+{{- if and .Values.hfcli.token (ne .Values.hfcli.token "hf_<your-token>") }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+  name: download-gpt-oss
+  namespace: {{ include "gptoss.namespace" . }}
+spec:
+  activeDeadlineSeconds: 7200
+  template:
+    metadata:
+      name: download-gpt-oss
+    spec:
+      containers:
+        - name: download
+          image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.hfcli.image.repository }}:{{ .Values.hfcli.image.tag }}
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            - name: MODEL_NAME
+              value: {{ .Values.gptoss.model.address }}
+            - name: DOWNLOAD_PATH
+              value: /mnt/models/{{ .Values.gptoss.model.name }}
+{{- if .Values.global.proxies.HTTP_PROXY }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxies.HTTP_PROXY }}
+{{- end }}
+            - name: HF_HOME
+              value: /mnt/models/.cache
+            - name: TMPDIR
+              value: /mnt/models/.tmp
+          command:
+            - hf
+            - download
+            - $(MODEL_NAME)
+            - --local-dir
+            - $(DOWNLOAD_PATH)
+            - --token
+            - $(HF_TOKEN)
+          resources:
+            {{- toYaml .Values.hfcli.resources | nindent 12 }}
+          volumeMounts:
+            - name: model-storage
+              mountPath: /mnt/models
+      restartPolicy: Never
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: gpt-oss-model
+  backoffLimit: 3
+{{- end }}
+{{- end }}

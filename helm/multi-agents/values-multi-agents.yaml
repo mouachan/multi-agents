@@ -104,6 +104,9 @@ guardrails:
 # =============================================================================
 minio:
   enabled: true
+  seedDocuments:
+    enabled: true
+    repoArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/feature/multi-agents.tar.gz"
 
 # =============================================================================
 # Data Science Pipelines

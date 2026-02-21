@@ -10,7 +10,7 @@ interface UseChatReturn {
   error: string | null
   sessionNotFound: boolean
   createSession: (agentId?: string) => Promise<void>
-  sendMessage: (message: string) => Promise<ChatResponse | null>
+  sendMessage: (message: string, streamEnabled?: boolean) => Promise<ChatResponse | null>
   loadMessages: (sessionId: string) => Promise<void>
   // Prompt editor
   prompt: string | null
@@ -75,7 +75,7 @@ export function useChat(initialSessionId?: string): UseChatReturn {
     }
   }, [])
 
-  const sendMessage = useCallback(async (message: string): Promise<ChatResponse | null> => {
+  const sendMessage = useCallback(async (message: string, streamEnabled: boolean = false): Promise<ChatResponse | null> => {
     if (!session) return null
 
     // Optimistically add user message
@@ -89,6 +89,117 @@ export function useChat(initialSessionId?: string): UseChatReturn {
 
     setIsSending(true)
     setError(null)
+
+    if (streamEnabled) {
+      // Streaming mode: progressive text updates
+      return new Promise<ChatResponse | null>((resolve) => {
+        const assistantMsgId = `stream-${Date.now()}`
+        const startTime = Date.now()
+
+        // Add empty assistant message that will be filled progressively
+        const emptyMsg: ChatMessage = {
+          id: assistantMsgId,
+          role: 'assistant',
+          content: '',
+          created_at: new Date().toISOString(),
+        }
+        setMessages((prev) => [...prev, emptyMsg])
+
+        orchestratorApi.sendMessageStream(
+          session.session_id,
+          message,
+          {
+            onAgentResolved: (agentId) => {
+              // Set agent_id immediately so the badge shows correctly
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, agent_id: agentId }
+                    : m
+                )
+              )
+            },
+            onTextDelta: (delta) => {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, content: m.content + delta }
+                    : m
+                )
+              )
+            },
+            onTextReplace: (text) => {
+              // PII redaction: replace full content with redacted version
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, content: text }
+                    : m
+                )
+              )
+            },
+            onToolCall: (info) => {
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantMsgId) return m
+                  const calls = [...(m.tool_calls || []), { name: info.name, status: 'running', server_label: info.server }]
+                  return { ...m, tool_calls: calls }
+                })
+              )
+            },
+            onToolResult: (info) => {
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantMsgId) return m
+                  // Update first matching running tool with this name, or add if not found
+                  let updated = false
+                  const calls = (m.tool_calls || []).map((tc) => {
+                    if (!updated && tc.name === info.name && tc.status === 'running') {
+                      updated = true
+                      return { ...tc, status: info.status }
+                    }
+                    return tc
+                  })
+                  // If no running tool found (tool_call event was missed), add it
+                  if (!updated && info.name) {
+                    calls.push({ name: info.name, status: info.status })
+                  }
+                  return { ...m, tool_calls: calls }
+                })
+              )
+            },
+            onDone: (response) => {
+              const processingTimeMs = Date.now() - startTime
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? {
+                        ...m,
+                        agent_id: response.agent_id || m.agent_id,
+                        suggested_actions: response.suggested_actions,
+                        tool_calls: response.tool_calls,
+                        token_usage: response.token_usage,
+                        processing_time_ms: processingTimeMs,
+                        model_id: response.model_id || undefined,
+                      }
+                    : m
+                )
+              )
+              setIsSending(false)
+              resolve(response)
+            },
+            onError: (err) => {
+              setError(err)
+              setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId))
+              setIsSending(false)
+              resolve(null)
+            },
+          }
+        )
+      })
+    }
+
+    // Non-streaming mode: original flow
     try {
       const startTime = Date.now()
       const response = await orchestratorApi.sendMessage(

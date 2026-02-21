@@ -1,0 +1,119 @@
+{{- if and .Values.minio.enabled .Values.minio.seedDocuments.enabled .Values.minio.seedDocuments.repoArchiveUrl }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "multi-agents.fullname" . }}-upload-documents
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio-documents
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "20"
+    "helm.sh/hook-delete-policy": hook-succeeded
+    "argocd.argoproj.io/hook": PostSync
+    "argocd.argoproj.io/hook-delete-policy": HookSucceeded
+    "argocd.argoproj.io/sync-wave": "20"
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: minio-documents
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: download-documents
+          image: registry.access.redhat.com/ubi9/ubi:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Downloading documents from GitHub ==="
+              curl -sL "{{ .Values.minio.seedDocuments.repoArchiveUrl }}" -o /tmp/repo.tar.gz
+              mkdir -p /shared
+              tar xzf /tmp/repo.tar.gz -C /tmp/
+              # The tarball extracts to a directory like repo-branch/
+              # Copy documents/ contents to /shared/
+              cp -r /tmp/*/documents/* /shared/ 2>/dev/null || true
+              echo "Downloaded files:"
+              find /shared -name "*.pdf" -type f | head -30
+              echo "Total PDFs: $(find /shared -name '*.pdf' -type f | wc -l)"
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+      containers:
+        - name: upload-documents
+          image: quay.io/minio/mc:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Uploading documents to MinIO ==="
+
+              MINIO_URL="http://{{ include "multi-agents.fullname" . }}-minio:{{ .Values.minio.service.apiPort }}"
+              CLAIMS_BUCKET="{{ .Values.minio.documentBuckets.claims }}"
+              TENDERS_BUCKET="{{ .Values.minio.documentBuckets.tenders }}"
+
+              mc alias set minio $MINIO_URL $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+
+              # Wait for MinIO
+              timeout=60
+              elapsed=0
+              while [ $elapsed -lt $timeout ]; do
+                mc admin info minio &>/dev/null && break
+                sleep 5
+                elapsed=$((elapsed + 5))
+              done
+
+              # Upload claim documents (claims/*.pdf)
+              CLAIM_COUNT=0
+              if [ -d "/shared/claims" ]; then
+                for f in $(find /shared/claims -name "*.pdf" -type f 2>/dev/null); do
+                  BASENAME=$(basename "$f")
+                  if ! mc stat "minio/$CLAIMS_BUCKET/$BASENAME" &>/dev/null; then
+                    mc cp "$f" "minio/$CLAIMS_BUCKET/$BASENAME"
+                    CLAIM_COUNT=$((CLAIM_COUNT + 1))
+                  fi
+                done
+              fi
+              echo "Uploaded $CLAIM_COUNT claim documents to $CLAIMS_BUCKET"
+
+              # Upload tender documents (tenders/*.pdf)
+              TENDER_COUNT=0
+              if [ -d "/shared/tenders" ]; then
+                for f in $(find /shared/tenders -name "*.pdf" -type f 2>/dev/null); do
+                  BASENAME=$(basename "$f")
+                  if ! mc stat "minio/$TENDERS_BUCKET/$BASENAME" &>/dev/null; then
+                    mc cp "$f" "minio/$TENDERS_BUCKET/$BASENAME"
+                    TENDER_COUNT=$((TENDER_COUNT + 1))
+                  fi
+                done
+              fi
+              echo "Uploaded $TENDER_COUNT tender documents to $TENDERS_BUCKET"
+
+              echo "=== Document upload completed ==="
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+              readOnly: true
+      volumes:
+        - name: shared
+          emptyDir: {}
+{{- end }}

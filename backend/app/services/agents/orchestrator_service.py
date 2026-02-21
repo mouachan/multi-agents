@@ -9,11 +9,10 @@ Responsibilities:
 - Suggest follow-up actions
 - Chain agents (e.g., AO Go -> suggest Claim)
 """
-import json
 import logging
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.services.pii.redactor import redact_text_pii
 
@@ -24,7 +23,6 @@ from app.core.config import settings
 from app.llamastack.orchestrator_prompts import (
     CHAT_AGENT_WRAPPER,
     LANGUAGE_RULE_TEMPLATE,
-    ORCHESTRATOR_CLASSIFICATION_PROMPT,
     ORCHESTRATOR_CONFIG,
     ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
 )
@@ -287,6 +285,175 @@ class OrchestratorService:
             "model_id": model_id,
         }
 
+    async def process_message_stream(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        message: str,
+        user_id: Optional[str] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Process a user message with SSE streaming.
+
+        Same routing logic as process_message() but yields events progressively.
+        """
+        from app.models.conversation import ChatMessage, ChatSession
+
+        # Get session
+        result = await db.execute(
+            select(ChatSession).where(ChatSession.session_id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            yield {"type": "error", "message": f"Session {session_id} not found"}
+            return
+
+        # Save user message
+        user_msg = ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=message,
+        )
+        db.add(user_msg)
+        await db.commit()
+
+        # Fast keyword classification
+        classification = self._fallback_classification(message, session.agent_id)
+        intent = classification.get("intent", "general")
+        agent_id = classification.get("agent_id") or session.agent_id
+
+        # Get previous_response_id for stateful conversation chaining
+        metadata = dict(session.session_metadata or {})
+        previous_response_id = metadata.get("last_response_id")
+
+        # Update session agent if routed
+        if agent_id and agent_id != session.agent_id:
+            session.agent_id = agent_id
+            previous_response_id = None
+            await db.commit()
+
+        if not agent_id:
+            yield {"type": "error", "message": "No agent resolved for this request"}
+            return
+
+        agent_def = AgentRegistry.get(agent_id)
+        if not agent_def or not agent_def.tools:
+            yield {"type": "error", "message": f"Agent {agent_id} not found or has no tools"}
+            return
+
+        # Emit agent info immediately so frontend can update badge/icon
+        yield {"type": "agent_resolved", "agent_id": agent_id}
+
+        user_lang = self._detect_language(message)
+        lang_name = "English" if user_lang == "en" else "French"
+        lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
+
+        custom_prompt = (session.session_metadata or {}).get("custom_prompt")
+        agent_instructions = custom_prompt or agent_def.instructions
+        tools = agent_def.tools
+        instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
+        model = settings.llamastack_default_model
+        max_iters = self.conv.get_max_infer_iters(False)
+
+        logger.info(f"Streaming agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
+
+        tool_calls = []
+        full_text = ""
+        response_id = None
+        token_usage = None
+
+        try:
+            async for event in self.orchestrator.process_with_agent_stream(
+                agent_config={"model": model, "instructions": instructions},
+                input_message=message,
+                tools=tools,
+                max_infer_iters=max_iters,
+                previous_response_id=previous_response_id,
+            ):
+                event_type = event.get("type")
+
+                if event_type == "tool_call":
+                    yield event
+
+                elif event_type == "tool_result":
+                    tool_calls.append({
+                        "name": event.get("name"),
+                        "status": event.get("status"),
+                    })
+                    yield event
+
+                elif event_type == "text_delta":
+                    yield event
+
+                elif event_type == "done":
+                    full_text = event.get("output", "")
+                    response_id = event.get("response_id")
+                    token_usage = ConversationHelper.normalize_token_usage(event.get("usage", {}))
+                    tool_calls = [
+                        {
+                            "name": tc.get("name", "unknown"),
+                            "status": "error" if tc.get("error") else "completed",
+                            "server_label": tc.get("server"),
+                            "output": tc.get("output"),
+                            "error": tc.get("error"),
+                        }
+                        for tc in event.get("tool_calls", [])
+                        if isinstance(tc, dict) and tc.get("name")
+                    ]
+
+        except Exception as e:
+            logger.error(f"Stream error for agent {agent_id}: {e}", exc_info=True)
+            yield {"type": "error", "message": str(e)}
+            return
+
+        # Post-processing: PII redaction on complete text
+        if full_text:
+            full_text = ConversationHelper.clean_response_for_chat(full_text)
+            redacted = redact_text_pii(full_text)
+            if redacted != full_text:
+                logger.info("PII detected and redacted in streamed response")
+                full_text = redacted
+                # Send replacement so frontend swaps the unredacted deltas
+                yield {"type": "text_replace", "text": full_text}
+
+        suggested_actions = self._generate_post_response_actions(full_text, agent_id, user_lang)
+
+        # Store last_response_id for conversation chaining
+        if response_id:
+            metadata["last_response_id"] = response_id
+            session.session_metadata = metadata
+
+        # Save assistant response to DB
+        assistant_msg = ChatMessage(
+            session_id=session.id,
+            role="assistant",
+            content=full_text,
+            agent_id=agent_id or "orchestrator",
+            suggested_actions=suggested_actions if suggested_actions else None,
+            tool_calls=tool_calls if tool_calls else None,
+            token_usage=token_usage,
+        )
+        db.add(assistant_msg)
+        await db.commit()
+
+        # Model short name
+        model_id = None
+        full_model = model if isinstance(model, str) else settings.llamastack_default_model
+        short = full_model.split("/")[-1] if "/" in full_model else full_model
+        short = re.sub(r'-W\d+A\d+$', '', short)
+        model_id = short
+
+        # Final done event with enriched data
+        yield {
+            "type": "done",
+            "response_id": response_id,
+            "usage": token_usage,
+            "tool_calls": tool_calls,
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "suggested_actions": suggested_actions,
+        }
+
     async def list_sessions(
         self,
         db: AsyncSession,
@@ -477,53 +644,6 @@ class OrchestratorService:
 
         # Return default prompt
         return await self.get_session_prompt(db, session_id)
-
-    async def _classify_intent(
-        self,
-        message: str,
-        context: str,
-        current_agent_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Classify user intent using LLM."""
-        try:
-            prompt = ORCHESTRATOR_CLASSIFICATION_PROMPT.format(
-                message=message,
-                context=context or "No previous context.",
-            )
-
-            # Add info about current agent if pre-routed
-            if current_agent_id:
-                agent_def = AgentRegistry.get(current_agent_id)
-                if agent_def:
-                    prompt += f"\n\nCurrently routed to agent: {current_agent_id} ({agent_def.name})"
-
-            result = await self.orchestrator.process_with_agent(
-                agent_config={
-                    "model": settings.llamastack_default_model,
-                    "instructions": ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
-                },
-                input_message=prompt,
-                tools=None,
-            )
-
-            output = result.get("output", "")
-
-            # Try to parse JSON from response
-            try:
-                # Find JSON in the response
-                start = output.find("{")
-                end = output.rfind("}") + 1
-                if start >= 0 and end > start:
-                    return json.loads(output[start:end])
-            except json.JSONDecodeError:
-                pass
-
-            # Fallback: simple keyword matching
-            return self._fallback_classification(message, current_agent_id)
-
-        except Exception as e:
-            logger.error(f"Error classifying intent: {e}", exc_info=True)
-            return self._fallback_classification(message, current_agent_id)
 
     @staticmethod
     def _wrap_instructions_for_chat(agent_instructions: str) -> str:
