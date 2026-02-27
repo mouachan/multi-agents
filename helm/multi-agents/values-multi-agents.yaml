@@ -53,7 +53,7 @@ backend:
   pvc:
     accessMode: ReadWriteOnce
     size: 5Gi
-  seedDataUrl: "https://raw.githubusercontent.com/your-org/multi-agents/feature/multi-agents/database/seed_data/002_tender_seed_data.sql"
+  seedDataUrl: "https://raw.githubusercontent.com/your-org/multi-agents/feature/multi-agents/database/seed_data/001_seed_data.sql"
 
 # =============================================================================
 # Frontend
@@ -109,7 +109,13 @@ minio:
     repoArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/feature/multi-agents.tar.gz"
 
 # =============================================================================
-# Data Science Pipelines
+# Data Initialization
+# =============================================================================
+dataInit:
+  enabled: true
+
+# =============================================================================
+# Data Science Pipelines (RHOAI DSPA)
 # =============================================================================
 dataSciencePipelines:
   enabled: true

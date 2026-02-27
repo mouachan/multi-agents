@@ -41,8 +41,6 @@ class ConversationHelper:
 
     _DEFAULTS = {
         "max_tool_call_retries": 1,
-        "max_infer_iters_simple": 2,
-        "max_infer_iters_complex": 10,
     }
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -57,12 +55,6 @@ class ConversationHelper:
         [{"name": "tool_name", "arguments": {...}}].
         """
         return bool(_TEXT_TOOL_CALL_RE.search(text) or _JSON_TOOL_CALL_RE.search(text))
-
-    def strip_text_tool_calls(self, text: str) -> str:
-        """Remove text-based tool call patterns from LLM output."""
-        cleaned = _TEXT_TOOL_CALL_RE.sub('', text)
-        cleaned = _JSON_TOOL_CALL_RE.sub('', cleaned)
-        return cleaned.strip()
 
     @staticmethod
     def extract_tool_names_from_text(text: str) -> List[str]:
@@ -108,10 +100,6 @@ class ConversationHelper:
         cleaned = cleaned.replace('<<ESCALATE>>', '')
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
-
-    def get_max_infer_iters(self, is_simple: bool) -> int:
-        """Return configured max_infer_iters based on query complexity."""
-        return self.max_infer_iters_simple if is_simple else self.max_infer_iters_complex
 
     @staticmethod
     def normalize_token_usage(raw_usage: Dict[str, Any]) -> Optional[Dict[str, int]]:

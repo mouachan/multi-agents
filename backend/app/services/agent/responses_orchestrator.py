@@ -58,13 +58,11 @@ class ResponsesOrchestrator:
         "list_claims": "claims-server",
         "get_claim": "claims-server",
         "get_claim_documents": "claims-server",
-        "analyze_claim": "claims-server",
         "get_claim_statistics": "claims-server",
         # Tenders server (CRUD operations)
         "list_tenders": "tenders-server",
         "get_tender": "tenders-server",
         "get_tender_documents": "tenders-server",
-        "analyze_tender": "tenders-server",
         "get_tender_statistics": "tenders-server",
         # Decision persistence
         "save_claim_decision": "claims-server",
@@ -134,7 +132,6 @@ class ResponsesOrchestrator:
         agent_config: Dict[str, Any],
         input_message: Any,  # Can be str or List[Dict]
         tools: Optional[List[str]] = None,
-        max_infer_iters: int = 10,
         previous_response_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -147,7 +144,6 @@ class ResponsesOrchestrator:
             agent_config: Agent configuration with instructions
             input_message: New user message (str) or conversation (List[Dict])
             tools: Optional list of tools to enable
-            max_infer_iters: Max tool-calling iterations
             previous_response_id: Chain from a previous response for multi-turn
 
         Returns:
@@ -160,7 +156,6 @@ class ResponsesOrchestrator:
                 "input": input_message,
                 "stream": False,
                 "store": True,
-                "max_infer_iters": max_infer_iters,
                 "max_tokens": settings.llamastack_max_tokens,
             }
 
@@ -231,6 +226,7 @@ class ResponsesOrchestrator:
 
             return {
                 "response_id": result.get("id"),
+                "model": result.get("model") or agent_config.get("model", self.model),
                 "output": output_text,
                 "tool_calls": tool_calls,
                 "usage": result.get("usage", {}),
@@ -241,7 +237,6 @@ class ResponsesOrchestrator:
         agent_config: Dict[str, Any],
         input_message: Any,
         tools: Optional[List[str]] = None,
-        max_infer_iters: int = 10,
         previous_response_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -259,7 +254,6 @@ class ResponsesOrchestrator:
                 "input": input_message,
                 "stream": True,
                 "store": True,
-                "max_infer_iters": max_infer_iters,
                 "max_tokens": settings.llamastack_max_tokens,
             }
 
@@ -314,15 +308,21 @@ class ResponsesOrchestrator:
                                 resp = event.get("response", {})
                                 response_id = resp.get("id")
                                 usage = resp.get("usage", {})
-                                # Extract any remaining output from the completed response
+                                status = resp.get("status", "unknown")
+                                output_types = [item.get("type") for item in resp.get("output", [])]
+                                logger.info(f"response.completed: status={status}, usage={usage}, outputs={output_types}")
+                                # Only extract text if we didn't get any deltas (fallback)
+                                if not full_text:
+                                    for item in resp.get("output", []):
+                                        if item.get("type") == "message":
+                                            for ci in item.get("content", []):
+                                                if ci.get("type") == "output_text":
+                                                    t = ci.get("text", "")
+                                                    if t.strip():
+                                                        full_text.append(t)
+                                # Always collect tool calls we may have missed
                                 for item in resp.get("output", []):
-                                    if item.get("type") == "message":
-                                        for ci in item.get("content", []):
-                                            if ci.get("type") == "output_text":
-                                                t = ci.get("text", "")
-                                                if t.strip() and t not in full_text:
-                                                    full_text.append(t)
-                                    elif item.get("type") == "mcp_call":
+                                    if item.get("type") == "mcp_call":
                                         tc = {
                                             "name": item.get("name"),
                                             "server": item.get("server_label"),
@@ -376,11 +376,14 @@ class ResponsesOrchestrator:
                                     yield {"type": "tool_result", "name": name, "status": status}
 
                             # MCP tool call completed (flat format)
+                            # Skip if no name — output_item.done already handles the detailed event
                             elif event_type in (
                                 "response.mcp_call.completed",
                                 "response.mcp_call_completed",
                             ):
                                 name, server = _extract_mcp_info(event)
+                                if not name:
+                                    continue
                                 error = event.get("error") or event.get("item", {}).get("error")
                                 tc = {
                                     "name": name,
@@ -399,17 +402,6 @@ class ResponsesOrchestrator:
                                     full_text.append(delta)
                                     yield {"type": "text_delta", "delta": delta}
 
-                            # Also handle content part deltas
-                            elif event_type == "response.content_part.delta":
-                                delta = event.get("delta", {})
-                                if isinstance(delta, dict):
-                                    text_val = delta.get("text", "")
-                                else:
-                                    text_val = str(delta)
-                                if text_val:
-                                    full_text.append(text_val)
-                                    yield {"type": "text_delta", "delta": text_val}
-
             # Final done event
             output_text = "".join(full_text)
             logger.info(f"Stream completed: tools={len(tool_calls)}, text={len(output_text)} chars")
@@ -417,6 +409,7 @@ class ResponsesOrchestrator:
             yield {
                 "type": "done",
                 "response_id": response_id,
+                "model": agent_config.get("model", self.model),
                 "usage": usage,
                 "tool_calls": tool_calls,
                 "output": output_text,

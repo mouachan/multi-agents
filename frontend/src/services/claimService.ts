@@ -51,39 +51,10 @@ export class ClaimService {
   }
 
   /**
-   * Check if claim needs polling (is being processed)
-   */
-  shouldPoll(claim: Claim): boolean {
-    return claim.status === 'processing'
-  }
-
-  /**
    * Check if claim can be processed
    */
   canProcess(claim: Claim): boolean {
     return claim.status === 'pending' || claim.status === 'failed'
-  }
-
-  /**
-   * Check if claim is in manual review
-   */
-  isManualReview(claim: Claim): boolean {
-    return claim.status === 'manual_review'
-  }
-
-  /**
-   * Check if claim is completed (approved or denied)
-   */
-  isCompleted(claim: Claim): boolean {
-    return claim.status === 'completed' || claim.status === 'failed'
-  }
-
-  /**
-   * Extract OCR data from processing logs
-   */
-  extractOcrData(logs: ProcessingStepLog[]): any {
-    const ocrStep = logs.find((s) => s.step_name === 'ocr' || s.step_name.includes('ocr'))
-    return ocrStep?.output_data?.structured_data?.fields || null
   }
 
   /**

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useTender } from '../hooks/useTender'
 import { useTenderPolling } from '../hooks/useTenderPolling'
+import { useTranslation } from '../i18n/LanguageContext'
 import TenderHeader from '../components/tender/TenderHeader'
 import TenderActions from '../components/tender/TenderActions'
 import TenderDecision from '../components/tender/TenderDecision'
@@ -9,6 +10,7 @@ import ReviewChatPanel from '../components/ReviewChatPanel'
 
 export default function TenderDetailPage() {
   const { tenderId } = useParams<{ tenderId: string }>()
+  const { t } = useTranslation()
 
   const { tender, status, decision, logs, loading, error, reload } = useTender(tenderId)
 
@@ -29,9 +31,9 @@ export default function TenderDetailPage() {
   if (error || !tender) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error || 'Tender not found'}</p>
+        <p className="text-red-800">{error || t('tenders.tenderNotFound')}</p>
         <Link to="/tenders" className="text-amber-600 hover:text-amber-800 mt-2 inline-block">
-          Retour aux AOs
+          {t('tenders.backToTenders')}
         </Link>
       </div>
     )
@@ -43,7 +45,7 @@ export default function TenderDetailPage() {
         <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
-        Retour aux Appels d'Offres
+        {t('tenders.backToTenders')}
       </Link>
 
       <TenderHeader tender={tender} logs={logs} />

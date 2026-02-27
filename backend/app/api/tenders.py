@@ -475,7 +475,7 @@ async def view_tender_document(
         if not tender.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this tender")
 
-        doc = get_document(tender.document_path, entity_type="tender")
+        doc = get_document(tender.tender_number, fallback_path=tender.document_path)
         if not doc:
             logger.error(f"Document not found for tender {tender_id}")
             raise HTTPException(status_code=404, detail="Document file not found")

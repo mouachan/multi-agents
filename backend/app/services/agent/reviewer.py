@@ -151,7 +151,6 @@ class ReviewService:
                 agent_config=agent_config,
                 input_message=question,
                 tools=None,
-                cleanup=True  # Delete agent after processing
             )
 
             # Extract and clean response
@@ -311,23 +310,6 @@ class ReviewService:
         logger.info(f"Processed {action} action for {entity_type} {entity_id} by {reviewer_name}")
 
         return entity, entity_decision
-
-    async def validate_review_eligibility(
-        self,
-        entity_status: str,
-        allowed_statuses: List[str]
-    ) -> bool:
-        """
-        Validate if entity is eligible for review.
-
-        Args:
-            entity_status: Current entity status
-            allowed_statuses: List of statuses that allow review
-
-        Returns:
-            True if review is allowed
-        """
-        return entity_status in allowed_statuses
 
     def build_decision_update(
         self,

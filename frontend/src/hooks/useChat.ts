@@ -278,9 +278,11 @@ export function useChat(initialSessionId?: string): UseChatReturn {
     }
   }, [getSessionId])
 
-  // Auto-load messages if initial session ID provided
+  // Auto-load messages and restore session if initial session ID provided
   useEffect(() => {
     if (initialSessionId) {
+      // Restore session object so sendMessage works
+      setSession({ session_id: initialSessionId, status: 'active' } as ChatSession)
       loadMessages(initialSessionId)
     }
   }, [initialSessionId, loadMessages])

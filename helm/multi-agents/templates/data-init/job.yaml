@@ -1,0 +1,74 @@
+{{- if .Values.dataInit.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "multi-agents.fullname" . }}-data-init
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.dataInit.backoffLimit | default 3 }}
+  ttlSecondsAfterFinished: {{ .Values.dataInit.ttlSecondsAfterFinished | default 3600 }}
+  template:
+    metadata:
+      labels:
+        {{- include "multi-agents.labels" . | nindent 8 }}
+        app.kubernetes.io/component: data-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: data-init
+          image: "{{ .Values.dataInit.image.repository }}:{{ .Values.dataInit.image.tag }}"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install --quiet httpx psycopg2-binary reportlab mcp &&
+              python /scripts/init_data.py
+          env:
+            - name: LLAMASTACK_ENDPOINT
+              value: "http://{{ include "multi-agents.fullname" . }}-llamastack:8321"
+            - name: EMBEDDING_MODEL
+              value: "{{ .Values.llamastack.embeddingModel }}"
+            - name: OCR_SERVER_URL
+              value: "http://{{ include "multi-agents.fullname" . }}-ocr-server:8080"
+            - name: CLAIMS_SERVER_URL
+              value: "http://{{ include "multi-agents.fullname" . }}-claims-server:8080"
+            - name: TENDERS_SERVER_URL
+              value: "http://{{ include "multi-agents.fullname" . }}-tenders-server:8080"
+            - name: POSTGRES_HOST
+              value: "{{ .Values.postgresql.host | default "postgresql-service" }}"
+            - name: POSTGRES_PORT
+              value: "{{ .Values.postgresql.port | default "5432" }}"
+            - name: POSTGRES_DATABASE
+              value: "{{ .Values.postgresql.database | default "claims_db" }}"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.secretName | default "postgresql-credentials" }}
+                  key: {{ .Values.postgresql.secretUserKey | default "username" }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.secretName | default "postgresql-credentials" }}
+                  key: {{ .Values.postgresql.secretPasswordKey | default "password" }}
+          resources:
+            requests:
+              cpu: {{ .Values.dataInit.resources.requests.cpu | default "200m" }}
+              memory: {{ .Values.dataInit.resources.requests.memory | default "256Mi" }}
+            limits:
+              cpu: {{ .Values.dataInit.resources.limits.cpu | default "500m" }}
+              memory: {{ .Values.dataInit.resources.limits.memory | default "512Mi" }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "multi-agents.fullname" . }}-init-scripts
+{{- end }}

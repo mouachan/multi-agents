@@ -146,15 +146,6 @@ For general queries, suggest discovery actions:
 Respond in the same language as the user (French or English).
 """
 
-_ORCHESTRATOR_CLASSIFICATION_PROMPT_DEFAULT = """Based on the conversation history and the latest user message, classify the intent and route appropriately.
-
-User message: {message}
-
-Previous context:
-{context}
-
-Respond with the classification JSON."""
-
 _LANGUAGE_RULE_TEMPLATE_DEFAULT = """
 
 ## MANDATORY LANGUAGE RULE
@@ -167,10 +158,6 @@ CHAT_AGENT_WRAPPER = load_orchestrator_prompt(
 ORCHESTRATOR_SYSTEM_INSTRUCTIONS = load_orchestrator_prompt(
     "orchestrator-system-instructions.txt", _ORCHESTRATOR_SYSTEM_INSTRUCTIONS_DEFAULT
 )
-ORCHESTRATOR_CLASSIFICATION_PROMPT = load_orchestrator_prompt(
-    "orchestrator-classification-prompt.txt", _ORCHESTRATOR_CLASSIFICATION_PROMPT_DEFAULT
-)
-
 # Load structured config (actions, keywords, messages) from YAML
 ORCHESTRATOR_CONFIG = load_orchestrator_config()
 

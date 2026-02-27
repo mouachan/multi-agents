@@ -19,9 +19,7 @@ services:
       - ./database/migrations/004_add_chat_tables.sql:/docker-entrypoint-initdb.d/03-chat-tables.sql:ro
       - ./database/migrations/005_add_tool_calls_to_chat_messages.sql:/docker-entrypoint-initdb.d/04-tool-calls.sql:ro
       - ./database/migrations/006_add_token_usage_to_chat_messages.sql:/docker-entrypoint-initdb.d/05-token-usage.sql:ro
-      - ./database/seed_data/001_sample_data.sql:/docker-entrypoint-initdb.d/06-seed-data.sql:ro
-      - ./database/seed_data/002_tender_seed_data.sql:/docker-entrypoint-initdb.d/07-tender-seed.sql:ro
-      - ./database/seed_data/004_harmonized_scenario.sql:/docker-entrypoint-initdb.d/08-harmonized.sql:ro
+      - ./database/seed_data/001_seed_data.sql:/docker-entrypoint-initdb.d/06-seed-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U claims_user -d claims_db"]
       interval: 10s
@@ -226,6 +224,43 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
     volumes:
       - ./documents:/documents:ro
+    networks:
+      - multi-agents-network
+
+  # Data initialization: generate PDFs, upload to LlamaStack, process 10+10 via MCP tools
+  data-init:
+    image: python:3.11-slim
+    container_name: multi-agents-data-init
+    depends_on:
+      llamastack:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+      ocr-server:
+        condition: service_started
+      claims-server:
+        condition: service_started
+      tenders-server:
+        condition: service_started
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        pip install --quiet httpx psycopg2-binary reportlab mcp &&
+        python /scripts/init_data.py
+    environment:
+      LLAMASTACK_ENDPOINT: http://llamastack:8321
+      EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-nomic-embed-text}
+      OCR_SERVER_URL: http://ocr-server:8080
+      CLAIMS_SERVER_URL: http://claims-server:8080
+      TENDERS_SERVER_URL: http://tenders-server:8080
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: claims_db
+      POSTGRES_USER: claims_user
+      POSTGRES_PASSWORD: claims_pass
+    volumes:
+      - ./backend/scripts:/scripts:ro
     networks:
       - multi-agents-network
 

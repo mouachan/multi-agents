@@ -5,7 +5,6 @@ Builds context and prompts for agents based on domain data.
 Completely reusable for any domain (claims, orders, tickets, etc.)
 """
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 
 
 class ContextBuilder:
@@ -149,37 +148,5 @@ class ContextBuilder:
             parts.append("\n## Structured Data:")
             for key, value in structured.items():
                 parts.append(f"- {key}: {value}")
-
-        return "\n".join(parts)
-
-    def extract_rag_context(
-        self,
-        rag_results: List[Dict[str, Any]],
-        max_results: int = 5
-    ) -> str:
-        """
-        Extract and format RAG retrieval context.
-
-        Args:
-            rag_results: List of RAG retrieval results
-            max_results: Maximum number of results to include
-
-        Returns:
-            Formatted RAG context
-        """
-        if not rag_results:
-            return "No retrieval results available."
-
-        parts = ["## Retrieved Information:"]
-
-        for idx, result in enumerate(rag_results[:max_results], 1):
-            title = result.get('title', f'Result {idx}')
-            content = result.get('content', '')
-            similarity = result.get('similarity_score', 0.0)
-
-            parts.append(f"\n### {idx}. {title} (similarity: {similarity:.2%})")
-            parts.append(content[:500])  # Limit content
-            if len(content) > 500:
-                parts.append("... (truncated)")
 
         return "\n".join(parts)

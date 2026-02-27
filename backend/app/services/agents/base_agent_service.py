@@ -12,6 +12,7 @@ Extracts the 90% identical pattern from ClaimService and TenderService:
 """
 import json as json_lib
 import logging
+import re
 from abc import ABC, abstractmethod
 
 from typing import Any, Dict, List, Optional
@@ -92,6 +93,18 @@ class BaseAgentService(ABC):
     @abstractmethod
     async def save_decision(self, db: AsyncSession, entity_id: str, decision_data: Dict[str, Any]):
         """Save the decision to the database."""
+
+    # ── Model name cleanup ─────────────────────────────────────────
+
+    @staticmethod
+    def clean_model_name(full_model: str) -> str:
+        """Extract clean display name from full model ID.
+
+        Example: 'litemaas/Llama-4-Scout-17B-16E-W4A16' -> 'Llama-4-Scout-17B-16E'
+        """
+        short = full_model.split("/")[-1] if "/" in full_model else full_model
+        short = re.sub(r'-W\d+A\d+$', '', short)
+        return short
 
     # ── Tool name to agent name mapping ─────────────────────────────
 
@@ -217,6 +230,7 @@ class BaseAgentService(ABC):
 
             return {
                 "response_id": result.get("response_id"),
+                "model": result.get("model", settings.llamastack_default_model),
                 "decision": decision_data,
                 f"{self.get_entity_type()}_status": new_status,
                 "processing_steps": processing_steps,

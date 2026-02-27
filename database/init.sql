@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-CREATE TYPE claim_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'manual_review', 'pending_info');
+CREATE TYPE claim_status AS ENUM ('pending', 'processing', 'completed', 'denied', 'failed', 'manual_review', 'pending_info');
 CREATE TYPE processing_step AS ENUM ('ocr', 'guardrails', 'rag_retrieval', 'llm_decision', 'final_review');
 CREATE TYPE decision_type AS ENUM ('approve', 'deny', 'manual_review');
 
@@ -71,7 +71,7 @@ CREATE TABLE claim_documents (
 );
 
 CREATE INDEX idx_claim_documents_claim_id ON claim_documents(claim_id);
-CREATE INDEX idx_claim_documents_embedding ON claim_documents USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_claim_documents_embedding ON claim_documents USING hnsw (embedding vector_cosine_ops);
 ALTER TABLE claim_documents ADD CONSTRAINT claim_documents_claim_id_unique UNIQUE (claim_id);
 
 -- ============================================================================
@@ -109,7 +109,7 @@ CREATE TABLE user_contracts (
 
 CREATE INDEX idx_user_contracts_user_id ON user_contracts(user_id);
 CREATE INDEX idx_user_contracts_is_active ON user_contracts(is_active);
-CREATE INDEX idx_user_contracts_embedding ON user_contracts USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_user_contracts_embedding ON user_contracts USING hnsw (embedding vector_cosine_ops);
 
 -- ============================================================================
 -- PROCESSING LOGS TABLE
@@ -254,7 +254,7 @@ CREATE TABLE knowledge_base (
 CREATE INDEX idx_knowledge_base_category ON knowledge_base(category);
 CREATE INDEX idx_knowledge_base_tags ON knowledge_base USING GIN(tags);
 CREATE INDEX idx_knowledge_base_is_active ON knowledge_base(is_active);
-CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING hnsw (embedding vector_cosine_ops);
 
 -- ============================================================================
 -- USERS TABLE (basic user info)
@@ -422,7 +422,7 @@ CREATE TABLE tender_documents (
 );
 
 CREATE INDEX idx_tender_documents_tender_id ON tender_documents(tender_id);
-CREATE INDEX idx_tender_documents_embedding ON tender_documents USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_tender_documents_embedding ON tender_documents USING hnsw (embedding vector_cosine_ops);
 
 -- Tender decisions (Go/No-Go)
 CREATE TABLE tender_decisions (
@@ -495,7 +495,7 @@ CREATE TABLE company_references (
     updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_company_references_embedding ON company_references USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_company_references_embedding ON company_references USING hnsw (embedding vector_cosine_ops);
 
 -- company capabilities (certifications, resources, equipment)
 CREATE TABLE company_capabilities (

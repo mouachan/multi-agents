@@ -174,7 +174,6 @@ class OrchestratorService:
                     tools = agent_def.tools
                     instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
                     model = settings.llamastack_default_model
-                    max_iters = self.conv.get_max_infer_iters(False)
 
                     logger.info(f"Calling agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
@@ -182,7 +181,6 @@ class OrchestratorService:
                         agent_config={"model": model, "instructions": instructions},
                         input_message=message,
                         tools=tools,
-                        max_infer_iters=max_iters,
                         previous_response_id=previous_response_id,
                     )
 
@@ -203,7 +201,6 @@ class OrchestratorService:
                             input_message="You wrote tool calls as text instead of calling them. "
                                           "Use the function calling mechanism to actually execute the tools now.",
                             tools=tools,
-                            max_infer_iters=max_iters,
                             previous_response_id=last_response_id,
                         )
                         agent_response = result.get("output", "")
@@ -352,8 +349,7 @@ class OrchestratorService:
         agent_instructions = custom_prompt or agent_def.instructions
         tools = agent_def.tools
         instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
-        model = settings.llamastack_default_model
-        max_iters = self.conv.get_max_infer_iters(False)
+        model = settings.llamastack_streaming_model or settings.llamastack_default_model
 
         logger.info(f"Streaming agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
@@ -367,7 +363,6 @@ class OrchestratorService:
                 agent_config={"model": model, "instructions": instructions},
                 input_message=message,
                 tools=tools,
-                max_infer_iters=max_iters,
                 previous_response_id=previous_response_id,
             ):
                 event_type = event.get("type")
@@ -649,75 +644,6 @@ class OrchestratorService:
     def _wrap_instructions_for_chat(agent_instructions: str) -> str:
         """Wrap agent instructions with chat-specific guidance."""
         return CHAT_AGENT_WRAPPER.format(agent_instructions=agent_instructions)
-
-    # Regex patterns for entity extraction
-    _CLAIM_NUMBER_RE = re.compile(r'CLM-\d{4}-\d{4}', re.IGNORECASE)
-    _TENDER_NUMBER_RE = re.compile(r'AO-\d{4}-\w+-\d{3}', re.IGNORECASE)
-
-    async def _enrich_message_for_processing(
-        self, db, message: str, agent_id: str
-    ) -> str:
-        """Pre-fetch entity data and append to message for processing.
-
-        When the LLM needs to process a claim/tender, it needs document_path
-        and user_id upfront. Without this, the LLM calls get_claim first and
-        stops before doing actual processing (OCR, RAG, decision).
-        """
-        from sqlalchemy import text as sql_text
-
-        try:
-            if agent_id == "claims":
-                match = self._CLAIM_NUMBER_RE.search(message)
-                if not match:
-                    return message
-                claim_number = match.group(0)
-                result = await db.execute(
-                    sql_text(
-                        "SELECT claim_number, user_id, claim_type, document_path "
-                        "FROM claims WHERE claim_number = :cn"
-                    ),
-                    {"cn": claim_number},
-                )
-                row = result.fetchone()
-                if row:
-                    data = (
-                        f"\n\n--- Claim data (pre-fetched) ---\n"
-                        f"claim_number: {row.claim_number}\n"
-                        f"user_id: {row.user_id}\n"
-                        f"claim_type: {row.claim_type}\n"
-                        f"document_path: {row.document_path}\n"
-                    )
-                    logger.info(f"Enriched message with claim data: {claim_number}")
-                    return message + data
-
-            elif agent_id == "tenders":
-                match = self._TENDER_NUMBER_RE.search(message)
-                if not match:
-                    return message
-                tender_number = match.group(0)
-                result = await db.execute(
-                    sql_text(
-                        "SELECT tender_number, entity_id, tender_type, document_path "
-                        "FROM tenders WHERE tender_number = :tn"
-                    ),
-                    {"tn": tender_number},
-                )
-                row = result.fetchone()
-                if row:
-                    data = (
-                        f"\n\n--- Tender data (pre-fetched) ---\n"
-                        f"tender_number: {row.tender_number}\n"
-                        f"entity_id: {row.entity_id}\n"
-                        f"tender_type: {row.tender_type}\n"
-                        f"document_path: {row.document_path}\n"
-                    )
-                    logger.info(f"Enriched message with tender data: {tender_number}")
-                    return message + data
-
-        except Exception as e:
-            logger.warning(f"Failed to enrich message: {e}")
-
-        return message
 
     # Default French words for language detection (used when config not mounted)
     _DEFAULT_FR_WORDS = {

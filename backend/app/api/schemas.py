@@ -46,6 +46,7 @@ class ClaimUpdate(BaseModel):
 class ClaimResponse(ClaimBase):
     id: UUID
     status: str
+    user_name: Optional[str] = None
     submitted_at: datetime
     processed_at: Optional[datetime] = None
     total_processing_time_ms: Optional[int] = None

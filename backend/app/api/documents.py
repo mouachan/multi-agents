@@ -1,7 +1,8 @@
 """
 Documents API endpoints.
 
-Serves claim/tender PDFs from S3 (MinIO) with local filesystem fallback.
+Serves claim/tender PDFs from LlamaStack Files API (file ID = claim/tender number)
+with local filesystem fallback.
 """
 
 import logging
@@ -45,7 +46,8 @@ async def view_claim_document(
         if not claim.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this claim")
 
-        doc = get_document(claim.document_path, entity_type="claim")
+        # Use claim_number as LlamaStack file ID, fallback to document_path for local
+        doc = get_document(claim.claim_number, fallback_path=claim.document_path)
         if not doc:
             logger.error(f"Document not found for claim {claim_id}")
             raise HTTPException(status_code=404, detail="Document file not found")

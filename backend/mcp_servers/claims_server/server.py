@@ -1,15 +1,16 @@
 """
 MCP Claims Server - CRUD operations on insurance claims via PostgreSQL.
 
-Pure CRUD server (no RAG/embeddings). The RAG server handles vector operations.
+Includes decision persistence with automatic embedding generation.
 FastMCP implementation with Streamable HTTP transport (SSE).
 """
 
 import json
 import logging
 import os
-from typing import Optional
+from typing import List, Optional
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import text
 from starlette.applications import Starlette
@@ -20,6 +21,38 @@ from shared.db import (
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     check_database_connection, run_db_query, run_db_query_one, run_db_execute,
 )
+
+# LlamaStack endpoint for embedding generation
+LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack:8321")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+
+# Cached LLM model name (resolved from LlamaStack at first use)
+_cached_llm_model: Optional[str] = None
+
+
+async def _get_llm_model_name() -> str:
+    """Get the LLM model name from LlamaStack /v1/models, cached after first call."""
+    global _cached_llm_model
+    if _cached_llm_model:
+        return _cached_llm_model
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/models")
+            resp.raise_for_status()
+            models = resp.json().get("data", resp.json()) if isinstance(resp.json(), dict) else resp.json()
+            if isinstance(models, list):
+                for m in models:
+                    identifier = m.get("identifier") or m.get("id") or ""
+                    model_type = m.get("model_type") or m.get("type") or ""
+                    if "embedding" not in identifier.lower() and model_type != "embedding":
+                        import re
+                        short = identifier.split("/")[-1] if "/" in identifier else identifier
+                        _cached_llm_model = re.sub(r'-W\d+A\d+$', '', short)
+                        return _cached_llm_model
+    except Exception as e:
+        logger.warning(f"Failed to query LlamaStack models: {e}")
+    _cached_llm_model = os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown")
+    return _cached_llm_model
 
 # Configure logging
 logging.basicConfig(
@@ -108,10 +141,8 @@ async def list_claims(
                 elif hasattr(value, '__float__'):
                     claim[key] = float(value)
             claim['id'] = uuid_id
-            # Pre-built document link for the LLM (ready-to-use markdown)
-            if claim.get('document_path'):
-                claim['document_view_url'] = f"/api/v1/documents/{uuid_id}/view"
-                claim['document_link'] = f"[View Document (PDF)](/api/v1/documents/{uuid_id}/view)"
+            claim['has_document'] = bool(claim.get('document_path'))
+            claim.pop('document_path', None)
             claims.append(claim)
 
         logger.info(f"Found {len(claims)} claims")
@@ -133,11 +164,15 @@ async def get_claim(claim_id: str) -> str:
     """
     Get detailed information about a specific claim.
 
+    Returns: claim fields (number, type, status, dates, has_document), claimant info
+    (name, email, phone, address), existing AI decision, and processing logs.
+    If has_document is true, use ocr_document(document_id=claim_number) to extract text.
+
     Args:
         claim_id: The claim number (e.g., CLM-2024-0001)
 
     Returns:
-        JSON string with claim details including user info, decision, and processing logs
+        JSON with keys: claim, decision, processing_logs
     """
     logger.info(f"Getting claim details: {claim_id}")
 
@@ -186,10 +221,9 @@ async def get_claim(claim_id: str) -> str:
             if hasattr(value, 'isoformat'):
                 claim[key] = value.isoformat()
 
-        # Pre-built document link for the LLM (ready-to-use markdown)
-        if claim.get('document_path'):
-            claim['document_view_url'] = f"/api/v1/documents/{uuid_str}/view"
-            claim['document_link'] = f"[View Document (PDF)](/api/v1/documents/{uuid_str}/view)"
+        # Document availability flag (document_path is internal, not exposed to LLM)
+        claim['has_document'] = bool(claim.get('document_path'))
+        claim.pop('document_path', None)
 
         # Get decision
         decision_query = text("""
@@ -245,13 +279,18 @@ async def get_claim(claim_id: str) -> str:
 @mcp.tool()
 async def get_claim_documents(claim_id: str) -> str:
     """
-    Get documents associated with a claim.
+    Get documents associated with a claim, including their OCR text.
+
+    Returns the list of documents with their raw OCR text (truncated to 1000 chars),
+    structured data, confidence score, and file metadata (file_path, mime_type, size).
+    If no documents exist or OCR text is empty, use ocr_document(document_id=claim_number)
+    to extract text first.
 
     Args:
         claim_id: The claim number (e.g., CLM-2024-0001)
 
     Returns:
-        JSON string with claim documents and OCR data
+        JSON with keys: claim_number, documents (list), total_documents
     """
     logger.info(f"Getting documents for claim: {claim_id}")
 
@@ -385,14 +424,20 @@ async def get_claim_statistics() -> str:
 @mcp.tool()
 async def analyze_claim(claim_id: str) -> str:
     """
-    Get all data needed to analyze a specific claim (claim info, documents, user contracts).
-    This provides a comprehensive view for the LLM to perform analysis.
+    Retrieve everything needed to evaluate a claim in a single call.
+
+    Returns: claim details (type, status, claimant name/email), the full OCR text
+    extracted from the claim document (if available), the claimant's active insurance
+    contracts (coverage amounts, key terms, exclusions), and the existing AI decision
+    (if one was already made). Use this instead of calling get_claim + get_claim_documents
+    + retrieve_user_info separately.
 
     Args:
         claim_id: The claim number (e.g., CLM-2024-0001)
 
     Returns:
-        JSON string with comprehensive claim data for analysis
+        JSON with keys: claim, ocr_data (raw_text + structured_data + confidence),
+        user_contracts (list), existing_decision (decision + confidence + reasoning)
     """
     logger.info(f"Analyzing claim: {claim_id}")
 
@@ -500,6 +545,25 @@ async def analyze_claim(claim_id: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
+async def _generate_embedding(text_input: str) -> Optional[List[float]]:
+    """Generate embedding via LlamaStack /v1/embeddings API. Returns None on failure."""
+    if not text_input or not text_input.strip():
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
+                json={"model": EMBEDDING_MODEL, "input": text_input.strip()[:2000]},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            if data:
+                return data[0].get("embedding")
+    except Exception as e:
+        logger.warning(f"Embedding generation failed (non-blocking): {e}")
+    return None
+
+
 @mcp.tool()
 async def save_claim_decision(
     claim_id: str,
@@ -508,7 +572,8 @@ async def save_claim_decision(
     reasoning: str,
 ) -> str:
     """
-    Save a claim decision (approve/deny/manual_review) and update claim status.
+    Save a claim decision (approve/deny/manual_review), update claim status,
+    and generate an embedding for future similarity search.
 
     Args:
         claim_id: The claim number (e.g., CLM-2024-0001)
@@ -519,6 +584,8 @@ async def save_claim_decision(
     Returns:
         JSON string with save result
     """
+    import time as _time
+    _start_time = _time.time()
     logger.info(f"Saving claim decision: {claim_id} -> {recommendation} ({confidence})")
 
     if not claim_id or not claim_id.strip():
@@ -542,8 +609,17 @@ async def save_claim_decision(
         claim_uuid = claim_result.id
 
         # Map recommendation to status
-        status_map = {"approve": "completed", "deny": "failed", "manual_review": "manual_review"}
+        status_map = {"approve": "completed", "deny": "denied", "manual_review": "manual_review"}
         new_status = status_map[recommendation]
+
+        # DELETE any previous decision for this claim (avoid duplicates)
+        await run_db_execute(
+            text("DELETE FROM claim_decisions WHERE claim_id = :claim_uuid"),
+            {"claim_uuid": claim_uuid},
+        )
+
+        # Get model name from LlamaStack (cached)
+        llm_model = await _get_llm_model_name()
 
         # INSERT into claim_decisions
         await run_db_execute(
@@ -563,35 +639,156 @@ async def save_claim_decision(
                 "recommendation": recommendation,
                 "confidence": confidence,
                 "reasoning": reasoning,
-                "llm_model": os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown"),
+                "llm_model": llm_model,
                 "requires_review": recommendation == "manual_review",
             },
         )
 
-        # Build processing steps for the claim detail page
-        processing_steps = json.dumps([
-            {"step_name": "document_ocr", "agent_name": "claims", "status": "completed",
-             "output_data": {"description": "Document OCR extraction"}},
-            {"step_name": "claim_analysis", "agent_name": "claims", "status": "completed",
-             "output_data": {"description": "Claim evaluation and risk assessment"}},
-            {"step_name": "decision", "agent_name": "claims", "status": "completed",
-             "output_data": {"recommendation": recommendation, "confidence": confidence,
-                             "reasoning": reasoning[:200]}},
-        ])
+        # Build processing steps with real data from DB
+        steps = []
+
+        # 1. OCR step - get real OCR data if available
+        ocr_result = await run_db_query_one(
+            text("""
+                SELECT raw_ocr_text, structured_data, ocr_confidence,
+                       page_count, language
+                FROM claim_documents WHERE claim_id = :cid
+                ORDER BY created_at DESC LIMIT 1
+            """),
+            {"cid": claim_uuid},
+        )
+        if ocr_result and ocr_result.raw_ocr_text:
+            ocr_output = {
+                "success": True,
+                "raw_text": ocr_result.raw_ocr_text[:2000],
+                "structured_data": ocr_result.structured_data or {},
+                "confidence": float(ocr_result.ocr_confidence) if ocr_result.ocr_confidence else None,
+                "pages_processed": ocr_result.page_count or 1,
+            }
+            steps.append({"step_name": "ocr_document", "agent_name": "ocr-agent", "status": "completed",
+                          "output_data": ocr_output})
+        else:
+            steps.append({"step_name": "ocr_document", "agent_name": "ocr-agent", "status": "completed",
+                          "output_data": {"description": "Document OCR extraction"}})
+
+        # 2. User info step - get user data and contracts
+        user_result = await run_db_query_one(
+            text("""
+                SELECT c.user_id, u.full_name, u.email, u.phone_number, u.date_of_birth
+                FROM claims c LEFT JOIN users u ON c.user_id = u.user_id
+                WHERE c.id = :cid
+            """),
+            {"cid": claim_uuid},
+        )
+        if user_result and user_result.full_name:
+            contracts_results = await run_db_query(
+                text("""
+                    SELECT contract_number, contract_type, coverage_amount, is_active
+                    FROM user_contracts WHERE user_id = :uid AND is_active = true
+                """),
+                {"uid": user_result.user_id},
+            )
+            contracts = []
+            for cr in contracts_results:
+                c = dict(cr._mapping)
+                if c.get("coverage_amount"):
+                    c["coverage_amount"] = float(c["coverage_amount"])
+                contracts.append(c)
+
+            steps.append({"step_name": "retrieve_user_info", "agent_name": "rag-agent", "status": "completed",
+                          "output_data": {
+                              "success": True,
+                              "user_info": {
+                                  "user_id": user_result.user_id,
+                                  "full_name": user_result.full_name,
+                                  "email": user_result.email,
+                              },
+                              "contracts": contracts,
+                          }})
+
+        # 3. Ensure embedding exists BEFORE querying similar claims
+        embedding_status = "skipped"
+        doc_result = await run_db_query_one(
+            text("""
+                SELECT cd.id, cd.raw_ocr_text, cd.embedding IS NOT NULL as has_embedding
+                FROM claim_documents cd WHERE cd.claim_id = :cid
+                ORDER BY cd.created_at DESC LIMIT 1
+            """),
+            {"cid": claim_uuid},
+        )
+        if doc_result and not doc_result.has_embedding and doc_result.raw_ocr_text:
+            embedding = await _generate_embedding(doc_result.raw_ocr_text)
+            if embedding:
+                emb_str = '[' + ','.join(map(str, embedding)) + ']'
+                await run_db_execute(
+                    text("UPDATE claim_documents SET embedding = CAST(:emb AS vector) WHERE id = :doc_id"),
+                    {"emb": emb_str, "doc_id": doc_result.id},
+                )
+                embedding_status = "created"
+                logger.info(f"Embedding generated for {claim_id} (dim={len(embedding)})")
+            else:
+                embedding_status = "failed"
+        elif doc_result and doc_result.has_embedding:
+            embedding_status = "already_exists"
+
+        # 4. Similar claims step - now embedding is guaranteed to exist
+        try:
+            similar_result = await run_db_query(
+                text("""
+                    SELECT c.claim_number, c.claim_type, cd.decision, cd.confidence,
+                           1 - (doc.embedding <=> doc2.embedding) AS similarity
+                    FROM claim_documents doc
+                    JOIN claim_documents doc2 ON doc2.claim_id = :cid
+                    JOIN claims c ON doc.claim_id = c.id
+                    LEFT JOIN claim_decisions cd ON cd.claim_id = c.id
+                    WHERE doc.embedding IS NOT NULL AND doc2.embedding IS NOT NULL
+                    AND doc.claim_id != :cid
+                    AND c.status IN ('completed', 'manual_review', 'denied')
+                    ORDER BY doc.embedding <=> doc2.embedding
+                    LIMIT 5
+                """),
+                {"cid": claim_uuid},
+            )
+            if similar_result:
+                similar_claims = []
+                for r in similar_result:
+                    sc = dict(r._mapping)
+                    if sc.get("confidence"):
+                        sc["confidence"] = float(sc["confidence"])
+                    if sc.get("similarity"):
+                        sc["similarity_score"] = round(float(sc.pop("similarity")), 3)
+                    similar_claims.append(sc)
+                steps.append({"step_name": "retrieve_similar_claims", "agent_name": "rag-agent", "status": "completed",
+                              "output_data": {"success": True, "claims": similar_claims, "total_found": len(similar_claims)}})
+        except Exception as e:
+            logger.debug(f"Could not query similar claims: {e}")
+
+        # 5. Decision step
+        steps.append({"step_name": "decision", "agent_name": "claims", "status": "completed",
+                       "output_data": {"recommendation": recommendation, "confidence": confidence,
+                                       "reasoning": reasoning[:500]}})
+
+        processing_steps = json.dumps(steps)
+
+        # Compute actual processing time
+        processing_time_ms = int((_time.time() - _start_time) * 1000)
 
         # UPDATE claim status, processed_at, and processing steps in metadata
-        await run_db_execute(
+        logger.info(f"Updating claim {claim_id} (uuid={claim_uuid}) status to '{new_status}'")
+        rows_updated = await run_db_execute(
             text("""
                 UPDATE claims SET
                     status = :status,
                     processed_at = NOW(),
+                    total_processing_time_ms = :processing_time_ms,
                     metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('processing_steps', CAST(:steps AS jsonb))
                 WHERE id = :claim_uuid
             """),
-            {"status": new_status, "claim_uuid": claim_uuid, "steps": processing_steps},
+            {"status": new_status, "claim_uuid": claim_uuid, "steps": processing_steps,
+             "processing_time_ms": processing_time_ms},
         )
-
-        logger.info(f"Decision saved for {claim_id}: {recommendation} (confidence={confidence})")
+        logger.info(f"UPDATE claims: {rows_updated} row(s) affected for {claim_id}")
+        logger.info(f"Decision saved for {claim_id}: {recommendation} (confidence={confidence}, embedding={embedding_status}, time={processing_time_ms}ms)")
 
         return json.dumps({
             "success": True,
@@ -599,6 +796,7 @@ async def save_claim_decision(
             "recommendation": recommendation,
             "confidence": confidence,
             "status": new_status,
+            "embedding": embedding_status,
         })
 
     except Exception as e:

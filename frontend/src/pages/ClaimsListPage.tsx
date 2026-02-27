@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { claimsApi } from '../services/api'
 import type { Claim, ClaimStatus } from '../types'
+import { useTranslation } from '../i18n/LanguageContext'
 
 export default function ClaimsListPage() {
+  const { t } = useTranslation()
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -15,17 +17,14 @@ export default function ClaimsListPage() {
   const [totalPages, setTotalPages] = useState(1)
 
   useEffect(() => {
-    console.log('ClaimsListPage: loading claims, page=', page, 'filter=', statusFilter)
     loadClaims()
   }, [page, statusFilter, claimTypeFilter, searchQuery, sortOrder])
 
   const loadClaims = async () => {
     try {
-      console.log('Starting to load claims...')
       setLoading(true)
       setError(null)
       const response = await claimsApi.listClaims(page, 20, statusFilter || undefined)
-      console.log('Claims loaded:', response)
 
       // Client-side filtering and sorting
       let filteredClaims = response.claims || []
@@ -43,6 +42,7 @@ export default function ClaimsListPage() {
         filteredClaims = filteredClaims.filter((c: Claim) =>
           c.claim_number.toLowerCase().includes(query) ||
           c.user_id.toLowerCase().includes(query) ||
+          (c.user_name && c.user_name.toLowerCase().includes(query)) ||
           c.claim_type?.toLowerCase().includes(query)
         )
       }
@@ -59,7 +59,7 @@ export default function ClaimsListPage() {
       setTotalPages(totalPagesCalc)
     } catch (err) {
       console.error('Error loading claims:', err)
-      setError('Failed to load claims')
+      setError(t('claims.failedToProcess'))
     } finally {
       setLoading(false)
     }
@@ -73,6 +73,8 @@ export default function ClaimsListPage() {
         return 'bg-purple-100 text-purple-800'
       case 'completed':
         return 'bg-green-100 text-green-800'
+      case 'denied':
+        return 'bg-red-100 text-red-800'
       case 'failed':
         return 'bg-red-100 text-red-800'
       case 'manual_review':
@@ -82,8 +84,29 @@ export default function ClaimsListPage() {
     }
   }
 
+  const getStatusLabel = (status: ClaimStatus) => {
+    switch (status) {
+      case 'pending': return t('common.pending')
+      case 'processing': return t('common.processing')
+      case 'completed': return t('common.completed')
+      case 'denied': return t('common.denied')
+      case 'failed': return t('common.failed')
+      case 'manual_review': return t('common.manualReview')
+      default: return status
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
+  }
+
+  const formatProcessingTime = (claim: Claim) => {
+    if (claim.total_processing_time_ms) {
+      const secs = claim.total_processing_time_ms / 1000
+      if (secs < 60) return `${secs.toFixed(1)}s`
+      return `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`
+    }
+    return '-'
   }
 
   const toggleSortOrder = () => {
@@ -96,14 +119,14 @@ export default function ClaimsListPage() {
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Claims</h2>
-            <p className="mt-2 text-gray-600">View and manage insurance claims</p>
+            <h2 className="text-3xl font-bold text-gray-900">{t('claims.title')}</h2>
+            <p className="mt-2 text-gray-600">{t('claims.subtitle')}</p>
           </div>
           <button
             onClick={loadClaims}
             className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
           >
-            Refresh
+            {t('common.refresh')}
           </button>
         </div>
       </div>
@@ -114,13 +137,13 @@ export default function ClaimsListPage() {
           {/* Search Bar */}
           <div className="md:col-span-2">
             <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
-              🔍 Search Claims
+              {t('claims.searchLabel')}
             </label>
             <div className="relative">
               <input
                 id="search"
                 type="text"
-                placeholder="Search by claim number, user ID, or type..."
+                placeholder={t('claims.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
@@ -139,7 +162,7 @@ export default function ClaimsListPage() {
           {/* Status Filter */}
           <div>
             <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">
-              Filter by Status
+              {t('claims.filterByStatus')}
             </label>
             <select
               id="status-filter"
@@ -150,19 +173,20 @@ export default function ClaimsListPage() {
               }}
               className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
             >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="manual_review">Manual Review</option>
+              <option value="">{t('claims.allStatus')}</option>
+              <option value="pending">{t('common.pending')}</option>
+              <option value="processing">{t('common.processing')}</option>
+              <option value="completed">{t('common.completed')}</option>
+              <option value="denied">{t('common.denied')}</option>
+              <option value="failed">{t('common.failed')}</option>
+              <option value="manual_review">{t('common.manualReview')}</option>
             </select>
           </div>
 
           {/* Claim Type Filter */}
           <div>
             <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
-              Filter by Type
+              {t('claims.filterByType')}
             </label>
             <select
               id="type-filter"
@@ -173,7 +197,7 @@ export default function ClaimsListPage() {
               }}
               className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
             >
-              <option value="">All Types</option>
+              <option value="">{t('claims.allTypes')}</option>
               <option value="Auto">Auto</option>
               <option value="Home">Home</option>
               <option value="Medical">Medical</option>
@@ -197,11 +221,11 @@ export default function ClaimsListPage() {
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No claims found</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">{t('claims.noClaims')}</h3>
           <p className="mt-1 text-sm text-gray-500">
             {statusFilter || claimTypeFilter || searchQuery
-              ? 'Try adjusting your filters'
-              : 'No claims in the system'}
+              ? t('claims.adjustFilters')
+              : t('claims.noClaimsInSystem')}
           </p>
         </div>
       ) : (
@@ -215,7 +239,7 @@ export default function ClaimsListPage() {
                   onClick={toggleSortOrder}
                 >
                   <div className="flex items-center gap-1">
-                    Claim Number
+                    {t('claims.claimNumber')}
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       {sortOrder === 'asc' ? (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -226,22 +250,22 @@ export default function ClaimsListPage() {
                   </div>
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User ID
+                  {t('claims.claimant')}
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
+                  {t('claims.type')}
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
+                  {t('claims.status')}
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Submitted
+                  {t('claims.submitted')}
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Processing Time
+                  {t('claims.duration')}
                 </th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  {t('claims.actions')}
                 </th>
               </tr>
             </thead>
@@ -252,31 +276,28 @@ export default function ClaimsListPage() {
                     {claim.claim_number}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {claim.user_id}
+                    {claim.user_name || claim.user_id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {claim.claim_type || 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(claim.status)}`}>
-                      {claim.status}
+                      {getStatusLabel(claim.status)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(claim.submitted_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {claim.total_processing_time_ms
-                      ? `${(claim.total_processing_time_ms / 1000).toFixed(2)}s`
-                      : '-'
-                    }
+                    {formatProcessingTime(claim)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
                       to={`/claims/${claim.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
-                      View Details
+                      {t('claims.viewDetails')}
                     </Link>
                   </td>
                 </tr>
@@ -295,17 +316,17 @@ export default function ClaimsListPage() {
               disabled={page === 1}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Previous
+              {t('common.previous')}
             </button>
             <span className="text-sm text-gray-700">
-              Page {page} {totalPages > 1 && `of ${totalPages}`}
+              {t('common.page')} {page} {totalPages > 1 && `/ ${totalPages}`}
             </span>
             <button
               onClick={() => setPage(p => p + 1)}
               disabled={page >= totalPages}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Next
+              {t('common.next')}
             </button>
           </div>
         </div>

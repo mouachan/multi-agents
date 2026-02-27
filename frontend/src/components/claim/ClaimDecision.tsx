@@ -30,7 +30,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* System Decision */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-gray-500 mb-2">🤖 System Decision (Initial)</p>
+            <p className="text-sm font-medium text-gray-500 mb-2">System Decision (Initial)</p>
             <p
               className={`text-3xl font-bold ${
                 decision.initial_decision === 'approve'
@@ -62,7 +62,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 : 'border-orange-300 bg-orange-50'
             }`}
           >
-            <p className="text-sm font-medium text-gray-700 mb-2">👤 Final Decision (Reviewer)</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">Final Decision (Reviewer)</p>
             {decision.final_decision ? (
               <>
                 <p
@@ -89,7 +89,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 )}
               </>
             ) : (
-              <p className="text-lg text-orange-600 font-medium">⚠️ Awaiting manual review...</p>
+              <p className="text-lg text-orange-600 font-medium">Awaiting manual review...</p>
             )}
           </div>
         </div>
@@ -105,7 +105,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 : 'border-gray-300 bg-gray-50'
             }`}
           >
-            <p className="text-sm font-medium text-gray-500 mb-2">🤖 System Decision</p>
+            <p className="text-sm font-medium text-gray-500 mb-2">System Decision</p>
             <p
               className={`text-4xl font-bold ${
                 decision.initial_decision === 'approve'
@@ -173,7 +173,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
 
       {decision.requires_manual_review && isManualReview && (
         <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-          <p className="text-orange-800 font-medium">⚠️ This claim requires manual review</p>
+          <p className="text-orange-800 font-medium">This claim requires manual review</p>
         </div>
       )}
 

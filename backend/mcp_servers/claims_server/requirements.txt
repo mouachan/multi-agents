@@ -4,6 +4,9 @@ uvicorn[standard]==0.27.0
 starlette
 pydantic>=2.7.2
 
+# HTTP client (for LlamaStack embedding API)
+httpx>=0.27.0
+
 # Database
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9

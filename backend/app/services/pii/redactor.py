@@ -55,20 +55,6 @@ def redact_ssn(ssn: str) -> str:
     return re.sub(r"\d", "*", ssn)
 
 
-def redact_credit_card(cc: str) -> str:
-    """Redact credit card: keep last 4 digits."""
-    if not cc:
-        return cc
-    digits = re.sub(r"\D", "", cc)
-    if len(digits) < 4:
-        return re.sub(r"\d", "*", cc)
-    last4 = digits[-4:]
-    return re.sub(r"\d(?=\d{4})", "*", cc.rstrip())  # Simple approach
-    # Better: mask all but last 4
-    masked = "*" * (len(digits) - 4) + last4
-    return masked
-
-
 def redact_address(address: Optional[dict]) -> Optional[dict]:
     """Redact address fields in a JSON address object."""
     if not address or not isinstance(address, dict):

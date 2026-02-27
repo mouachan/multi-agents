@@ -63,11 +63,12 @@ class Settings(BaseSettings):
     llamastack_endpoint: str  # LLAMASTACK_ENDPOINT (required)
     llamastack_api_key: Optional[str] = None
     llamastack_default_model: str  # LLAMASTACK_DEFAULT_MODEL (required)
+    llamastack_streaming_model: str = ""  # LLAMASTACK_STREAMING_MODEL (optional, defaults to default_model)
     llamastack_embedding_model: str = "nomic-embed-text"
     llamastack_embedding_dimension: int = 768
     llamastack_timeout: int = 300
     llamastack_max_retries: int = 3
-    llamastack_max_tokens: int = 2048
+    llamastack_max_tokens: int = 4096
 
     # MCP Servers — configured via env vars
     ocr_server_url: str  # OCR_SERVER_URL (required)

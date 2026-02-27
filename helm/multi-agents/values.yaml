@@ -344,10 +344,10 @@ secrets:
   create: true
 
 # =============================================================================
-# MinIO (S3-compatible object storage for Data Science Pipelines)
+# MinIO (S3-compatible object storage)
 # =============================================================================
 minio:
-  enabled: false  # Disabled by default - required for RHOAI Data Science Pipelines
+  enabled: false  # Disabled by default
 
   # Image configuration
   image:
@@ -405,90 +405,51 @@ minio:
       memory: 1Gi
 
 # =============================================================================
-# Data Science Pipelines (RHOAI Kubeflow Pipelines)
+# Data Initialization (post-install job)
+# =============================================================================
+dataInit:
+  enabled: true
+  image:
+    repository: python
+    tag: "3.11-slim"
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# Data Science Pipelines (RHOAI DSPA)
 # =============================================================================
 dataSciencePipelines:
-  enabled: false  # Disabled by default - requires RHOAI 3.0+ and MinIO
+  enabled: false  # Disabled by default - requires RHOAI with DSP operator
 
-  # DSP version (v1 or v2)
   dspVersion: v2
 
-  # API Server configuration
   apiServer:
     enableSamplePipeline: false
     enableOauth: true
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    cacheEnabled: true
+    pipelineStore: kubernetes
 
-  # Database configuration
   database:
-    useExternal: true  # Use external PostgreSQL instead of internal MariaDB
-
-    # External PostgreSQL configuration
-    externalDB:
-      host: postgresql-service
-      port: "5432"
-      username: pipelines_user
-      pipelineDBName: pipelines_db
-      # Password will be stored in a secret
-
-    # Internal MariaDB configuration (used if useExternal: false)
     mariaDB:
       pipelineDBName: mlpipeline
-      pvcSize: 10Gi
       username: mlpipeline
-      resources:
-        requests:
-          cpu: 200m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
+      pvcSize: 10Gi
 
-  # Object Storage (MinIO) configuration
   objectStorage:
-    useInternalMinio: true  # Use the MinIO deployed by this chart
-    enableExternalRoute: false
-    basePath: ""
+    useInternalMinio: true  # Use MinIO deployed by this chart
     bucket: pipelines
-    host: ""  # Auto-configured if useInternalMinio: true
-    port: ""
     region: us-east-1
     scheme: http
     s3CredentialsSecret:
       accessKey: AWS_ACCESS_KEY_ID
       secretKey: AWS_SECRET_ACCESS_KEY
-      secretName: ""  # Auto-configured if useInternalMinio: true
-
-  # Persistence Agent configuration
-  persistenceAgent:
-    numWorkers: 2
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-
-  # Scheduled Workflow configuration
-  scheduledWorkflow:
-    cronScheduleTimezone: UTC
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
-
-  # Pod-to-pod TLS
-  podToPodTLS: true
 
 # =============================================================================
 # Guardrails (TrustyAI)
@@ -541,20 +502,6 @@ guardrails:
         - effect: NoSchedule
           operator: Exists
       placement: {}
-
-# =============================================================================
-# Tekton Pipelines (RHOAI Data Science Pipelines)
-# =============================================================================
-tekton:
-  enabled: false  # Disabled by default - requires Tekton/OpenShift Pipelines
-
-  # Embedding model for generating vectors
-  embeddingModel: gemma-300m
-
-  # Workspace PVC for pipeline tasks
-  workspace:
-    size: 5Gi
-    storageClass: ""  # Use default storage class
 
 # =============================================================================
 # GPT-OSS 120B (llm-d / LLMInferenceService)

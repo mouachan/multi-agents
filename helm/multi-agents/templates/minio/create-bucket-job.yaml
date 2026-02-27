@@ -60,7 +60,9 @@ spec:
 
               # Create all required buckets
               for BUCKET_NAME in \
+                {{- if .Values.dataSciencePipelines.enabled }}
                 "{{ .Values.dataSciencePipelines.objectStorage.bucket }}" \
+                {{- end }}
                 "{{ .Values.minio.documentBuckets.claims }}" \
                 "{{ .Values.minio.documentBuckets.tenders }}"; do
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Tender, ProcessingStepLog } from '../../types/tender'
+import { useTranslation } from '../../i18n/LanguageContext'
 
 interface TenderHeaderProps {
   tender: Tender
@@ -7,6 +8,7 @@ interface TenderHeaderProps {
 }
 
 export default function TenderHeader({ tender }: TenderHeaderProps) {
+  const { t, locale } = useTranslation()
   const [showPdf, setShowPdf] = useState(false)
 
   const getStatusColor = (status: string) => {
@@ -22,23 +24,23 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
-      pending: 'EN ATTENTE',
-      processing: 'EN COURS',
-      completed: 'TERMINE',
-      failed: 'ECHOUE',
-      manual_review: 'REVUE MANUELLE'
+      pending: t('common.pending'),
+      processing: t('common.processing'),
+      completed: t('common.completed'),
+      failed: t('common.failed'),
+      manual_review: t('common.manual_review')
     }
     return labels[status] || status.toUpperCase()
   }
 
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleString('fr-FR')
+    if (!dateString) return t('common.na')
+    return new Date(dateString).toLocaleString(locale === 'fr' ? 'fr-FR' : 'en-US')
   }
 
   const formatAmount = (amount: number | null | undefined) => {
-    if (!amount) return 'N/A'
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amount)
+    if (!amount) return t('common.na')
+    return new Intl.NumberFormat(locale === 'fr' ? 'fr-FR' : 'en-US', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amount)
   }
 
   // Extract info from tender metadata (JSONB)
@@ -77,7 +79,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            {showPdf ? 'Masquer le PDF' : 'Voir le document AO'}
+            {showPdf ? t('tenders.hideDocument') : t('tenders.viewDocument')}
           </button>
           <span className={`px-4 py-2 text-sm font-semibold rounded-full ${getStatusColor(tender.status)}`}>
             {getStatusLabel(tender.status)}
@@ -92,7 +94,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
             src={pdfUrl}
             className="w-full"
             style={{ height: '600px' }}
-            title="Document AO"
+            title={`${tender.tender_number}.pdf`}
           />
         </div>
       )}
@@ -100,7 +102,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
       {/* Titre / Objet du marche */}
       {titre && (
         <div className="mx-6 mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg">
-          <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide mb-1">Objet du Marche</p>
+          <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide mb-1">{t('tenders.objectMarche')}</p>
           <p className="text-lg font-semibold text-gray-900">{titre}</p>
           {description && (
             <p className="text-sm text-gray-600 mt-2 line-clamp-3">{description}</p>
@@ -111,40 +113,40 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
       {/* Key info grid */}
       <div className="px-6 py-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <div>
-          <p className="text-xs text-gray-500 font-medium">Maitre d'Ouvrage</p>
-          <p className="text-sm font-semibold text-gray-900">{maitreOuvrage || 'N/A'}</p>
+          <p className="text-xs text-gray-500 font-medium">{t('tenders.maitreOuvrage')}</p>
+          <p className="text-sm font-semibold text-gray-900">{maitreOuvrage || t('common.na')}</p>
         </div>
         {maitreOeuvre && (
           <div>
-            <p className="text-xs text-gray-500 font-medium">Maitre d'Oeuvre</p>
+            <p className="text-xs text-gray-500 font-medium">{t('tenders.maitreOeuvre')}</p>
             <p className="text-sm font-semibold text-gray-900">{maitreOeuvre}</p>
           </div>
         )}
         <div>
-          <p className="text-xs text-gray-500 font-medium">Montant Estime</p>
+          <p className="text-xs text-gray-500 font-medium">{t('tenders.estimatedAmount')}</p>
           <p className="text-sm font-bold text-amber-700">{formatAmount(montant)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 font-medium">Delai d'Execution</p>
-          <p className="text-sm font-semibold text-gray-900">{delaiMois ? `${delaiMois} mois` : 'N/A'}</p>
+          <p className="text-xs text-gray-500 font-medium">{t('tenders.executionDelay')}</p>
+          <p className="text-sm font-semibold text-gray-900">{delaiMois ? `${delaiMois} ${t('tenders.months')}` : t('common.na')}</p>
         </div>
         {region && (
           <div>
-            <p className="text-xs text-gray-500 font-medium">Region</p>
+            <p className="text-xs text-gray-500 font-medium">{t('tenders.region')}</p>
             <p className="text-sm font-semibold text-gray-900">{region}{commune ? ` - ${commune}` : ''}</p>
           </div>
         )}
         <div>
-          <p className="text-xs text-gray-500 font-medium">Date Limite de Remise</p>
-          <p className="text-sm font-semibold text-gray-900">{dateLimite || 'N/A'}</p>
+          <p className="text-xs text-gray-500 font-medium">{t('tenders.submissionDeadline')}</p>
+          <p className="text-sm font-semibold text-gray-900">{dateLimite || t('common.na')}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 font-medium">Soumis le</p>
+          <p className="text-xs text-gray-500 font-medium">{t('tenders.submittedOn')}</p>
           <p className="text-sm font-semibold text-gray-900">{formatDate(tender.submitted_at)}</p>
         </div>
         {tender.processed_at && (
           <div>
-            <p className="text-xs text-gray-500 font-medium">Traite en</p>
+            <p className="text-xs text-gray-500 font-medium">{t('tenders.processedIn')}</p>
             <p className="text-sm font-semibold text-gray-900">
               {tender.total_processing_time_ms
                 ? `${(tender.total_processing_time_ms / 1000).toFixed(1)}s`
@@ -157,7 +159,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
       {/* Criteres d'attribution */}
       {criteres && (
         <div className="px-6 pb-4">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Criteres d'Attribution</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">{t('tenders.awardCriteria')}</p>
           <div className="flex gap-3">
             {Object.entries(criteres).map(([key, value]) => (
               <div key={key} className="flex items-center gap-1 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
@@ -172,7 +174,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
       {/* Lots */}
       {lots.length > 0 && (
         <div className="px-6 pb-4">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Lots</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">{t('tenders.lots')}</p>
           <div className="flex flex-wrap gap-2">
             {lots.map((lot: string, i: number) => (
               <span key={i} className="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full">{lot}</span>
@@ -184,7 +186,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
       {/* Exigences specifiques */}
       {exigences.length > 0 && (
         <div className="px-6 pb-4">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Exigences Specifiques</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">{t('tenders.specificRequirements')}</p>
           <div className="flex flex-wrap gap-2">
             {exigences.map((ex: string, i: number) => (
               <span key={i} className="text-xs px-3 py-1 bg-red-50 text-red-700 border border-red-200 rounded-full">{ex}</span>

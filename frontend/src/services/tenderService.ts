@@ -38,10 +38,6 @@ export class TenderService {
     return { tender, status, decision, logs }
   }
 
-  shouldPoll(tender: Tender): boolean {
-    return tender.status === 'processing'
-  }
-
   canProcess(tender: Tender): boolean {
     return tender.status === 'pending' || tender.status === 'failed'
   }

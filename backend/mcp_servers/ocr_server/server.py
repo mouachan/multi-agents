@@ -1,30 +1,33 @@
 """
-MCP OCR Server - Extract text from documents using EasyOCR
+MCP OCR Server - Extract text from documents using Qwen2.5-VL-7B vision model
 FastMCP implementation with Streamable HTTP transport
 
 SIMPLE TOOL: Returns raw OCR text only.
 The LlamaStack agent handles all LLM analysis and structuring.
 
-FIXES APPLIED:
-- Async execution of blocking OCR operations using asyncio.to_thread()
-- Secure temporary file handling with tempfile
-- Proper cleanup with try/finally
-- Input validation
-- Better error handling
+Document retrieval: accepts claim/tender number, resolves the LlamaStack file ID
+via a DB lookup (document_path stores file-xxx), then fetches content from
+LlamaStack Files API.
+
+OCR: converts PDF pages to images, sends to Qwen2.5-VL-7B via LlamaStack
+inference API for text extraction. Zero local GPU/memory overhead.
 """
 
 import asyncio
+import base64
+import io
 import json
 import logging
 import os
-import tempfile
 import time
 from pathlib import Path
 from typing import Tuple
 
-import easyocr
+import httpx
+import psycopg2
 from mcp.server.fastmcp import FastMCP
-from pdf2image import convert_from_path
+from pdf2image import convert_from_bytes
+from PIL import Image
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
@@ -36,9 +39,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create FastMCP server with Streamable HTTP configuration (recommended)
-# stateless_http=True: server doesn't maintain session state
-# json_response=True: tools return JSON strings (optimal for scalability)
+# LlamaStack / inference config
+LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "")
+VISION_MODEL = os.getenv("VISION_MODEL", "litemaas/Qwen2.5-VL-7B-Instruct")
+VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "2048"))
+
+# PostgreSQL configuration (for resolving claim/tender number → LlamaStack file ID)
+PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
+PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+PG_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
+PG_USER = os.getenv("POSTGRES_USER", "claims_user")
+PG_PASS = os.getenv("POSTGRES_PASSWORD", "claims_pass")
+
+# Create FastMCP server
 mcp = FastMCP(
     "ocr-server",
     stateless_http=True,
@@ -51,7 +64,7 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "ocr-server",
-        "ocr_ready": _ocr_reader is not None
+        "vision_model": VISION_MODEL,
     })
 
 
@@ -82,8 +95,6 @@ app = Starlette(
 )
 
 # Configuration
-OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "en,fr").split(",")
-OCR_GPU_ENABLED = os.getenv("OCR_GPU_ENABLED", "false").lower() == "true"
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 PDF_DPI = int(os.getenv("PDF_DPI", "200"))
 
@@ -92,287 +103,262 @@ SUPPORTED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', 
 SUPPORTED_PDF_EXTENSIONS = {'.pdf'}
 SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
 
-# Initialize EasyOCR reader (lazy loading on first use)
-_ocr_reader = None
-_ocr_reader_lock = asyncio.Lock()
+OCR_PROMPT = (
+    "Extract ALL text from this document image exactly as it appears. "
+    "Preserve the layout and structure. Return only the extracted text."
+)
 
 
-async def get_ocr_reader() -> easyocr.Reader:
-    """
-    Get or create EasyOCR reader instance (singleton with async lock).
-    
-    Returns:
-        EasyOCR Reader instance
-    """
-    global _ocr_reader
-    
-    async with _ocr_reader_lock:
-        if _ocr_reader is None:
-            logger.info(f"Initializing EasyOCR reader with languages: {OCR_LANGUAGES}")
-            logger.info(f"GPU enabled: {OCR_GPU_ENABLED}")
-            
-            # Initialize in thread pool (blocking operation)
-            _ocr_reader = await asyncio.to_thread(
-                easyocr.Reader,
-                OCR_LANGUAGES,
-                gpu=OCR_GPU_ENABLED
-            )
-            
-            logger.info("✅ EasyOCR reader initialized successfully")
-        
-        return _ocr_reader
+async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
+    """Extract text from a PIL Image using Qwen2.5-VL via LlamaStack."""
+    # Convert image to base64 PNG
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
 
-
-async def extract_text_with_easyocr(image_path: Path) -> Tuple[str, float]:
-    """
-    Extract text from image using EasyOCR.
-    
-    Args:
-        image_path: Path to the image file
-        
-    Returns:
-        Tuple of (extracted_text, average_confidence)
-    """
-    try:
-        reader = await get_ocr_reader()
-
-        # Run OCR in thread pool (blocking operation)
-        result = await asyncio.to_thread(reader.readtext, str(image_path))
-
-        if not result:
-            logger.warning(f"No text detected in {image_path.name}")
-            return "", 0.0
-
-        # Combine all detected text blocks
-        text_blocks = []
-        confidences = []
-
-        for bbox, text, confidence in result:
-            if text.strip():  # Only include non-empty text
-                text_blocks.append(text.strip())
-                confidences.append(confidence)
-
-        extracted_text = " ".join(text_blocks)
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-
-        logger.info(f"Extracted {len(text_blocks)} text blocks from {image_path.name} (confidence: {avg_confidence:.2f})")
-        return extracted_text.strip(), avg_confidence
-
-    except Exception as e:
-        logger.error(f"Error extracting text with EasyOCR from {image_path}: {str(e)}")
-        raise
-
-
-async def extract_text_from_pdf(pdf_path: Path) -> Tuple[str, float]:
-    """
-    Extract text from PDF by converting to images and using EasyOCR.
-    
-    Args:
-        pdf_path: Path to the PDF file
-        
-    Returns:
-        Tuple of (extracted_text, average_confidence)
-    """
-    temp_files = []  # Track temp files for cleanup
-    
-    try:
-        # Convert PDF to images in thread pool (blocking operation)
-        logger.info(f"Converting PDF to images: {pdf_path.name}")
-        images = await asyncio.to_thread(
-            convert_from_path,
-            pdf_path,
-            dpi=PDF_DPI,
-            first_page=1,
-            last_page=MAX_PDF_PAGES
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"{LLAMASTACK_ENDPOINT}/v1/chat/completions",
+            json={
+                "model": VISION_MODEL,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": OCR_PROMPT},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                    ]
+                }],
+                "max_tokens": VISION_MAX_TOKENS,
+            },
         )
-        
+        resp.raise_for_status()
+        result = resp.json()
+
+    text = result["choices"][0]["message"]["content"]
+    # Vision models don't return per-word confidence; use 0.95 as default
+    confidence = 0.95 if text.strip() else 0.0
+
+    word_count = len(text.split()) if text else 0
+    logger.info(f"Vision OCR extracted {word_count} words")
+    return text.strip(), confidence
+
+
+# ---------------------------------------------------------------------------
+# Document retrieval: claim/tender number → DB lookup → LlamaStack file ID
+# ---------------------------------------------------------------------------
+
+def _resolve_file_id(document_id: str) -> str:
+    """
+    Resolve a claim/tender number to its LlamaStack file ID via DB lookup.
+
+    The upload script stores the LlamaStack-generated file ID (file-xxx) in
+    the document_path column. This function looks it up.
+    """
+    conn = psycopg2.connect(
+        host=PG_HOST, port=PG_PORT, dbname=PG_DB,
+        user=PG_USER, password=PG_PASS
+    )
+    try:
+        cur = conn.cursor()
+        # Try claims first
+        cur.execute(
+            "SELECT document_path FROM claims WHERE claim_number = %s",
+            (document_id,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            logger.info(f"Resolved {document_id} → {row[0]} (claim)")
+            return row[0]
+
+        # Try tenders
+        cur.execute(
+            "SELECT document_path FROM tenders WHERE tender_number = %s",
+            (document_id,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            logger.info(f"Resolved {document_id} → {row[0]} (tender)")
+            return row[0]
+
+        raise ValueError(f"No document found for {document_id} in claims or tenders")
+    finally:
+        conn.close()
+
+
+async def fetch_file_content(document_id: str) -> bytes:
+    """
+    Fetch file content from LlamaStack Files API.
+
+    Resolves claim/tender number → LlamaStack file ID via DB, then fetches
+    the content from the Files API.
+    """
+    if not LLAMASTACK_ENDPOINT:
+        raise ValueError("LLAMASTACK_ENDPOINT not configured")
+
+    # Resolve claim/tender number to LlamaStack file ID
+    file_id = await asyncio.to_thread(_resolve_file_id, document_id)
+
+    url = f"{LLAMASTACK_ENDPOINT}/v1/files/{file_id}/content"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        logger.info(f"Fetched {len(resp.content)} bytes from LlamaStack: {document_id} (file_id={file_id})")
+        return resp.content
+
+
+async def ocr_from_bytes(content: bytes, filename: str = "") -> Tuple[str, float]:
+    """Run OCR on raw file bytes (PDF or image) using vision model."""
+    ext = Path(filename).suffix.lower() if filename else ""
+
+    # Detect type from content magic bytes if no extension
+    if not ext:
+        if content[:4] == b'%PDF':
+            ext = '.pdf'
+        elif content[:2] == b'\xff\xd8':
+            ext = '.jpg'
+        elif content[:8] == b'\x89PNG\r\n\x1a\n':
+            ext = '.png'
+        else:
+            ext = '.pdf'  # default assumption
+
+    if ext in SUPPORTED_PDF_EXTENSIONS:
+        images = await asyncio.to_thread(
+            convert_from_bytes, content, dpi=PDF_DPI, first_page=1, last_page=MAX_PDF_PAGES
+        )
         logger.info(f"PDF converted to {len(images)} pages")
 
         all_text = []
         all_confidences = []
-
         for i, image in enumerate(images):
-            # Create secure temporary file
-            with tempfile.NamedTemporaryFile(
-                suffix=".jpg",
-                delete=False,
-                prefix=f"ocr_page_{i}_"
-            ) as tmp:
-                temp_image_path = Path(tmp.name)
-                temp_files.append(temp_image_path)
+            text, confidence = await extract_text_with_vision(image)
+            if text:
+                all_text.append(f"[Page {i + 1}]\n{text}")
+                all_confidences.append(confidence)
+            else:
+                all_text.append(f"[Page {i + 1}]\n(No text detected)")
 
-            try:
-                # Save image to temp file
-                await asyncio.to_thread(
-                    image.save,
-                    temp_image_path,
-                    "JPEG",
-                    quality=90
-                )
+        combined = "\n\n--- Page Break ---\n\n".join(all_text)
+        avg_conf = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
+        return combined, avg_conf
 
-                # Extract text from page
-                text, confidence = await extract_text_with_easyocr(temp_image_path)
-                
-                if text:  # Only include pages with detected text
-                    all_text.append(f"[Page {i + 1}]\n{text}")
-                    all_confidences.append(confidence)
-                else:
-                    all_text.append(f"[Page {i + 1}]\n(No text detected)")
-                    
-            finally:
-                # Clean up temp file immediately after processing
-                try:
-                    temp_image_path.unlink(missing_ok=True)
-                    temp_files.remove(temp_image_path)
-                except Exception as e:
-                    logger.warning(f"Failed to remove temp file {temp_image_path}: {e}")
+    elif ext in SUPPORTED_IMAGE_EXTENSIONS:
+        image = Image.open(io.BytesIO(content))
+        return await extract_text_with_vision(image)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
 
-        combined_text = "\n\n--- Page Break ---\n\n".join(all_text)
-        avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
 
-        logger.info(f"Extracted text from PDF ({len(images)} pages, confidence: {avg_confidence:.2f})")
-        return combined_text, avg_confidence
+async def _save_ocr_result(document_id: str, raw_text: str, confidence: float):
+    """Persist OCR result in claim_documents or tender_documents."""
+    try:
+        conn = psycopg2.connect(
+            host=PG_HOST, port=PG_PORT, dbname=PG_DB,
+            user=PG_USER, password=PG_PASS
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
 
+        # Try claim first
+        cur.execute("SELECT id, document_path FROM claims WHERE claim_number = %s", (document_id,))
+        row = cur.fetchone()
+        if row:
+            claim_id = row[0]
+            file_path = row[1] or document_id
+            # Upsert into claim_documents
+            cur.execute("""
+                INSERT INTO claim_documents (claim_id, file_path, raw_ocr_text, ocr_confidence, created_at)
+                VALUES (%s, %s, %s, %s, NOW())
+                ON CONFLICT (claim_id) DO UPDATE SET
+                    raw_ocr_text = EXCLUDED.raw_ocr_text,
+                    ocr_confidence = EXCLUDED.ocr_confidence
+            """, (claim_id, file_path, raw_text, confidence))
+            logger.info(f"OCR result saved to claim_documents for {document_id}")
+            conn.close()
+            return
+
+        # Try tender
+        cur.execute("SELECT id FROM tenders WHERE tender_number = %s", (document_id,))
+        row = cur.fetchone()
+        if row:
+            tender_id = row[0]
+            # Delete existing then insert (no unique constraint on tender_id)
+            cur.execute("DELETE FROM tender_documents WHERE tender_id = %s", (tender_id,))
+            cur.execute("""
+                INSERT INTO tender_documents (tender_id, raw_ocr_text, ocr_confidence, created_at)
+                VALUES (%s, %s, %s, NOW())
+            """, (tender_id, raw_text, confidence))
+            logger.info(f"OCR result saved to tender_documents for {document_id}")
+
+        conn.close()
     except Exception as e:
-        logger.error(f"Error extracting text from PDF {pdf_path}: {str(e)}")
-        raise
-        
-    finally:
-        # Cleanup any remaining temp files
-        for temp_file in temp_files:
-            try:
-                temp_file.unlink(missing_ok=True)
-            except Exception as e:
-                logger.warning(f"Failed to cleanup temp file {temp_file}: {e}")
+        logger.warning(f"Failed to persist OCR result for {document_id}: {e}")
 
 
-def validate_file_path(document_path: str) -> Tuple[bool, str, Path]:
-    """
-    Validate the document path.
-    
-    Args:
-        document_path: Path to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message, Path object)
-    """
-    if not document_path or not document_path.strip():
-        return False, "Document path is required", Path()
-    
-    doc_path = Path(document_path.strip())
-
-    # Fallback: if path not found, try under /documents prefix
-    if not doc_path.exists():
-        alt_path = Path("/documents") / doc_path.relative_to("/") if doc_path.is_absolute() else Path("/documents") / doc_path
-        if alt_path.exists():
-            doc_path = alt_path
-
-    if not doc_path.exists():
-        return False, f"Document not found: {document_path}", doc_path
-    
-    if not doc_path.is_file():
-        return False, f"Path is not a file: {document_path}", doc_path
-    
-    file_extension = doc_path.suffix.lower()
-    if file_extension not in SUPPORTED_EXTENSIONS:
-        return False, f"Unsupported file type: {file_extension}. Supported: {', '.join(SUPPORTED_EXTENSIONS)}", doc_path
-    
-    # Check file size (max 100MB)
-    max_size = 100 * 1024 * 1024  # 100MB
-    if doc_path.stat().st_size > max_size:
-        return False, f"File too large. Maximum size: 100MB", doc_path
-    
-    return True, "", doc_path
-
+# ---------------------------------------------------------------------------
+# MCP Tools
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
 async def ocr_document(
-    document_path: str,
-    language: str = "eng",
-    document_type: str = "AUTO",
-    extract_structured: str = "false"
+    document_id: str,
+    document_type: str = "AUTO"
 ) -> str:
     """
-    Extract raw text from document using OCR (EasyOCR).
+    Extract text from a claim or tender document using OCR.
 
-    This tool performs ONLY text extraction. No LLM analysis or structuring.
-    The LlamaStack agent will analyze and structure the extracted text.
-
-    Supports PDF, JPG, PNG, TIFF, BMP, and WebP formats.
-    Fast extraction: 2-4 seconds per page.
+    Retrieves the document from LlamaStack by claim/tender number,
+    then extracts text using Qwen2.5-VL vision model. Supports PDF and images.
 
     Args:
-        document_path: Path to the document file (PDF, image, etc.)
-        language: OCR language code (eng, fra, deu, etc.)
-                 Note: Language is configured at server startup via OCR_LANGUAGES env var
-        document_type: Type hint for the document (MEDICAL, AUTO, HOME, etc.) - informational only
-        extract_structured: Whether to extract structured data - not used, always returns raw text
+        document_id: The claim number (e.g. CLM-2024-0024) or tender number (e.g. AO-2026-0042).
+        document_type: Type hint (AUTO, MEDICAL, HOME, etc.) — informational only.
 
     Returns:
-        JSON string with raw extracted text and confidence score
+        JSON with raw_text, confidence score, and processing time.
     """
     start_time = time.time()
-    logger.info(f"⏱️  OCR STARTED for document: {document_path} (type: {document_type})")
+    logger.info(f"OCR STARTED for document: {document_id} (type: {document_type})")
 
-    # Validate input
-    is_valid, error_msg, doc_path = validate_file_path(document_path)
-    if not is_valid:
-        logger.error(error_msg)
-        return json.dumps({
-            "success": False,
-            "raw_text": None,
-            "confidence": 0.0,
-            "error": error_msg
-        })
+    if not document_id or not document_id.strip():
+        return json.dumps({"success": False, "raw_text": None, "confidence": 0.0,
+                           "error": "document_id is required"})
+
+    document_id = document_id.strip()
 
     try:
-        file_extension = doc_path.suffix.lower()
+        # Fetch content from LlamaStack
+        content = await fetch_file_content(document_id)
+        fetch_time = time.time() - start_time
+        logger.info(f"File fetched in {fetch_time:.2f}s ({len(content)} bytes)")
 
-        # Extract text based on file type
-        if file_extension in SUPPORTED_PDF_EXTENSIONS:
-            raw_text, confidence = await extract_text_from_pdf(doc_path)
-        elif file_extension in SUPPORTED_IMAGE_EXTENSIONS:
-            raw_text, confidence = await extract_text_with_easyocr(doc_path)
-        else:
-            # This shouldn't happen due to validation, but just in case
-            return json.dumps({
-                "success": False,
-                "raw_text": None,
-                "confidence": 0.0,
-                "error": f"Unsupported file type: {file_extension}"
-            })
+        # OCR via vision model
+        raw_text, confidence = await ocr_from_bytes(content)
 
         total_time = time.time() - start_time
-        logger.info(f"⏱️  OCR COMPLETED in {total_time:.2f}s (confidence: {confidence:.2f})")
-
-        if total_time > 25.0:
-            logger.warning(f"⚠️  OCR took longer than expected: {total_time:.2f}s")
-
-        # Calculate text statistics
         word_count = len(raw_text.split()) if raw_text else 0
-        char_count = len(raw_text) if raw_text else 0
+        logger.info(f"OCR COMPLETED in {total_time:.2f}s (confidence: {confidence:.2f}, words: {word_count})")
+
+        # Persist OCR result in claim_documents / tender_documents
+        await _save_ocr_result(document_id, raw_text, confidence)
 
         return json.dumps({
             "success": True,
+            "document_id": document_id,
             "raw_text": raw_text,
             "confidence": round(confidence, 4),
             "processing_time_seconds": round(total_time, 2),
             "statistics": {
                 "word_count": word_count,
-                "character_count": char_count
-            },
-            "file_info": {
-                "name": doc_path.name,
-                "extension": file_extension,
-                "size_bytes": doc_path.stat().st_size
+                "character_count": len(raw_text) if raw_text else 0
             }
         })
 
     except Exception as e:
         total_time = time.time() - start_time
-        logger.error(f"Error processing OCR request after {total_time:.2f}s: {str(e)}", exc_info=True)
+        logger.error(f"OCR failed after {total_time:.2f}s: {e}", exc_info=True)
         return json.dumps({
             "success": False,
+            "document_id": document_id,
             "raw_text": None,
             "confidence": 0.0,
             "error": str(e),
@@ -384,7 +370,7 @@ async def ocr_document(
 async def ocr_health_check() -> str:
     """
     Check OCR server health and readiness.
-    
+
     Returns:
         JSON string with health status
     """
@@ -392,30 +378,21 @@ async def ocr_health_check() -> str:
         "status": "healthy",
         "checks": {},
         "config": {
-            "languages": OCR_LANGUAGES,
-            "gpu_enabled": OCR_GPU_ENABLED,
+            "vision_model": VISION_MODEL,
             "max_pdf_pages": MAX_PDF_PAGES,
-            "pdf_dpi": PDF_DPI
+            "pdf_dpi": PDF_DPI,
         }
     }
-    
-    # Check EasyOCR reader
+
+    # Test vision model availability
     try:
-        reader = await get_ocr_reader()
-        health["checks"]["easyocr"] = "ok"
-        health["checks"]["easyocr_languages"] = OCR_LANGUAGES
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/models")
+            health["checks"]["llamastack"] = "ok"
     except Exception as e:
-        health["checks"]["easyocr"] = f"error: {str(e)}"
-        health["status"] = "unhealthy"
-    
-    # Check temp directory
-    try:
-        with tempfile.NamedTemporaryFile(delete=True) as tmp:
-            health["checks"]["temp_directory"] = "ok"
-    except Exception as e:
-        health["checks"]["temp_directory"] = f"error: {str(e)}"
+        health["checks"]["llamastack"] = f"error: {str(e)}"
         health["status"] = "degraded"
-    
+
     return json.dumps(health)
 
 
@@ -423,7 +400,7 @@ async def ocr_health_check() -> str:
 async def list_supported_formats() -> str:
     """
     List all supported file formats for OCR.
-    
+
     Returns:
         JSON string with supported formats
     """
@@ -431,40 +408,25 @@ async def list_supported_formats() -> str:
         "image_formats": sorted(list(SUPPORTED_IMAGE_EXTENSIONS)),
         "document_formats": sorted(list(SUPPORTED_PDF_EXTENSIONS)),
         "all_formats": sorted(list(SUPPORTED_EXTENSIONS)),
-        "languages": OCR_LANGUAGES
+        "vision_model": VISION_MODEL,
     })
 
 
 if __name__ == "__main__":
-    import asyncio
     import uvicorn
 
     port = int(os.getenv("PORT", "8080"))
     host = os.getenv("HOST", "0.0.0.0")
 
-    logger.info(f"Starting MCP OCR Server (FastMCP SSE) on {host}:{port}")
-    logger.info(f"OCR Languages: {OCR_LANGUAGES}")
-    logger.info(f"GPU Enabled: {OCR_GPU_ENABLED}")
+    logger.info(f"Starting MCP OCR Server (Vision: {VISION_MODEL}) on {host}:{port}")
+    logger.info(f"LlamaStack endpoint: {LLAMASTACK_ENDPOINT}")
     logger.info(f"Max PDF Pages: {MAX_PDF_PAGES}")
-
-    # Pre-initialize EasyOCR before starting server (ensures readiness)
-    logger.info("Pre-initializing EasyOCR reader...")
-    try:
-        async def init_ocr():
-            reader = await get_ocr_reader()
-            logger.info("✅ EasyOCR reader pre-initialized and ready")
-            return reader
-
-        asyncio.run(init_ocr())
-    except Exception as e:
-        logger.error(f"Failed to initialize EasyOCR: {e}")
-        raise
+    logger.info(f"PDF DPI: {PDF_DPI}")
 
     logger.info(f"MCP SSE endpoint will be available at: http://{host}:{port}/sse")
     logger.info("Tools:")
-    logger.info("  - ocr_document: Extract raw text from documents")
+    logger.info("  - ocr_document: Extract raw text from documents by claim/tender number")
     logger.info("  - ocr_health_check: Check server health")
     logger.info("  - list_supported_formats: List supported file formats")
 
-    # Run uvicorn with FastMCP SSE app
     uvicorn.run(app, host=host, port=port)

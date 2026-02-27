@@ -60,21 +60,36 @@ export default function ChatPage() {
   // Redirect if session not found (deleted or invalid)
   useEffect(() => {
     if (sessionNotFound && sessionId) {
+      localStorage.removeItem('chat-last-session-id')
       navigate('/chat', { replace: true })
     }
   }, [sessionNotFound, sessionId, navigate])
 
-  // Create session on mount if no session ID in URL
+  // Restore last session or create new one if no session ID in URL
   useEffect(() => {
     if (!sessionId && !session && !sessionNotFound) {
-      createSession(agentIdParam || undefined)
+      if (agentIdParam) {
+        // Agent-specific request: always create new session
+        createSession(agentIdParam)
+      } else {
+        // Try restoring last session from localStorage
+        const lastSessionId = localStorage.getItem('chat-last-session-id')
+        if (lastSessionId) {
+          navigate(`/chat/${lastSessionId}`, { replace: true })
+        } else {
+          createSession()
+        }
+      }
     }
-  }, [sessionId, session, sessionNotFound, agentIdParam, createSession])
+  }, [sessionId, session, sessionNotFound, agentIdParam, createSession, navigate])
 
-  // Update URL when session is created
+  // Update URL when session is created + persist to localStorage
   useEffect(() => {
-    if (session && !sessionId) {
-      navigate(`/chat/${session.session_id}`, { replace: true })
+    if (session) {
+      localStorage.setItem('chat-last-session-id', session.session_id)
+      if (!sessionId) {
+        navigate(`/chat/${session.session_id}`, { replace: true })
+      }
     }
   }, [session, sessionId, navigate])
 
@@ -181,6 +196,7 @@ export default function ChatPage() {
       await orchestratorApi.deleteSession(s.session_id)
       setSessionList((prev) => prev.filter((sess) => sess.session_id !== s.session_id))
       if (session?.session_id === s.session_id) {
+        localStorage.removeItem('chat-last-session-id')
         window.location.href = '/chat'
       }
     } catch (err) {
@@ -192,7 +208,7 @@ export default function ChatPage() {
     if (!confirm(t('chat.confirmDeleteAll'))) return
     try {
       await orchestratorApi.deleteAllSessions()
-      // Hard redirect to get a clean state
+      localStorage.removeItem('chat-last-session-id')
       window.location.href = '/chat'
     } catch (err) {
       console.error('Error deleting all sessions:', err)

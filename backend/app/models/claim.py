@@ -51,6 +51,7 @@ class ClaimStatus(str, enum.Enum):
     pending = "pending"
     processing = "processing"
     completed = "completed"
+    denied = "denied"
     failed = "failed"
     manual_review = "manual_review"
     pending_info = "pending_info"  # Waiting for additional information from claimant

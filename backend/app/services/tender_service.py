@@ -29,7 +29,6 @@ TENDER_TOOLS = [
     "list_tenders",
     "get_tender",
     "get_tender_documents",
-    "analyze_tender",
     "get_tender_statistics",
     "save_tender_decision",
     # RAG/semantic (rag-server)
@@ -166,6 +165,12 @@ class TenderService(BaseAgentService):
             await db.delete(old)
         await db.flush()
 
+        # Clean model name like orchestrator does (strip prefix/quantization suffix)
+        full_model = settings.llamastack_default_model
+        short = full_model.split("/")[-1] if "/" in full_model else full_model
+        import re
+        model_name = re.sub(r'-W\d+A\d+$', '', short)
+
         decision = models.TenderDecision(
             tender_id=tender_id,
             initial_decision=decision_type,
@@ -179,7 +184,7 @@ class TenderService(BaseAgentService):
             similar_references=decision_data.get("similar_references"),
             historical_ao_analysis=decision_data.get("historical_ao_analysis"),
             internal_capabilities=decision_data.get("internal_capabilities"),
-            llm_model=settings.llamastack_default_model,
+            llm_model=model_name,
             requires_manual_review=(recommendation == "a_approfondir"),
         )
 

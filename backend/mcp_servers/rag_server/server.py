@@ -114,7 +114,7 @@ async def retrieve_user_info(
     Retrieve user information and insurance contracts using vector search.
 
     Args:
-        user_id: User identifier
+        user_id: User identifier (e.g. USR026) OR claim number (e.g. CLM-2024-0026) to auto-resolve
         query: Search query for contracts (optional, used for similarity ranking)
         top_k: Number of contracts to retrieve (default: 5)
 
@@ -131,6 +131,18 @@ async def retrieve_user_info(
 
     user_id = user_id.strip()
     top_k = min(max(1, top_k), 50)
+
+    # Auto-resolve claim number to user_id
+    if user_id.startswith("CLM-"):
+        claim_result = await run_db_query_one(
+            text("SELECT user_id FROM claims WHERE claim_number = :cn"),
+            {"cn": user_id},
+        )
+        if claim_result:
+            logger.info(f"Resolved claim {user_id} -> user {claim_result.user_id}")
+            user_id = claim_result.user_id
+        else:
+            return json.dumps({"success": False, "error": f"Claim not found: {user_id}"})
 
     try:
         user_query = text("""
@@ -207,17 +219,17 @@ async def retrieve_similar_claims(
     claim_text: str,
     claim_type: Optional[str] = None,
     top_k: int = 10,
-    min_similarity: float = 0.7
+    min_similarity: float = 0.5
 ) -> str:
     """
     Find similar historical claims using vector similarity search.
     Requires SQL JOINs on claim_documents + claims tables with business filters.
 
     Args:
-        claim_text: Text of the current claim
+        claim_text: Text of the current claim OR claim number (e.g. CLM-2024-0026) to auto-resolve OCR text from DB
         claim_type: Optional filter by claim type
         top_k: Number of similar claims to retrieve (default: 10)
-        min_similarity: Minimum similarity score 0.0-1.0 (default: 0.7)
+        min_similarity: Minimum similarity score 0.0-1.0 (default: 0.5)
 
     Returns:
         JSON string with similar claims
@@ -229,12 +241,30 @@ async def retrieve_similar_claims(
         return json.dumps({"success": False, "error": "claim_text is required"})
 
     claim_text = claim_text.strip()
+
+    # Auto-resolve claim number to OCR text
+    if claim_text.startswith("CLM-"):
+        ocr_row = await run_db_query_one(
+            text("""
+                SELECT cd.raw_ocr_text FROM claim_documents cd
+                JOIN claims c ON cd.claim_id = c.id
+                WHERE c.claim_number = :cn AND cd.raw_ocr_text IS NOT NULL
+                ORDER BY cd.created_at DESC LIMIT 1
+            """),
+            {"cn": claim_text},
+        )
+        if ocr_row and ocr_row.raw_ocr_text:
+            logger.info(f"Resolved claim {claim_text} -> OCR text ({len(ocr_row.raw_ocr_text)} chars)")
+            claim_text = ocr_row.raw_ocr_text
+        else:
+            return json.dumps({"success": False, "error": f"No OCR text found for {claim_text}"})
     top_k = min(max(1, top_k), 100)
     min_similarity = min(max(0.0, min_similarity), 1.0)
 
     try:
         claim_embedding = await create_embedding(claim_text)
         embedding_str = format_embedding(claim_embedding)
+        logger.info(f"Similar claims search: claim_type={claim_type}, top_k={top_k}, min_similarity={min_similarity}")
 
         query = text("""
             SELECT
@@ -246,7 +276,7 @@ async def retrieve_similar_claims(
             JOIN claims c ON cd.claim_id = c.id
             WHERE 1 - (cd.embedding <=> CAST(:claim_embedding AS vector)) >= :min_similarity
                 AND (:claim_type IS NULL OR c.claim_type = :claim_type)
-                AND c.status IN ('completed', 'manual_review')
+                AND c.status IN ('completed', 'manual_review', 'denied')
                 AND cd.embedding IS NOT NULL
             ORDER BY cd.embedding <=> CAST(:claim_embedding AS vector)
             LIMIT :top_k
@@ -256,6 +286,7 @@ async def retrieve_similar_claims(
             "claim_embedding": embedding_str, "min_similarity": min_similarity,
             "claim_type": claim_type, "top_k": top_k
         })
+        logger.info(f"Similar claims query returned {len(results)} results")
 
         similar_claims = []
         for row in results:

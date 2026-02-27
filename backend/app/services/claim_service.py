@@ -30,7 +30,6 @@ CLAIM_TOOLS = [
     "list_claims",
     "get_claim",
     "get_claim_documents",
-    "analyze_claim",
     "get_claim_statistics",
     "save_claim_decision",
     # RAG/semantic (rag-server)
@@ -66,7 +65,7 @@ class ClaimService(BaseAgentService):
     def map_recommendation_to_status(self, recommendation: str) -> str:
         mapping = {
             "approve": "completed",
-            "deny": "failed",
+            "deny": "denied",
         }
         return mapping.get(recommendation, "manual_review")
 
@@ -147,6 +146,8 @@ class ClaimService(BaseAgentService):
     ) -> models.ClaimDecision:
         recommendation = decision_data.get("recommendation", "manual_review")
 
+        model_name = self.clean_model_name(settings.llamastack_default_model)
+
         decision = models.ClaimDecision(
             claim_id=claim_id,
             initial_decision=recommendation,
@@ -157,7 +158,7 @@ class ClaimService(BaseAgentService):
             confidence=decision_data.get("confidence", 0.0),
             reasoning=decision_data.get("reasoning", ""),
             relevant_policies=decision_data.get("evidence", {}),
-            llm_model=settings.llamastack_default_model,
+            llm_model=model_name,
             requires_manual_review=(recommendation == "manual_review"),
         )
 

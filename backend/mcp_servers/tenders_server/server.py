@@ -1,15 +1,16 @@
 """
 MCP Tenders Server - CRUD operations on tenders (Appels d'Offres) via PostgreSQL.
 
-Pure CRUD server (no RAG/embeddings). The RAG server handles vector operations.
+Includes decision persistence with automatic embedding generation.
 FastMCP implementation with Streamable HTTP transport (SSE).
 """
 
 import json
 import logging
 import os
-from typing import Optional
+from typing import List, Optional
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import text
 from starlette.applications import Starlette
@@ -20,6 +21,38 @@ from shared.db import (
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     check_database_connection, run_db_query, run_db_query_one, run_db_execute,
 )
+
+# LlamaStack endpoint for embedding generation
+LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack:8321")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+
+# Cached LLM model name (resolved from LlamaStack at first use)
+_cached_llm_model: Optional[str] = None
+
+
+async def _get_llm_model_name() -> str:
+    """Get the LLM model name from LlamaStack /v1/models, cached after first call."""
+    global _cached_llm_model
+    if _cached_llm_model:
+        return _cached_llm_model
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/models")
+            resp.raise_for_status()
+            models = resp.json().get("data", resp.json()) if isinstance(resp.json(), dict) else resp.json()
+            if isinstance(models, list):
+                for m in models:
+                    identifier = m.get("identifier") or m.get("id") or ""
+                    model_type = m.get("model_type") or m.get("type") or ""
+                    if "embedding" not in identifier.lower() and model_type != "embedding":
+                        import re
+                        short = identifier.split("/")[-1] if "/" in identifier else identifier
+                        _cached_llm_model = re.sub(r'-W\d+A\d+$', '', short)
+                        return _cached_llm_model
+    except Exception as e:
+        logger.warning(f"Failed to query LlamaStack models: {e}")
+    _cached_llm_model = os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown")
+    return _cached_llm_model
 
 # Configure logging
 logging.basicConfig(
@@ -103,10 +136,8 @@ async def list_tenders(
                     tender[key] = value.isoformat()
                 elif hasattr(value, '__float__') and key != 'id':
                     tender[key] = float(value)
-            # Pre-built document link for the LLM (ready-to-use markdown)
-            if tender.get('document_path'):
-                tender['document_view_url'] = f"/api/v1/tenders/documents/{uuid_id}/view"
-                tender['document_link'] = f"[View Document (PDF)](/api/v1/tenders/documents/{uuid_id}/view)"
+            tender['has_document'] = bool(tender.get('document_path'))
+            tender.pop('document_path', None)
             tenders.append(tender)
 
         logger.info(f"Found {len(tenders)} tenders")
@@ -128,11 +159,16 @@ async def get_tender(tender_id: str) -> str:
     """
     Get detailed information about a specific tender (appel d'offres).
 
+    Returns: tender fields (number, type, status, dates, has_document,
+    metadata with titre/budget/region/maitre_ouvrage), existing AI decision
+    (with risk_analysis, similar_references, historical analysis), and processing logs.
+    If has_document is true, use ocr_document(document_id=tender_number) to extract text.
+
     Args:
         tender_id: The tender number (e.g., AO-2025-IDF-001)
 
     Returns:
-        JSON string with tender details including decision and processing logs
+        JSON with keys: tender, decision, processing_logs
     """
     logger.info(f"Getting tender details: {tender_id}")
 
@@ -176,10 +212,9 @@ async def get_tender(tender_id: str) -> str:
             if hasattr(value, 'isoformat'):
                 tender[key] = value.isoformat()
 
-        # Pre-built document link for the LLM (ready-to-use markdown)
-        if tender.get('document_path'):
-            tender['document_view_url'] = f"/api/v1/tenders/documents/{uuid_str}/view"
-            tender['document_link'] = f"[View Document (PDF)](/api/v1/tenders/documents/{uuid_str}/view)"
+        # Document availability flag (document_path is internal, not exposed to LLM)
+        tender['has_document'] = bool(tender.get('document_path'))
+        tender.pop('document_path', None)
 
         # Get decision
         decision_query = text("""
@@ -237,13 +272,18 @@ async def get_tender(tender_id: str) -> str:
 @mcp.tool()
 async def get_tender_documents(tender_id: str) -> str:
     """
-    Get documents associated with a tender.
+    Get documents associated with a tender, including their OCR text.
+
+    Returns the list of documents with their raw OCR text (truncated to 1000 chars),
+    structured data, confidence score, and file metadata (file_path, mime_type, size).
+    If no documents exist or OCR text is empty, use ocr_document(document_id=tender_number)
+    to extract text first.
 
     Args:
         tender_id: The tender number (e.g., AO-2025-IDF-001)
 
     Returns:
-        JSON string with tender documents and OCR data
+        JSON with keys: tender_number, documents (list), total_documents
     """
     logger.info(f"Getting documents for tender: {tender_id}")
 
@@ -393,14 +433,19 @@ async def get_tender_statistics() -> str:
 @mcp.tool()
 async def analyze_tender(tender_id: str) -> str:
     """
-    Get all data needed to analyze a specific tender (appel d'offres).
-    This provides a comprehensive view for the LLM to perform Go/No-Go analysis.
+    Retrieve everything needed to evaluate a tender (appel d'offres) in a single call.
+
+    Returns: tender details (type, status, metadata with titre/budget/region/maitre_ouvrage),
+    the full OCR text from tender documents (if available), and the existing AI decision
+    (if one was already made). Use this instead of calling get_tender + get_tender_documents
+    separately.
 
     Args:
         tender_id: The tender number (e.g., AO-2025-IDF-001)
 
     Returns:
-        JSON string with comprehensive tender data for analysis
+        JSON with keys: tender, ocr_data (list of raw_text + structured_data + confidence
+        per document), existing_decision (decision + confidence + reasoning + risk_analysis)
     """
     logger.info(f"Analyzing tender: {tender_id}")
 
@@ -489,6 +534,25 @@ async def analyze_tender(tender_id: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
+async def _generate_embedding(text_input: str) -> Optional[List[float]]:
+    """Generate embedding via LlamaStack /v1/embeddings API. Returns None on failure."""
+    if not text_input or not text_input.strip():
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
+                json={"model": EMBEDDING_MODEL, "input": text_input.strip()[:2000]},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            if data:
+                return data[0].get("embedding")
+    except Exception as e:
+        logger.warning(f"Embedding generation failed (non-blocking): {e}")
+    return None
+
+
 @mcp.tool()
 async def save_tender_decision(
     tender_id: str,
@@ -497,7 +561,8 @@ async def save_tender_decision(
     reasoning: str,
 ) -> str:
     """
-    Save a tender Go/No-Go decision and update tender status.
+    Save a tender Go/No-Go decision, update tender status,
+    and generate an embedding for future similarity search.
 
     Args:
         tender_id: The tender number (e.g., AO-2025-IDF-001)
@@ -508,6 +573,8 @@ async def save_tender_decision(
     Returns:
         JSON string with save result
     """
+    import time as _time
+    _start_time = _time.time()
     logger.info(f"Saving tender decision: {tender_id} -> {recommendation} ({confidence})")
 
     if not tender_id or not tender_id.strip():
@@ -540,6 +607,9 @@ async def save_tender_decision(
             {"tender_uuid": tender_uuid},
         )
 
+        # Get model name from LlamaStack (cached)
+        llm_model = await _get_llm_model_name()
+
         # INSERT into tender_decisions
         await run_db_execute(
             text("""
@@ -558,35 +628,182 @@ async def save_tender_decision(
                 "recommendation": recommendation,
                 "confidence": confidence,
                 "reasoning": reasoning,
-                "llm_model": os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown"),
+                "llm_model": llm_model,
                 "requires_review": recommendation == "a_approfondir",
             },
         )
 
-        # Build processing steps for the tender detail page
-        processing_steps = json.dumps([
-            {"step_name": "document_ocr", "agent_name": "tenders", "status": "completed",
-             "output_data": {"description": "Document OCR extraction"}},
-            {"step_name": "tender_analysis", "agent_name": "tenders", "status": "completed",
-             "output_data": {"description": "Go/No-Go evaluation and risk assessment"}},
-            {"step_name": "decision", "agent_name": "tenders", "status": "completed",
-             "output_data": {"recommendation": recommendation, "confidence": confidence,
-                             "reasoning": reasoning[:200]}},
-        ])
+        # Build processing steps with real data from DB
+        steps = []
+
+        # 1. OCR step - get real OCR data if available
+        ocr_result = await run_db_query_one(
+            text("""
+                SELECT raw_ocr_text, structured_data, ocr_confidence,
+                       page_count, language
+                FROM tender_documents WHERE tender_id = :tid
+                ORDER BY created_at DESC LIMIT 1
+            """),
+            {"tid": tender_uuid},
+        )
+        if ocr_result and ocr_result.raw_ocr_text:
+            ocr_output = {
+                "success": True,
+                "raw_text": ocr_result.raw_ocr_text[:2000],
+                "structured_data": ocr_result.structured_data or {},
+                "confidence": float(ocr_result.ocr_confidence) if ocr_result.ocr_confidence else None,
+                "pages_processed": ocr_result.page_count or 1,
+            }
+            steps.append({"step_name": "ocr_document", "agent_name": "ocr-agent", "status": "completed",
+                          "output_data": ocr_output})
+        else:
+            steps.append({"step_name": "ocr_document", "agent_name": "ocr-agent", "status": "completed",
+                          "output_data": {"description": "Document OCR extraction"}})
+
+        # 2. Ensure embedding exists BEFORE querying similar references/tenders
+        embedding_status = "skipped"
+        doc_result = await run_db_query_one(
+            text("""
+                SELECT td.id, td.raw_ocr_text, td.embedding IS NOT NULL as has_embedding
+                FROM tender_documents td WHERE td.tender_id = :tid
+                ORDER BY td.created_at DESC LIMIT 1
+            """),
+            {"tid": tender_uuid},
+        )
+        if doc_result and not doc_result.has_embedding and doc_result.raw_ocr_text:
+            embedding = await _generate_embedding(doc_result.raw_ocr_text)
+            if embedding:
+                emb_str = '[' + ','.join(map(str, embedding)) + ']'
+                await run_db_execute(
+                    text("UPDATE tender_documents SET embedding = CAST(:emb AS vector) WHERE id = :doc_id"),
+                    {"emb": emb_str, "doc_id": doc_result.id},
+                )
+                embedding_status = "created"
+                logger.info(f"Embedding generated for {tender_id} (dim={len(embedding)})")
+            else:
+                embedding_status = "failed"
+        elif doc_result and doc_result.has_embedding:
+            embedding_status = "already_exists"
+
+        # 3. Similar references step - embedding now guaranteed
+        try:
+            ref_results = await run_db_query(
+                text("""
+                    SELECT project_name, maitre_ouvrage, nature_travaux,
+                           montant, region, description,
+                           doc.embedding <=> tdoc.embedding AS distance
+                    FROM company_references cr
+                    JOIN company_reference_documents crd ON cr.id = crd.reference_id
+                    JOIN tender_documents tdoc ON tdoc.tender_id = :tid
+                    JOIN company_reference_documents doc ON doc.reference_id = cr.id
+                    WHERE tdoc.embedding IS NOT NULL AND doc.embedding IS NOT NULL
+                    ORDER BY doc.embedding <=> tdoc.embedding
+                    LIMIT 5
+                """),
+                {"tid": tender_uuid},
+            )
+            if ref_results:
+                refs = []
+                for r in ref_results:
+                    rd = dict(r._mapping)
+                    rd["similarity"] = round(1 - float(rd.pop("distance", 1)), 3)
+                    if rd.get("montant"):
+                        rd["montant"] = float(rd["montant"])
+                    refs.append(rd)
+                steps.append({"step_name": "retrieve_similar_references", "agent_name": "rag-agent", "status": "completed",
+                              "output_data": {"success": True, "references": refs, "total_found": len(refs)}})
+        except Exception as e:
+            logger.debug(f"Could not query company_references: {e}")
+
+        # 4. Historical tenders step
+        try:
+            hist_results = await run_db_query(
+                text("""
+                    SELECT ao_number, nature_travaux, montant_estime, region,
+                           resultat, raison_resultat, note_technique, note_prix,
+                           doc.embedding <=> tdoc.embedding AS distance
+                    FROM historical_tenders ht
+                    JOIN historical_tender_documents doc ON doc.tender_id = ht.id
+                    JOIN tender_documents tdoc ON tdoc.tender_id = :tid
+                    WHERE tdoc.embedding IS NOT NULL AND doc.embedding IS NOT NULL
+                    ORDER BY doc.embedding <=> tdoc.embedding
+                    LIMIT 5
+                """),
+                {"tid": tender_uuid},
+            )
+            if hist_results:
+                hists = []
+                won = 0
+                for h in hist_results:
+                    hd = dict(h._mapping)
+                    hd["similarity"] = round(1 - float(hd.pop("distance", 1)), 3)
+                    if hd.get("montant_estime"):
+                        hd["montant_estime"] = float(hd["montant_estime"])
+                    if hd.get("note_technique"):
+                        hd["note_technique"] = float(hd["note_technique"])
+                    if hd.get("note_prix"):
+                        hd["note_prix"] = float(hd["note_prix"])
+                    if hd.get("resultat") == "gagne":
+                        won += 1
+                    hists.append(hd)
+                win_rate = (won / len(hists) * 100) if hists else 0
+                steps.append({"step_name": "retrieve_historical_tenders", "agent_name": "rag-agent", "status": "completed",
+                              "output_data": {"success": True, "historical_tenders": hists,
+                                              "total_found": len(hists), "win_rate_percentage": win_rate}})
+        except Exception as e:
+            logger.debug(f"Could not query historical_tenders: {e}")
+
+        # 5. Capabilities step
+        try:
+            cap_results = await run_db_query(
+                text("""
+                    SELECT name, category, valid_until, region, availability
+                    FROM company_capabilities
+                    ORDER BY created_at DESC LIMIT 10
+                """),
+                {},
+            )
+            if cap_results:
+                caps = []
+                for c in cap_results:
+                    cd = dict(c._mapping)
+                    for k, v in cd.items():
+                        if hasattr(v, 'isoformat'):
+                            cd[k] = v.isoformat()
+                    caps.append(cd)
+                categories = list(set(c.get("category", "autre") for c in caps))
+                steps.append({"step_name": "retrieve_capabilities", "agent_name": "rag-agent", "status": "completed",
+                              "output_data": {"success": True, "capabilities": caps,
+                                              "total_found": len(caps), "categories_found": categories}})
+        except Exception as e:
+            logger.debug(f"Could not query company_capabilities: {e}")
+
+        # 6. Decision step
+        steps.append({"step_name": "decision", "agent_name": "tenders", "status": "completed",
+                       "output_data": {"recommendation": recommendation, "confidence": confidence,
+                                       "reasoning": reasoning[:500]}})
+
+        processing_steps = json.dumps(steps)
+
+        # Compute actual processing time
+        processing_time_ms = int((_time.time() - _start_time) * 1000)
 
         # UPDATE tender status, processed_at, and processing steps in metadata
-        await run_db_execute(
+        logger.info(f"Updating tender {tender_id} (uuid={tender_uuid}) status to '{new_status}'")
+        rows_updated = await run_db_execute(
             text("""
                 UPDATE tenders SET
                     status = :status,
                     processed_at = NOW(),
+                    total_processing_time_ms = :processing_time_ms,
                     metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('processing_steps', CAST(:steps AS jsonb))
                 WHERE id = :tender_uuid
             """),
-            {"status": new_status, "tender_uuid": tender_uuid, "steps": processing_steps},
+            {"status": new_status, "tender_uuid": tender_uuid, "steps": processing_steps,
+             "processing_time_ms": processing_time_ms},
         )
-
-        logger.info(f"Decision saved for {tender_id}: {recommendation} (confidence={confidence})")
+        logger.info(f"UPDATE tenders: {rows_updated} row(s) affected for {tender_id}")
+        logger.info(f"Decision saved for {tender_id}: {recommendation} (confidence={confidence}, embedding={embedding_status}, time={processing_time_ms}ms)")
 
         return json.dumps({
             "success": True,
@@ -594,6 +811,7 @@ async def save_tender_decision(
             "recommendation": recommendation,
             "confidence": confidence,
             "status": new_status,
+            "embedding": embedding_status,
         })
 
     except Exception as e:

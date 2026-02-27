@@ -10,6 +10,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useClaim } from '../hooks/useClaim'
 import { useClaimPolling } from '../hooks/useClaimPolling'
+import { useTranslation } from '../i18n/LanguageContext'
 import ClaimHeader from '../components/claim/ClaimHeader'
 import ClaimActions from '../components/claim/ClaimActions'
 import ClaimDecision from '../components/claim/ClaimDecision'
@@ -19,6 +20,7 @@ import GuardrailsAlert from '../components/claim/GuardrailsAlert'
 
 export default function ClaimDetailPage() {
   const { claimId } = useParams<{ claimId: string }>()
+  const { t } = useTranslation()
 
   // Custom hook manages all claim data and state
   const { claim, status, decision, logs, loading, error, reload } = useClaim(claimId)
@@ -41,9 +43,9 @@ export default function ClaimDetailPage() {
   if (error || !claim) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error || 'Claim not found'}</p>
+        <p className="text-red-800">{error || t('claims.claimNotFound')}</p>
         <Link to="/claims" className="text-blue-600 hover:text-blue-800 mt-2 inline-block">
-          ← Back to Claims
+          {t('claims.backToClaims')}
         </Link>
       </div>
     )
@@ -56,7 +58,7 @@ export default function ClaimDetailPage() {
         <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
-        Back to Claims
+        {t('claims.backToClaims')}
       </Link>
 
       {/* Claim Header */}

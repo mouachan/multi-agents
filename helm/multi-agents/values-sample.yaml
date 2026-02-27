@@ -95,7 +95,11 @@ minio:
       tls:
         enabled: false
 
-# Data Science Pipelines (DSPA)
+# Data Initialization (post-install job)
+dataInit:
+  enabled: true
+
+# Data Science Pipelines (RHOAI DSPA)
 dataSciencePipelines:
   enabled: true
   dspVersion: v2
@@ -107,17 +111,16 @@ dataSciencePipelines:
     pipelineStore: kubernetes
 
   database:
-    # Uses internal MariaDB (recommended)
     mariaDB:
       pipelineDBName: mlpipeline
       username: mlpipeline
       pvcSize: 10Gi
 
   objectStorage:
-    useInternalMinio: true  # Use MinIO deployed by this chart
+    useInternalMinio: true
     bucket: pipelines
     region: us-east-1
-    scheme: http  # Important: use http for internal MinIO
+    scheme: http
     s3CredentialsSecret:
       accessKey: AWS_ACCESS_KEY_ID
       secretKey: AWS_SECRET_ACCESS_KEY

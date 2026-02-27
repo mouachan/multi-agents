@@ -34,25 +34,6 @@ export class ReviewService {
     return response.answer
   }
 
-  /**
-   * Check if action is final (approve/reject)
-   */
-  isFinalAction(action: string): boolean {
-    return action === 'approve' || action === 'reject'
-  }
-
-  /**
-   * Get action display label
-   */
-  getActionLabel(action: string): string {
-    const labels: Record<string, string> = {
-      approve: 'Approve',
-      reject: 'Reject',
-      comment: 'Add Comment',
-      request_info: 'Request Info'
-    }
-    return labels[action] || action
-  }
 }
 
 // Singleton instance

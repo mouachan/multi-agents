@@ -1,0 +1,207 @@
+version: 2
+image_name: rh-dev
+
+apis:
+- agents
+- datasetio
+- files
+- inference
+- safety
+- eval
+- scoring
+- tool_runtime
+- vector_io
+
+providers:
+  inference:
+  # Llama-4-Scout-17B via LiteLLM proxy (tool calling supported)
+  - provider_id: litemaas
+    provider_type: remote::vllm
+    config:
+      url: ${env.LITEMAAS_URL:=https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1}
+      max_tokens: 4096
+      api_token: ${env.LITEMAAS_API_KEY:=sk-change-me}
+      tls_verify: false
+  # Nomic Embed Text v1.5 via LiteMaaS
+  - provider_id: litemaas-embedding
+    provider_type: remote::vllm
+    config:
+      url: ${env.LITEMAAS_EMBEDDING_URL:=https://nomic-embed-text-v1-5-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1}
+      max_tokens: 512
+      api_token: ${env.LITEMAAS_EMBEDDING_API_KEY:=sk-change-me}
+      tls_verify: false
+
+  vector_io:
+  - provider_id: pgvector
+    provider_type: remote::pgvector
+    config:
+      host: postgresql
+      port: 5432
+      db: claims_db
+      user: claims_user
+      password: claims_pass
+      persistence:
+        backend: kv_default
+        namespace: vector_io::pgvector
+
+  safety:
+  - provider_id: llama-guard
+    provider_type: inline::llama-guard
+    config:
+      excluded_categories: []
+
+  agents:
+  - provider_id: meta-reference
+    provider_type: inline::meta-reference
+    config:
+      persistence:
+        agent_state:
+          backend: kv_default
+          namespace: agents::meta_reference
+        responses:
+          backend: sql_default
+          table_name: agents_responses
+          max_write_queue_size: 10000
+          num_writers: 4
+
+  eval:
+  - provider_id: meta-reference-eval
+    provider_type: inline::meta-reference
+    config:
+      kvstore:
+        backend: kv_default
+        namespace: eval
+
+  datasetio:
+  - provider_id: huggingface
+    provider_type: remote::huggingface
+    config:
+      kvstore:
+        backend: kv_default
+        namespace: datasetio::huggingface
+
+  scoring:
+  - provider_id: basic
+    provider_type: inline::basic
+    config: {}
+  - provider_id: llm-as-judge
+    provider_type: inline::llm-as-judge
+    config: {}
+
+  tool_runtime:
+  - provider_id: rag-runtime
+    provider_type: inline::rag-runtime
+    config: {}
+  - provider_id: model-context-protocol
+    provider_type: remote::model-context-protocol
+    config: {}
+
+  files:
+  - provider_id: meta-reference-files
+    provider_type: inline::localfs
+    config:
+      storage_dir: /data/files
+      metadata_store:
+        backend: sql_default
+        table_name: files_metadata
+
+  batches:
+  - provider_id: reference
+    provider_type: inline::reference
+    config:
+      kvstore:
+        namespace: batches
+        backend: kv_default
+
+storage:
+  backends:
+    kv_default:
+      type: kv_postgres
+      host: ${env.POSTGRES_HOST:=postgresql}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB:=claims_db}
+      user: ${env.POSTGRES_USER:=claims_user}
+      password: ${env.POSTGRES_PASSWORD:=claims_pass}
+      table_name: llamastack_kvstore
+    sql_default:
+      type: sql_postgres
+      host: ${env.POSTGRES_HOST:=postgresql}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB:=claims_db}
+      user: ${env.POSTGRES_USER:=claims_user}
+      password: ${env.POSTGRES_PASSWORD:=claims_pass}
+  stores:
+    metadata:
+      backend: kv_default
+      namespace: registry
+    inference:
+      table_name: inference_store
+      backend: sql_default
+      max_write_queue_size: 10000
+      num_writers: 4
+    conversations:
+      table_name: openai_conversations
+      backend: sql_default
+    prompts:
+      namespace: prompts
+      backend: kv_default
+
+registered_resources:
+  models:
+  # Mistral-Small-24B via LiteLLM (default — best reasoning + French)
+  - metadata: {}
+    model_id: litemaas/Mistral-Small-24B-W8A8
+    provider_id: litemaas
+    provider_model_id: Mistral-Small-24B-W8A8
+    model_type: llm
+  # Llama-4-Scout-17B via LiteLLM (backup — native structured tool calls)
+  - metadata: {}
+    model_id: litemaas/Llama-4-Scout-17B-16E-W4A16
+    provider_id: litemaas
+    provider_model_id: Llama-4-Scout-17B-16E-W4A16
+    model_type: llm
+  # Qwen2.5-VL-7B-Instruct via LiteMaaS (vision OCR)
+  - metadata: {}
+    model_id: litemaas/Qwen2.5-VL-7B-Instruct
+    provider_id: litemaas
+    provider_model_id: Qwen2.5-VL-7B-Instruct
+    model_type: llm
+  # Nomic Embed Text v1.5 (768-dim)
+  - metadata:
+      embedding_dimension: 768
+    model_id: nomic-embed-text
+    provider_id: litemaas-embedding
+    provider_model_id: nomic-embed-text-v1.5
+    model_type: embedding
+
+  shields: []
+  vector_dbs: []
+  datasets: []
+  scoring_fns: []
+  benchmarks: []
+
+  tool_groups:
+  - toolgroup_id: mcp::ocr-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://ocr-server:8080/sse
+  - toolgroup_id: mcp::rag-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://rag-server:8080/sse
+  - toolgroup_id: mcp::claims-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://claims-server:8080/sse
+  - toolgroup_id: mcp::tenders-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://tenders-server:8080/sse
+  - toolgroup_id: builtin::rag
+    provider_id: rag-runtime
+
+telemetry:
+  enabled: true
+
+server:
+  port: 8321

@@ -91,8 +91,26 @@ async def list_claims(
         result = await db.execute(query)
         claims = result.scalars().all()
 
+        # Batch-resolve user names
+        user_ids = list(set(c.user_id for c in claims if c.user_id))
+        user_names = {}
+        if user_ids:
+            user_query = select(models.User.user_id, models.User.full_name).where(
+                models.User.user_id.in_(user_ids)
+            )
+            user_result = await db.execute(user_query)
+            for row in user_result:
+                if row.full_name:
+                    user_names[row.user_id] = row.full_name
+
+        claim_responses = []
+        for c in claims:
+            resp = schemas.ClaimResponse.model_validate(c)
+            resp.user_name = user_names.get(c.user_id)
+            claim_responses.append(resp)
+
         return schemas.ClaimListResponse(
-            claims=[schemas.ClaimResponse.model_validate(c) for c in claims],
+            claims=claim_responses,
             total=total,
             page=page,
             page_size=page_size
@@ -121,7 +139,16 @@ async def get_claim(
         if not claim:
             raise HTTPException(status_code=404, detail="Claim not found")
 
-        return schemas.ClaimResponse.model_validate(claim)
+        response = schemas.ClaimResponse.model_validate(claim)
+
+        # Resolve user_name from users table
+        user_query = select(models.User.full_name).where(models.User.user_id == claim.user_id)
+        user_result = await db.execute(user_query)
+        full_name = user_result.scalar_one_or_none()
+        if full_name:
+            response.user_name = full_name
+
+        return response
 
     except HTTPException:
         raise
@@ -592,7 +619,7 @@ async def view_claim_document(
         if not claim.document_path:
             raise HTTPException(status_code=404, detail="No document associated with this claim")
 
-        doc = get_document(claim.document_path, entity_type="claim")
+        doc = get_document(claim.claim_number, fallback_path=claim.document_path)
         if not doc:
             logger.error(f"Document not found for claim {claim_id}")
             raise HTTPException(status_code=404, detail="Document file not found")

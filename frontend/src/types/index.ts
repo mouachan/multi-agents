@@ -11,6 +11,7 @@ export interface AgentLogEntry {
 export interface Claim {
   id: string
   user_id: string
+  user_name?: string
   claim_number: string
   claim_type?: string
   document_path: string
@@ -24,7 +25,7 @@ export interface Claim {
   updated_at: string
 }
 
-export type ClaimStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'manual_review' | 'pending_info'
+export type ClaimStatus = 'pending' | 'processing' | 'completed' | 'denied' | 'failed' | 'manual_review' | 'pending_info'
 
 export interface ProcessingStepLog {
   step_name: string
