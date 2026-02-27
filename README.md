@@ -1,26 +1,20 @@
 # Agentic Multi-Domain Decision Platform
 
-> **Status: Work in Progress** — This platform is under active development. The multi-agent orchestration layer, chat interface, and inter-agent routing are being built and refined. Core single-agent workflows (claims, tenders) are functional.
+An intelligent multi-agent decision platform powered by AI agents, demonstrating autonomous decision-making through **ReAct (Reasoning + Acting)** workflows with built-in compliance guardrails. The platform supports **multiple business domains** with a shared agent infrastructure and a **multi-agent orchestrator** that dynamically routes user requests to specialized domain agents:
 
-An intelligent multi-agent decision platform powered by AI agents on Red Hat OpenShift AI, demonstrating autonomous decision-making through **ReAct (Reasoning + Acting)** workflows with built-in compliance guardrails. The platform supports **multiple business domains** with a shared agent infrastructure and a **multi-agent orchestrator** that dynamically routes user requests to specialized domain agents:
-
-- **Insurance Claims Processing** — Approve/Deny/Manual Review decisions
-- **Tender Management (Appels d'Offres)** — Go/No-Go decisions for construction (BTP) tenders
+- **Insurance Claims Processing** — Approve / Deny / Manual Review decisions
+- **Tender Management (Appels d'Offres)** — Go / No-Go / Needs Deeper Review decisions for construction (BTP) tenders
 - **Multi-Agent Orchestrator** — Intent-based routing, chat sessions, and cross-domain agent chaining
 
 ## Table of Contents
 
 - [Business Overview](#business-overview)
-  - [Use Case 1: Insurance Claims](#use-case-1-insurance-claims-processing)
-  - [Use Case 2: Tender Management](#use-case-2-tender-management-appels-doffres)
-  - [Multi-Agent Orchestrator](#multi-agent-orchestrator-work-in-progress)
 - [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Deployment](#deployment)
-- [Testing the Application](#testing-the-application)
-- [Configuration Management](#configuration-management)
+- [Technology Stack](#technology-stack)
+- [Local Development](#local-development)
+- [OpenShift Deployment](#openshift-deployment)
+- [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
-- [Development](#development)
 - [Known Issues](#known-issues)
 
 ---
@@ -31,73 +25,52 @@ An intelligent multi-agent decision platform powered by AI agents on Red Hat Ope
 
 Many business processes require expert analysis of documents, comparison with historical data, and structured decision-making — tasks that are time-consuming and prone to inconsistencies. This platform showcases how AI agents can **autonomously** process these tasks through intelligent reasoning and tool usage, while maintaining human oversight where needed.
 
-The platform demonstrates this through two use cases that share the same agent infrastructure:
-
 ### Use Case 1: Insurance Claims Processing
 
-- Autonomous document processing via OCR
+- Autonomous document processing via vision-based OCR (Qwen2.5-VL)
 - Smart policy matching via semantic search through user contracts
-- Precedent-based reasoning using similar historical claims
+- Precedent-based reasoning using similar historical claims (RAG)
 - Decision: **Approve / Deny / Manual Review** with confidence score
 
 ### Use Case 2: Tender Management (Appels d'Offres)
 
-- Ingests tender documents (RFPs) and extracts key information via OCR
+- Ingests tender documents (DCE/RFP) and extracts key information via OCR
 - Analyzes the tender against the company's past project references, certifications, and historical tender outcomes using RAG similarity search
-- Generates a **Go / No-Go / Needs Deeper Review** recommendation with:
-  - Risk analysis (technical, financial, resources, competition)
-  - Win probability estimate
-  - Estimated margin
-  - Strengths and weaknesses
+- Generates a **Go / No-Go / Needs Deeper Review** recommendation with risk analysis, win probability, estimated margin, strengths and weaknesses
 - Supports Human-in-the-Loop review when confidence is low
 
 ### The ReAct Agentic Workflow
 
-Instead of rigid, pre-programmed rules, the system uses **ReAct (Reasoning + Acting)** pattern where an AI agent:
+Instead of rigid, pre-programmed rules, the system uses the **ReAct (Reasoning + Acting)** pattern where an AI agent reasons about what information it needs, calls appropriate tools, observes the results, and repeats until it can make a decision.
 
-1. **Thinks** about what information it needs
-2. **Acts** by calling appropriate tools (OCR, RAG retrieval)
-3. **Observes** the results
-4. **Repeats** until it has enough information to make a decision
-
-#### How ReAct Works in Claims Processing
+In practice, the agent calls **all 4 tools in a single parallel batch** for maximum efficiency:
 
 ```
 Customer Submits Claim
-        ↓
-┌───────────────────────────────────────────────────────┐
-│  ReAct Agent Autonomous Decision Loop                 │
-├───────────────────────────────────────────────────────┤
-│                                                       │
-│  💭 Agent Thinks: "I need to read the document"      │
-│  🔧 Agent Acts: Calls ocr_document tool              │
-│  👁️ Agent Observes: Receives structured claim data   │
-│                                                       │
-│  💭 Agent Thinks: "I need the user's policy"         │
-│  🔧 Agent Acts: Calls retrieve_user_info tool        │
-│  👁️ Agent Observes: Gets coverage limits, terms      │
-│                                                       │
-│  💭 Agent Thinks: "Let me check similar cases"       │
-│  🔧 Agent Acts: Calls retrieve_similar_claims tool   │
-│  👁️ Agent Observes: Finds historical precedents      │
-│                                                       │
-│  💭 Agent Thinks: "I have enough information"        │
-│  ✅ Agent Decides: Approve/Deny/Manual Review        │
-│     with confidence score and reasoning              │
-└───────────────────────────────────────────────────────┘
-        ↓
-  Compliance Check (PII Detection)
-        ↓
-  Human Review (if needed)
+        |
++-------------------------------------------------------+
+|  ReAct Agent — Single-batch parallel tool calling      |
++-------------------------------------------------------+
+|                                                        |
+|  get_claim(claim_id)          -> Claim details         |
+|  ocr_document(document_id)   -> Extracted text (OCR)   |
+|  retrieve_user_info(user_id) -> Contracts & coverage   |
+|  retrieve_similar_claims()   -> Historical precedents  |
+|                                                        |
+|  All 4 tools accept the claim number directly.         |
+|  Auto-resolution removes inter-tool dependencies.      |
++-------------------------------------------------------+
+        |
+  Agent synthesizes all results
+  -> Recommendation: Approve / Deny / Manual Review
+  -> Confidence score + reasoning
+        |
+  save_claim_decision() -> Persists decision + embedding
 ```
-
-**Key Difference from Traditional Automation**:
-- **Traditional**: Fixed workflow (always call tool A, then B, then C)
-- **ReAct**: Agent decides which tools to use and when, based on reasoning
 
 ### Multi-Agent Orchestrator
 
-The platform includes a **multi-agent orchestrator** that acts as a high-level router, classifying user intent via LLM and dispatching requests to the appropriate specialized agent:
+The platform includes a **multi-agent orchestrator** that classifies user intent via LLM and dispatches requests to the appropriate specialized agent:
 
 ```
 User Message
@@ -129,91 +102,29 @@ User Message
 
 **Key capabilities**:
 - **SSE Streaming**: Real-time response streaming via `POST /chat/stream` with tool call events, text deltas, and completion notifications
-- **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` MCP tools to persist decisions and update claim/tender status
-- **Embedding generation**: Agents call `generate_document_embedding` to index processed documents for future similarity search
-- **Intent-based routing**: Fast keyword classification routes user messages to the correct domain agent (claims or tenders)
+- **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` MCP tools to persist decisions, update status, and auto-generate embeddings
+- **RAG by precedents**: Similar claims/tenders found via pgvector cosine similarity on OCR text embeddings
+- **Intent-based routing**: Keyword classification routes user messages to the correct domain agent
 - **Chat sessions**: Persistent conversation history with session management
-- **Agent registry**: Dynamic registration of specialized agents with metadata, tools, and routing keywords
-- **S3/MinIO document storage**: Documents served from S3 with local filesystem fallback
-- **Suggested actions**: Context-aware follow-up suggestions (navigate, process, chat) after each agent response
-- **Cross-domain agent chaining**: After a tender Go decision, the orchestrator suggests filing an insurance claim
-- **Bilingual support**: FR/EN language detection and response generation
 - **Tool call observability**: Full tool execution traces (name, server, output, error) persisted and displayed in UI
 - **Token consumption tracking**: Per-message and per-session LLM token usage displayed in chat
-- **Conversation management**: History sanitization, context window control, text tool call detection and retry
-- **Configurable architecture**: All behavioral parameters externalized in orchestrator-config.yaml (ConfigMap)
-
-**What's in progress**:
-- Enriched claim/tender detail pages with processing steps display
-- Migration to llm-d with Llama 3.3 70B / GPT-OSS 120B on cluster
-- OpenShift OAuth authentication
-
-### Business Capabilities
-
-#### 1. Autonomous Document Processing
-- Agent decides when OCR is needed
-- Understands claim context, not just text extraction
-- 2-4 seconds per document vs minutes of manual review
-
-#### 2. Smart Policy Matching
-- Semantic search through user contracts
-- Understands coverage limits and exclusions
-- Cross-references with claim type and amount
-
-#### 3. Precedent-Based Reasoning
-- Finds similar historical claims
-- Applies consistent reasoning across cases
-- Identifies patterns humans might miss
-
-#### 4. Transparent Decision-Making
-- **Reasoning**: Natural language explanation
-- **Evidence**: References to policies and precedents
-- **Confidence Score**: Agent's certainty level
-- **Full Audit Trail**: Every tool call, every thought
+- **Bilingual support**: FR/EN language detection and response generation
 
 ### Compliance & Guardrails
 
 #### PII Detection & Protection
 
-**Business Need**: Insurance claims contain sensitive personal information (emails, phone numbers, dates of birth) that must be protected for GDPR/CCPA compliance.
-
-**How It Works**:
-- Automatic detection during processing
+- Automatic detection of emails, phone numbers, dates of birth, license plates during processing
 - Real-time flagging without blocking workflow
-- Complete audit trail for regulatory review
-
-**What Gets Detected**:
-- Email addresses
-- Phone numbers
-- Dates of birth
-- License plates
-- Other PII patterns
-
-**Compliance Benefits**:
-- GDPR/CCPA compliance support
-- Audit trail for regulators
-- Risk mitigation for data exposure
-- Automated reporting
+- Complete audit trail for GDPR/CCPA compliance
 
 #### Human-in-the-Loop (HITL) Review
 
-**When Manual Review Triggers**:
-- Low confidence scores (< 70%)
-- High-value claims above threshold
-- Complex edge cases
-- Regulatory requirements
-
-**Review Workflow**:
+For claims/tenders requiring manual review (low confidence, high-value, edge cases):
 1. System shows AI recommendation with reasoning
-2. Reviewer can ask clarifying questions to the agent ("Ask Agent" feature)
+2. Reviewer can ask clarifying questions to the agent
 3. Reviewer makes final decision (approve/deny/request info)
 4. System tracks both AI and human decisions for audit
-
-**Business Value**:
-- Faster processing with human oversight
-- Consistent decisions with expert review
-- Training data for improving the agent
-- Regulatory compliance (human-in-loop requirement)
 
 ---
 
@@ -227,43 +138,32 @@ graph TB
         U["Customer / Claims Adjuster"]
     end
 
-    subgraph "OpenShift Cluster"
-        subgraph "Application - multi-agents namespace"
+    subgraph "Platform"
+        subgraph "Application"
             F["Frontend React<br/>Chat UI + Domain Pages"]
             B["Backend FastAPI"]
-            ORCH["Multi-Agent Orchestrator<br/>Intent Routing (WIP)"]
-            REG["Agent Registry"]
+            ORCH["Multi-Agent Orchestrator<br/>Intent Routing"]
         end
 
-        subgraph "OpenShift AI 3.2 - AI Platform"
-            subgraph "LlamaStack Distribution"
-                LS["LlamaStack 0.3.5<br/>ReAct Orchestration"]
-            end
-
-            subgraph "AI Models - vLLM"
-                LLM["Llama 3.3 70B INT8<br/>4xGPU L40 - 20K context"]
-                EMB["Gemma 300M<br/>768-dim embeddings"]
-            end
-
-            subgraph "Data Science Pipelines"
-                DSPA["Kubeflow Pipelines v2"]
-                MINIO["MinIO S3 Storage"]
-            end
-
-            subgraph "Compliance"
-                GR["TrustyAI Guardrails<br/>PII Detection"]
-            end
+        subgraph "AI Orchestration"
+            LS["LlamaStack<br/>ReAct + MCP routing"]
         end
 
-        subgraph "MCP Tool Servers - multi-agents"
-            OCR["OCR MCP Server<br/>EasyOCR"]
-            RAG["RAG MCP Server<br/>pgvector similarity<br/>+ embedding generation"]
+        subgraph "LiteMaaS — Model as a Service"
+            LLM["Mistral-Small-24B / Llama-4-Scout-17B<br/>Reasoning + Tool Calling"]
+            VIS["Qwen2.5-VL-7B<br/>Vision OCR"]
+            EMB["nomic-embed-text-v1.5<br/>768-dim embeddings"]
+        end
+
+        subgraph "MCP Tool Servers"
+            OCR["OCR MCP Server<br/>Qwen2.5-VL vision"]
+            RAG["RAG MCP Server<br/>pgvector similarity"]
             CLAIMS_MCP["Claims MCP Server<br/>CRUD + save_decision"]
             TENDERS_MCP["Tenders MCP Server<br/>CRUD + save_decision"]
         end
 
-        subgraph "Data Layer - multi-agents"
-            DB[("PostgreSQL 16<br/>+ pgvector<br/>+ chat sessions")]
+        subgraph "Data Layer"
+            DB[("PostgreSQL 16<br/>+ pgvector HNSW<br/>+ chat sessions")]
             S3["MinIO S3<br/>Document Storage"]
         end
     end
@@ -271,32 +171,28 @@ graph TB
     U -->|HTTPS| F
     F -->|REST API| B
     B --> ORCH
-    ORCH -->|Routes to| REG
     B -->|Responses API| LS
     LS -->|Inference| LLM
+    LS -->|Vision| VIS
     LS -->|Embeddings| EMB
     LS -->|MCP/SSE| OCR
     LS -->|MCP/SSE| RAG
     LS -->|MCP/SSE| CLAIMS_MCP
     LS -->|MCP/SSE| TENDERS_MCP
-    LS -->|Shields API| GR
     RAG -->|Vector Search| DB
     B -->|CRUD| DB
     B -->|Documents| S3
-    CLAIMS_MCP -->|Save decisions| DB
-    TENDERS_MCP -->|Save decisions| DB
-    RAG -->|Embeddings| DB
-    DSPA -->|Artifacts| MINIO
+    CLAIMS_MCP -->|Decisions + Embeddings| DB
+    TENDERS_MCP -->|Decisions + Embeddings| DB
 
     style LS fill:#f3e5f5
     style LLM fill:#e8f5e9
-    style GR fill:#ffebee
+    style VIS fill:#e8f5e9
+    style EMB fill:#e8f5e9
     style ORCH fill:#fff3e0
 ```
 
 ### Services Architecture
-
-Clean separation of concerns for maintainability. The modular architecture allows multiple business domains to share the same agent infrastructure:
 
 ```
 backend/
@@ -313,503 +209,60 @@ backend/
 │   │   ├── agents/                       # Multi-agent layer
 │   │   │   ├── base_agent_service.py     # Common agent pattern
 │   │   │   ├── orchestrator_service.py   # Intent routing & chat sessions
-│   │   │   ├── conversation_utils.py     # History sanitization, token normalization
 │   │   │   └── registry.py              # Dynamic agent registry
 │   │   ├── agent/                        # Shared AI components
 │   │   │   ├── responses_orchestrator.py # LlamaStack Responses API client
-│   │   │   ├── context_builder.py        # Prompt building with domain context
-│   │   │   ├── response_parser.py        # Extract structured decisions
-│   │   │   └── reviewer.py              # HITL "Ask Agent" logic
+│   │   │   └── response_parser.py        # Extract structured decisions
 │   │   └── pii/                          # PII detection & redaction
-│   │       ├── pii_service.py            # Detection service
-│   │       └── redactor.py              # Regex-based redaction patterns
-│   ├── models/               # Database ORM
-│   │   ├── claim.py          # Claims, documents, decisions, users
-│   │   ├── tender.py         # Tenders, documents, decisions, references
-│   │   └── conversation.py   # Chat sessions & messages (WIP)
+│   ├── models/               # Database ORM (claims, tenders, conversations)
 │   └── llamastack/           # Prompts & integration config
 │       ├── prompts.py              # Claims agent prompts
 │       ├── ao_prompts.py           # Tender agent prompts
-│       └── orchestrator_prompts.py # Multi-agent router prompts (WIP)
+│       └── orchestrator_prompts.py # Multi-agent router prompts
 ├── mcp_servers/
 │   ├── shared/               # Shared DB module (connection, retry, queries)
-│   ├── ocr_server/           # Document OCR (EasyOCR)
+│   ├── ocr_server/           # Document OCR via Qwen2.5-VL vision model
 │   ├── rag_server/           # Vector search (pgvector) + embedding generation
-│   ├── claims_server/        # Claims CRUD + save_claim_decision
-│   └── tenders_server/       # Tenders CRUD + save_tender_decision
+│   ├── claims_server/        # Claims CRUD + save_claim_decision + auto-embedding
+│   └── tenders_server/       # Tenders CRUD + save_tender_decision + auto-embedding
+├── scripts/
+│   ├── init_data.py          # Data initialization (PDFs, upload, OCR, decisions)
+│   └── init_data/            # PDF generator + pre-defined decisions
 frontend/
 ├── src/
 │   ├── pages/
 │   │   ├── HomePage.tsx          # Dashboard with agent cards
-│   │   ├── ChatPage.tsx          # Multi-agent chat interface (WIP)
-│   │   ├── ClaimsListPage.tsx    # Claims list & filtering
-│   │   └── TendersListPage.tsx   # Tenders list & filtering
+│   │   ├── ChatPage.tsx          # Multi-agent chat interface
+│   │   ├── ClaimsListPage.tsx    # Claims list with filters & search
+│   │   ├── ClaimDetailPage.tsx   # Claim detail with processing steps
+│   │   ├── TendersListPage.tsx   # Tenders list & filtering
+│   │   └── TenderDetailPage.tsx  # Tender detail with processing steps
 │   ├── components/
-│   │   ├── chat/                 # Chat UI components
-│   │   │   ├── ChatWindow.tsx    # Message display & input
-│   │   │   ├── ChatMessage.tsx   # Message rendering with tool calls & tokens
-│   │   │   ├── ToolCallSteps.tsx # Collapsible tool execution trace
-│   │   │   ├── SuggestedActions.tsx # Context-aware action buttons
-│   │   │   └── AgentGraph.tsx    # Agent architecture visualization
-│   │   └── common/
-│   │       ├── AgentCard.tsx     # Agent status cards
-│   │       └── PIIBadge.tsx      # PII detection indicators
+│   │   ├── chat/                 # Chat UI (messages, tool calls, tokens)
+│   │   └── claim/                # ClaimHeader, ProcessingSteps, StepOutputDisplay
 │   ├── hooks/
-│   │   ├── useChat.ts            # Chat session management
-│   │   ├── useToolDisplay.ts     # Tool display config (labels, servers)
-│   │   └── useAgents.ts          # Agent registry hook
-│   ├── services/
-│   │   └── orchestratorService.ts # Orchestrator API client (WIP)
-│   ├── types/
-│   │   └── chat.ts               # Chat type definitions (WIP)
-│   └── i18n/                     # Internationalization FR/EN (WIP)
-```
-
-**Benefits**: Each domain (claims, tenders) has its own service and API layer, but shares the agent infrastructure (orchestrator, context builder, response parser). Adding a new use case only requires a new service, API, and model — no changes to the AI components. The multi-agent orchestrator layer adds intent-based routing and conversational capabilities on top of the existing domain agents.
-
-### Technology Stack
-
-- **AI Platform**: Red Hat OpenShift AI 3.2
-- **LLM**: Llama 3.3 70B INT8 (vLLM, 4x L40 GPUs)
-- **Embeddings**: Gemma 300M (768-dim vectors)
-- **Orchestration**: LlamaStack 0.3.5 (ReAct)
-- **Compliance**: TrustyAI Guardrails
-- **Backend**: Python 3.12 + FastAPI
-- **Frontend**: React 18 + TypeScript
-- **Database**: PostgreSQL 16 + pgvector
-- **Document Storage**: MinIO S3-compatible (with local filesystem fallback)
-- **Pipelines**: Kubeflow Pipelines v2
-- **Deployment**: Helm 3.x on OpenShift 4.20+
-
----
-
-## Prerequisites
-
-### Required Infrastructure
-
-1. **OpenShift 4.20+** with:
-   - **GPU Nodes**: 4x NVIDIA L40 (48GB) or equivalent
-   - **CPU/Memory**: 32+ vCPU, 128GB+ RAM
-   - **Storage**: Dynamic provisioning (RWO, RWX)
-
-2. **Red Hat OpenShift AI 3.2**:
-   - Operator installed
-   - vLLM ServingRuntime configured
-   - LlamaStack operator enabled
-
-3. **Tools**:
-   ```bash
-   helm version  # 3.12+
-   oc version    # 4.20+
-   ```
-
-### Accounts
-
-- **HuggingFace Token**: https://huggingface.co/settings/tokens (for model downloads)
-- **Container Registry**: Quay.io, Docker Hub, or internal registry
-
----
-
-## Deployment
-
-### 1. Use Pre-built Images (Recommended)
-
-Pre-built images are available on Quay.io:
-
-```yaml
-# In your values file
-backend:
-  image:
-    repository: quay.io/your-org/multi-agents/backend
-    tag: v2.0.0
-
-frontend:
-  image:
-    repository: quay.io/your-org/multi-agents/frontend
-    tag: v2.0.0
-
-ocr:
-  image:
-    repository: quay.io/your-org/multi-agents/ocr-server
-    tag: v2.0.0
-
-rag:
-  image:
-    repository: quay.io/your-org/multi-agents/rag-server
-    tag: v2.0.0
-
-postgresql:
-  image:
-    repository: pgvector/pgvector
-    tag: pg15
-```
-
-**Or build your own**: See [Development Guide](docs/DEVELOPMENT.md#building-container-images)
-
-### 2. Configure Values
-
-```bash
-cd helm/multi-agents
-cp values-sample.yaml values-mydeployment.yaml
-```
-
-Edit key settings:
-
-```yaml
-# Cluster domain
-inference:
-  endpoint: "https://llama-3-3-70b-llama-3-3-70b.apps.YOUR-CLUSTER.com/v1"
-
-embedding:
-  endpoint: "https://embeddinggemma-300m-embeddinggemma-300m.apps.YOUR-CLUSTER.com/v1"
-
-# HuggingFace token
-hfcli:
-  token: "hf_YOUR_TOKEN"
-
-# MinIO credentials
-minio:
-  rootPassword: "StrongPassword123!"
-
-# Enable features
-dataSciencePipelines:
-  enabled: true
-  objectStorage:
-    scheme: http  # IMPORTANT: must be http
-
-guardrails:
-  enabled: true
-```
-
-### 3. Deploy
-
-```bash
-helm install multi-agents . \
-  -f values-mydeployment.yaml \
-  -n multi-agents \
-  --create-namespace \
-  --timeout=30m
-```
-
-**Expected time**: ~25-30 minutes (AI models download ~40GB)
-
-### 4. Verify Deployment
-
-```bash
-# Check pods
-oc get pods -n multi-agents
-
-# Check DSPA (should be Ready=True)
-oc get dspa -n multi-agents
-
-# Get URLs
-oc get routes -n multi-agents
-```
-
-### 5. Generate Embeddings (Required)
-
-After deployment, run the embedding generation pipeline:
-
-1. **Access OpenShift AI Dashboard** → Data Science Projects → `multi-agents` → Pipelines
-
-2. **Import Pipeline**:
-
-   ![Import Pipeline](assets/pipeline-import.png)
-
-   - Click "Import pipeline"
-   - Upload: `pipelines/data_initialization_pipeline.yaml`
-   - Name: "Historical Claims Initialization"
-
-3. **Create Pipeline Run**:
-
-   ![Create Run](assets/pipeline-create-run.png)
-
-   - Click "Create run"
-   - Set parameters:
-     - `batch_size`: 5
-     - `embedding_model`: `vllm-embedding/embeddinggemma-300m`
-     - `llamastack_endpoint`: `http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321`
-     - `llm_model`: `vllm-inference/llama-3-3-70b-instruct-quantized-w8a8`
-     - `max_retries`: 30
-     - `num_claims`: 60 (default: 10, recommended: 60 for testing)
-
-4. **Monitor Execution**:
-
-   ![Pipeline Graph](assets/pipeline-run-graph.png)
-
-   - Watch pipeline graph (15-20 minutes with num_claims=60)
-   - Steps: Generate PDFs → Parse → Generate Embeddings
-
-5. **Verify**:
-   ```bash
-   # Check knowledge base (should be 15/15)
-   oc exec -n multi-agents statefulset/postgresql -- \
-     psql -U claims_user -d claims_db -c \
-     "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL;"
-
-   # Check claims (should be 60/60 with num_claims=60)
-   oc exec -n multi-agents statefulset/postgresql -- \
-     psql -U claims_user -d claims_db -c \
-     "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
-   ```
-
-### 6. Access Application
-
-```bash
-# Frontend URL
-echo "Frontend: http://$(oc get route frontend -n multi-agents -o jsonpath='{.spec.host}')"
-
-# Backend API
-echo "Backend: http://$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')/api/v1"
+│   │   └── useChat.ts            # Chat session management + SSE streaming
+│   └── i18n/                     # Internationalization FR/EN
 ```
 
 ---
 
-## Testing the Application
-
-### Via Web UI
-
-#### 1. View Claims List
-
-![Claims List](assets/ui-claims-list.png)
-
-- Navigate to Claims page
-- See all processed claims with status
-- Filter by status, type, user
-- Processing time displayed for each claim
-
-#### 2. Process a Pending Claim
-
-![Claim Details](assets/ui-claim-pending.png)
-
-- Click "View Details" on a pending claim
-- Review claim information
-- Click "Process Claim" button
-- Wait 5-10 seconds for processing
-
-#### 3. View Processing Steps
-
-![Processing Steps](assets/ui-processing-steps.png)
-
-After processing completes:
-- See all tool executions (OCR, RAG retrieval)
-- View agent reasoning and confidence
-- Check similar claims found
-- Review policy matches
-
-#### 4. PII Detection
-
-![PII Detection](assets/ui-pii-detection.png)
-
-- PII detections shown as warnings
-- Details: what was detected, where, confidence
-- Non-blocking (claim still processes)
-
-#### 5. Human-in-the-Loop Review
-
-![HITL Review](assets/ui-hitl-review.png)
-
-For claims requiring manual review:
-- System decision shown with reasoning
-- "Ask Agent" to ask clarifying questions
-- Agent responds with context-aware answers
-- Reviewer approves/denies with notes
-
-### Via API
-
-```bash
-BACKEND_URL=$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')
-
-# List pending claims
-curl "http://$BACKEND_URL/api/v1/claims?status=pending" | jq
-
-# Process a claim
-CLAIM_ID="<from-list>"
-curl -X POST "http://$BACKEND_URL/api/v1/claims/${CLAIM_ID}/process" \
-  -H "Content-Type: application/json" \
-  -d '{"skip_ocr": false, "enable_rag": true}'
-
-# Check status
-curl "http://$BACKEND_URL/api/v1/claims/${CLAIM_ID}/status" | jq
-
-# Get decision
-curl "http://$BACKEND_URL/api/v1/claims/${CLAIM_ID}/decision" | jq
-```
-
----
-
-## Configuration Management
-
-### Helm Values
-
-For detailed configuration options, see [Helm Values Reference](docs/HELM_VALUES.md).
-
-**Quick reference**:
-
-```yaml
-global:
-  namespace: multi-agents
-  clusterDomain: apps.cluster.com
-
-backend:
-  image:
-    repository: quay.io/your-org/multi-agents/backend
-    tag: v2.0.0
-  replicas: 1
-
-postgresql:
-  image:
-    repository: pgvector/pgvector
-    tag: pg15
-  persistence:
-    size: 10Gi
-    storageClass: ""  # Use cluster default
-
-inference:
-  endpoint: "https://llama-3-3-70b-llama-3-3-70b.apps.CLUSTER/v1"
-  resources:
-    requests:
-      nvidia.com/gpu: 4
-
-dataSciencePipelines:
-  enabled: true
-  objectStorage:
-    scheme: http  # CRITICAL for internal MinIO
-
-guardrails:
-  enabled: true
-```
-
-### Agent Prompts
-
-Agent prompts are stored in `app/llamastack/prompts/` and mounted via ConfigMap.
-
-**Location**: `backend/app/llamastack/prompts/`
-- `agent_prompt.txt` - Main ReAct agent instructions
-- `claim_processor_prompt.txt` - Claim processing workflow
-
-**Modifying Prompts**:
-
-1. **Development** - Edit files directly in `backend/app/llamastack/prompts/`
-2. **Production** - Update ConfigMap:
-   ```bash
-   oc edit configmap claims-prompts -n multi-agents
-   ```
-3. **Restart backend** to load changes:
-   ```bash
-   oc rollout restart deployment/backend -n multi-agents
-   ```
-
-**Environment Variable**: `PROMPTS_DIR=/app/prompts`
-
-### Backend Environment Variables
-
-Backend configuration via ConfigMap (`backend-config`) and Secrets.
-
-**Key Variables**:
-
-```yaml
-# LlamaStack
-LLAMASTACK_ENDPOINT: http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321
-LLAMASTACK_DEFAULT_MODEL: vllm-inference/llama-3-3-70b-instruct-quantized-w8a8
-LLAMASTACK_EMBEDDING_MODEL: vllm-embedding/embeddinggemma-300m
-LLAMASTACK_MAX_TOKENS: 4096
-
-# MCP Servers
-OCR_SERVER_URL: http://ocr-server.multi-agents.svc.cluster.local:8080
-RAG_SERVER_URL: http://rag-server.multi-agents.svc.cluster.local:8080
-
-# Guardrails
-GUARDRAILS_SERVER_URL: https://guardrails-orchestrator-service.multi-agents.svc.cluster.local:8032
-ENABLE_PII_DETECTION: true
-
-# Database (from Secret postgresql-secret)
-POSTGRES_HOST: postgresql
-POSTGRES_PORT: 5432
-POSTGRES_USER: claims_user
-POSTGRES_PASSWORD: ***
-POSTGRES_DATABASE: claims_db
-
-# Note: DATABASE_URL is constructed automatically from these variables
-# as postgresql+asyncpg://user:pass@host:port/database
-```
-
-**Modify ConfigMap**:
-```bash
-oc edit configmap backend-config -n multi-agents
-oc rollout restart deployment/backend -n multi-agents
-```
-
-**Modify Secret** (database credentials):
-```bash
-oc edit secret postgresql-secret -n multi-agents
-oc rollout restart deployment/backend -n multi-agents
-```
-
-### Frontend Configuration
-
-Frontend uses **nginx reverse proxy** for backend communication - no environment variables needed.
-
-**How it works**:
-
-1. Frontend code calls API at `/api/v1/...` (relative path)
-2. Nginx reverse proxy routes requests to backend:
-   ```nginx
-   location /api/ {
-       proxy_pass http://backend:8000/api/;
-   }
-   ```
-3. No hardcoded backend URLs in frontend code
-
-**Optional Environment Variable**:
-
-```bash
-# Only needed if you want to override the default
-VITE_API_URL=/api/v1  # (default fallback in code)
-```
-
-**To modify backend routing**: Edit `frontend/nginx-server.conf` and rebuild image.
-
----
-
-## Troubleshooting
-
-### DSPA Not Ready
-
-**Problem**: DataSciencePipelinesApplication stuck
-
-**Check**:
-```bash
-oc get dspa -n multi-agents -o yaml
-oc logs -l app=ds-pipeline-dspa -n multi-agents
-```
-
-**Common fixes**:
-- Verify `scheme: http` (not https) in values.yaml
-- Wait for MariaDB pod to be Running
-- Use short DSPA name (< 10 chars)
-
-### LlamaStack Cannot Connect
-
-**Problem**: LlamaStack fails to query models
-
-**Check**:
-```bash
-oc get inferenceservice -A
-oc logs deployment/llamastack-rhoai -n multi-agents
-```
-
-**Solution**: Update model endpoints with correct cluster domain in values.yaml
-
-### Embeddings Zero
-
-**Problem**: RAG tools return no results
-
-**Solution**: Run embedding generation pipeline (see step 5 above)
-
-### More Issues
-
-See full troubleshooting guide in main documentation.
+## Technology Stack
+
+| Component | Technology | Details |
+|-----------|-----------|---------|
+| **LLM Inference** | LiteMaaS (Model as a Service) | Mistral-Small-24B (default) / Llama-4-Scout-17B (backup) |
+| **Vision OCR** | Qwen2.5-VL-7B via LiteMaaS | PDF page images -> structured text extraction |
+| **Embeddings** | nomic-embed-text-v1.5 via LiteMaaS | 768-dim vectors for similarity search |
+| **AI Orchestration** | LlamaStack (Red Hat) | ReAct agent, MCP tool routing, Responses API |
+| **Backend** | Python 3.12 + FastAPI | REST API + SSE streaming |
+| **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
+| **Database** | PostgreSQL 16 + pgvector (HNSW) | Claims, tenders, vectors, chat sessions |
+| **Document Storage** | MinIO S3-compatible | PDF documents for claims & tenders |
+| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims CRUD, Tenders CRUD |
+| **Deployment** | Helm 3.x on OpenShift 4.x | Or docker/podman compose for local dev |
+
+**Key architectural choice**: All AI models run as **remote Model-as-a-Service (MaaS)** through LiteMaaS endpoints. No local GPU required. The OCR server sends PDF page images to Qwen2.5-VL via the LlamaStack inference API, eliminating the need for heavy local OCR libraries.
 
 ---
 
@@ -818,101 +271,281 @@ See full troubleshooting guide in main documentation.
 ### Quick Start with Docker/Podman Compose
 
 ```bash
-# Copy the template and fill in your LLM/embedding endpoints
-cp docker-compose.yml docker-compose.local.yml
+# 1. Set your LiteMaaS credentials (required)
+export LITEMAAS_URL=https://your-litemaas-llm-endpoint/v1
+export LITEMAAS_API_KEY=sk-your-key
+export LITEMAAS_EMBEDDING_URL=https://your-litemaas-embedding-endpoint/v1
+export LITEMAAS_EMBEDDING_API_KEY=sk-your-key
 
-# Edit docker-compose.local.yml with your real values:
-# - LLM_URL: your LLM inference endpoint
-# - EMBEDDING_URL: your embedding model endpoint
-# - LLAMASTACK_DEFAULT_MODEL: your model identifier
-
-# Start all services (PostgreSQL, LlamaStack, MCP servers, MinIO, Backend, Frontend)
-podman compose -f docker-compose.local.yml up --build
+# 2. Start all services
+podman compose up --build
 
 # Or with docker
-docker compose -f docker-compose.local.yml up --build
+docker compose up --build
 ```
-
-Services will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000/api/v1
-- **MinIO Console**: http://localhost:9001
 
 ### What Gets Started
 
 | Service | Port | Description |
 |---------|------|-------------|
-| PostgreSQL + pgvector | 5433 | Database with seed data (claims, tenders, chat tables) |
-| LlamaStack | 8321 | AI orchestration (ReAct agent, tool routing) |
+| PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders) |
+| LlamaStack | 8321 | AI orchestration (ReAct agent, MCP tool routing) |
 | Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator |
-| OCR MCP Server | 8081 | Document OCR extraction |
+| OCR MCP Server | 8081 | Vision-based OCR via Qwen2.5-VL |
 | RAG MCP Server | 8082 | Vector search + embedding generation |
-| Claims MCP Server | 8083 | Claims CRUD + decision persistence |
-| Tenders MCP Server | 8084 | Tenders CRUD + decision persistence |
+| Claims MCP Server | 8083 | Claims CRUD + decision persistence + auto-embedding |
+| Tenders MCP Server | 8084 | Tenders CRUD + decision persistence + auto-embedding |
 | MinIO | 9000/9001 | S3-compatible document storage |
 | Frontend (React) | 3000 | Chat UI + domain pages |
+| **data-init** | — | Generates PDFs, uploads to LlamaStack, processes 10+10 items |
 
-### Document Storage
+### Automatic Data Initialization
 
-Documents (claim PDFs, tender DCEs) are stored in MinIO S3. The `minio-setup` container automatically creates buckets and uploads documents from `documents/claims/` and `documents/tenders/`.
+On first startup, the `data-init` service automatically:
 
-To regenerate realistic PDF documents:
-```bash
-python3 backend/scripts/generate_claim_pdfs.py   # 51 claim PDFs
-python3 backend/scripts/generate_tender_pdfs.py   # 6 tender PDFs
-```
+1. **Generates 60 realistic PDF documents** (30 claims + 30 tenders) using reportlab
+2. **Uploads PDFs to LlamaStack Files API** and updates `document_path` in database
+3. **Processes 10 claims** via MCP tools: OCR (Qwen2.5-VL) + save_claim_decision (with embedding)
+4. **Processes 10 tenders** via MCP tools: OCR + save_tender_decision (with embedding)
 
-### Notes
+After init completes (~3-5 min), you'll have:
+- 30 claims: 20 pending, 4 approved, 3 denied, 3 manual_review (with processing steps, OCR text, embeddings)
+- 30 tenders: 20 pending, 4 go, 3 no_go, 3 needs_deeper_review
+
+The init is **idempotent** — it checks if data already exists before running.
+
+### Access
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000/api/v1
+- **MinIO Console**: http://localhost:9001
+
+### Development Notes
 
 - `docker-compose.yml` is the git-tracked version with placeholder values
-- `docker-compose.local.yml` is your private file with real credentials (add to `.gitignore`)
-- Backend and frontend have hot-reload enabled (code mounted as volumes)
-- MCP servers require a rebuild to pick up changes (`podman compose up --build <service>`)
+- Set LiteMaaS credentials via environment variables or a `.env` file
+- Backend has hot-reload enabled (app code mounted as volume)
+- Frontend has hot-reload via Vite dev server
+- MCP servers require a rebuild to pick up code changes: `podman compose up --build <service>`
+
+### Resetting Data
+
+```bash
+# Remove volumes and restart
+podman compose down -v
+podman compose up --build
+```
+
+---
+
+## OpenShift Deployment
+
+### Prerequisites
+
+1. **OpenShift 4.x** with Helm 3.12+
+2. **LiteMaaS endpoints** for LLM inference, vision OCR, and embeddings (no local GPU needed)
+3. **Container registry** access (Quay.io, Docker Hub, or internal)
+
+### Deploy
+
+```bash
+cd helm/multi-agents
+cp values-sample.yaml values-mydeployment.yaml
+# Edit values-mydeployment.yaml with your LiteMaaS endpoints and credentials
+
+helm install multi-agents . \
+  -f values-mydeployment.yaml \
+  -n multi-agents \
+  --create-namespace \
+  --timeout=15m
+```
+
+### Verify
+
+```bash
+oc get pods -n multi-agents
+oc get routes -n multi-agents
+
+# Check data initialization completed
+oc logs job/data-init -n multi-agents
+
+# Verify embeddings
+oc exec statefulset/postgresql -n multi-agents -- \
+  psql -U claims_user -d claims_db -c \
+  "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
+```
+
+### Access
+
+```bash
+echo "Frontend: https://$(oc get route frontend -n multi-agents -o jsonpath='{.spec.host}')"
+echo "Backend:  https://$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')/api/v1"
+```
+
+---
+
+## Configuration
+
+### LiteMaaS Models
+
+Models are configured in `llamastack/run-litemaas.yaml` (local) or via Helm values (OpenShift):
+
+| Model | Role | Provider |
+|-------|------|----------|
+| `litemaas/Mistral-Small-24B-W8A8` | Default LLM (reasoning + French) | LiteMaaS |
+| `litemaas/Llama-4-Scout-17B-16E-W4A16` | Backup LLM (native tool calling) | LiteMaaS |
+| `litemaas/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
+| `nomic-embed-text` | Embeddings (768-dim) | LiteMaaS |
+
+### Agent Prompts
+
+Prompts are defined in `backend/app/llamastack/prompts.py` (claims) and `ao_prompts.py` (tenders). They can be overridden via ConfigMap-mounted files at `/app/prompts/`.
+
+### Backend Environment Variables
+
+```yaml
+# LlamaStack
+LLAMASTACK_ENDPOINT: http://llamastack:8321
+LLAMASTACK_DEFAULT_MODEL: litemaas/Llama-4-Scout-17B-16E-W4A16
+LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
+
+# MCP Servers
+OCR_SERVER_URL: http://ocr-server:8080
+RAG_SERVER_URL: http://rag-server:8080
+CLAIMS_SERVER_URL: http://claims-server:8080
+TENDERS_SERVER_URL: http://tenders-server:8080
+
+# S3/MinIO
+S3_ENDPOINT_URL: http://minio:9000
+S3_ACCESS_KEY_ID: admin
+S3_SECRET_ACCESS_KEY: ***
+
+# Database
+POSTGRES_HOST: postgresql
+POSTGRES_PORT: 5432
+POSTGRES_DATABASE: claims_db
+POSTGRES_USER: claims_user
+POSTGRES_PASSWORD: ***
+```
+
+### Frontend Configuration
+
+Frontend uses nginx reverse proxy — no environment variables needed. API calls go to `/api/v1/...` (relative path), nginx routes to backend.
+
+---
+
+## Testing the Application
+
+### Via Web UI
+
+1. **Claims List**: Navigate to Claims page. See all 30 claims with status, filters, search. 10 already processed with status badges.
+
+2. **Process a Pending Claim**: Click "View Details" on a pending claim, then "Process Claim". The agent calls all 4 tools in parallel and returns a decision in ~10-15 seconds.
+
+3. **View Processing Steps**: After processing, see all tool executions (OCR, User Info, Similar Claims, Decision) with expandable output for each step.
+
+4. **Chat Interface**: Use the multi-agent chat to process claims or tenders conversationally. The orchestrator routes to the correct agent. SSE streaming shows tool calls in real-time.
+
+5. **Tenders**: Same workflow for construction tenders — Go/No-Go/Needs Deeper Review decisions.
+
+### Via API
+
+```bash
+BACKEND=http://localhost:8000
+
+# List claims
+curl "$BACKEND/api/v1/claims?status=pending" | jq
+
+# Process a claim
+CLAIM_ID="<uuid-from-list>"
+curl -X POST "$BACKEND/api/v1/claims/$CLAIM_ID/process" \
+  -H "Content-Type: application/json" \
+  -d '{"skip_ocr": false, "enable_rag": true}'
+
+# Get decision
+curl "$BACKEND/api/v1/claims/$CLAIM_ID/decision" | jq
+
+# Chat (SSE streaming)
+curl -N -X POST "$BACKEND/api/v1/orchestrator/chat/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Analyse le sinistre CLM-2024-0015", "session_id": null}'
+```
+
+---
+
+## Troubleshooting
+
+### LlamaStack Cannot Connect to LiteMaaS
+
+**Check**:
+```bash
+# Verify LlamaStack health
+curl http://localhost:8321/v1/health
+
+# Check LlamaStack logs for model connection errors
+podman logs multi-agents-llamastack
+```
+
+**Solution**: Verify `LITEMAAS_URL` and `LITEMAAS_API_KEY` environment variables are set correctly.
+
+### RAG Returns No Similar Claims
+
+**Check**:
+```bash
+# Verify embeddings exist
+psql -h localhost -p 5433 -U claims_user -d claims_db -c \
+  "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
+```
+
+**Solution**: Ensure `data-init` service completed successfully. Embeddings are auto-generated when saving decisions via MCP tools.
+
+### OCR Fails or Times Out
+
+The OCR server sends PDF page images to Qwen2.5-VL via LlamaStack. If it fails:
+- Check LlamaStack logs for inference errors
+- Verify the vision model `litemaas/Qwen2.5-VL-7B-Instruct` is accessible
+- Each page takes ~5-10 seconds, multi-page documents take longer
+
+### Data Init Service Fails
+
+```bash
+podman logs multi-agents-data-init
+```
+
+Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers not started.
 
 ---
 
 ## Known Issues
 
-### ReAct Streaming Not Captured
+### ReAct Streaming Intermediate Steps
 
 - **Status**: Intermediate reasoning steps (thoughts between tool calls) not stored
-- **Cause**: LlamaStack 0.3.5 bug - requires 0.5.0+ for streaming persistence
-- **Issue**: https://github.com/llamastack/llama-stack/pull/4738
+- **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Embeddings
-
-- **Knowledge Base**: Run pipeline to generate 15/15 embeddings
-- **Similar Claims**: May return zero results if embeddings missing
-
-### Current Version: v3.0.0 (multi-agents)
+### Current Version: v4.0.0
 
 **Working**:
-- End-to-end claim processing via multi-agent chat
+- End-to-end claim processing via multi-agent chat (4 parallel tool calls)
 - End-to-end tender / Appels d'Offres processing via multi-agent chat
 - SSE streaming responses (real-time tool calls + text deltas)
+- Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
+- RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
+- Auto-embedding generation on decision save (no separate pipeline)
+- Automatic data initialization (60 PDFs, 20 processed items with OCR + decisions + embeddings)
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
-- Embedding generation via MCP tool (generate_document_embedding)
-- S3/MinIO document storage with local filesystem fallback
-- Realistic PDF documents (51 claims + 6 tenders)
+- S3/MinIO document storage
 - PII detection & redaction with audit trail
 - HITL review workflow (claims & tenders)
 - Multi-agent orchestrator with intent-based routing
-- Agent registry with dynamic agent registration and routing keywords
-- Chat sessions with persistent message history and cascade deletion
-- Context-aware suggested actions (intent-based + post-response chaining)
+- Chat sessions with persistent message history
 - Tool call observability (collapsible traces with output/error per tool)
 - Token consumption tracking (per-message and per-session)
-- Conversation management (history sanitization, context window control)
-- Function calling retry mechanism (text tool call detection)
-- Externalized configuration (orchestrator-config.yaml via ConfigMap)
-- Bilingual support FR/EN (chat, tool calls, token display)
+- Bilingual support FR/EN
 - Local development with docker-compose / podman-compose
-- Helm deployment with MinIO and GitHub-based document seeding
+- Helm deployment on OpenShift
 
 **In Progress**:
-- Enriched claim/tender detail pages with business-friendly processing steps display
-- Migration to llm-d with GPT-OSS 120B on cluster
-- OpenShift full stack deployment and validation
+- OpenShift full stack deployment validation with LiteMaaS
 - OpenShift OAuth authentication
-
