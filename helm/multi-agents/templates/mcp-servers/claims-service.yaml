@@ -1,0 +1,20 @@
+{{- if .Values.mcp.claims.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claims-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: claims-server
+spec:
+  type: {{ .Values.mcp.claims.service.type }}
+  ports:
+  - port: {{ .Values.mcp.claims.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: claims-server
+{{- end }}

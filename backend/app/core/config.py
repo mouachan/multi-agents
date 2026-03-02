@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Database
     postgres_host: str = "postgresql-service"
     postgres_port: int = 5432
-    postgres_database: str = "claims_db"
+    postgres_database: str = "multi_agent_db"
     postgres_user: str
     postgres_password: str
     database_pool_size: int = 10

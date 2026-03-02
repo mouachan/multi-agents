@@ -1,1 +1,1 @@
-../../../../database/seed_data/001_sample_data.sql
+../../../../database/seed_data/001_seed_data.sql

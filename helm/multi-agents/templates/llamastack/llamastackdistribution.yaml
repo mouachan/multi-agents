@@ -8,7 +8,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "10"
     # Helm hooks
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-weight": "20"
     "helm.sh/hook-delete-policy": before-hook-creation
   labels:
     {{- include "multi-agents.labels" . | nindent 4 }}
@@ -19,31 +19,23 @@ spec:
   server:
     containerSpec:
       env:
-        # Remote LLM configuration
-        - name: INFERENCE_MODEL
-          value: {{ include "llamastack.model" . | quote }}
-        - name: VLLM_URL
-          value: {{ include "llamastack.inferenceEndpoint" . | quote }}
-        - name: VLLM_TLS_VERIFY
-          value: "false"
-        - name: VLLM_API_TOKEN
-          value: "fake"
-        - name: VLLM_MAX_TOKENS
-          value: "4096"
+        # LiteMaaS LLM configuration
+        - name: LITEMAAS_URL
+          value: {{ .Values.llamastack.litemaas.url | quote }}
+        - name: LITEMAAS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: litemaas-secret
+              key: LITEMAAS_API_KEY
 
-        # Remote embedding configuration
-        - name: EMBEDDING_MODEL
-          value: {{ include "llamastack.embeddingModel" . | quote }}
-        - name: EMBEDDING_PROVIDER_MODEL_ID
-          value: {{ include "llamastack.embeddingModel" . | quote }}
-        - name: VLLM_EMBEDDING_URL
-          value: {{ include "llamastack.embeddingEndpoint" . | quote }}
-        - name: VLLM_EMBEDDING_TLS_VERIFY
-          value: "false"
-        - name: VLLM_EMBEDDING_API_TOKEN
-          value: "fake"
-        - name: VLLM_EMBEDDING_MAX_TOKENS
-          value: "512"
+        # LiteMaaS Embedding configuration
+        - name: LITEMAAS_EMBEDDING_URL
+          value: {{ .Values.llamastack.litemaas.embeddingUrl | quote }}
+        - name: LITEMAAS_EMBEDDING_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: litemaas-secret
+              key: LITEMAAS_EMBEDDING_API_KEY
 
         # PostgreSQL and PGVector configuration
         - name: POSTGRES_HOST

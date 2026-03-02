@@ -5,14 +5,14 @@
 \c postgres
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Then switch to claims_db and enable extensions
-\c claims_db
+-- Then switch to multi_agent_db and enable extensions
+\c multi_agent_db
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
 CREATE TYPE claim_status AS ENUM ('pending', 'processing', 'completed', 'denied', 'failed', 'manual_review', 'pending_info');
-CREATE TYPE processing_step AS ENUM ('ocr', 'guardrails', 'rag_retrieval', 'llm_decision', 'final_review');
+CREATE TYPE processing_step AS ENUM ('ocr', 'guardrails', 'rag_retrieval', 'llm_decision', 'final_review', 'ocr_document', 'retrieve_user_info', 'retrieve_similar_claims', 'make_final_decision');
 CREATE TYPE decision_type AS ENUM ('approve', 'deny', 'manual_review');
 
 -- ============================================================================
@@ -54,6 +54,7 @@ CREATE TABLE claim_documents (
 
     -- OCR Results
     raw_ocr_text TEXT,
+    raw_ocr_text_redacted TEXT,
     structured_data JSONB,
     ocr_confidence FLOAT,
     ocr_processed_at TIMESTAMP,
@@ -194,6 +195,7 @@ CREATE TABLE claim_decisions (
     decision decision_type NOT NULL,
     confidence FLOAT,
     reasoning TEXT,
+    reasoning_redacted TEXT,
 
     -- Supporting evidence
     relevant_policies JSONB,
@@ -263,10 +265,15 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255),
+    email_redacted VARCHAR(255),
     full_name VARCHAR(255),
+    full_name_redacted VARCHAR(255),
     date_of_birth DATE,
+    date_of_birth_redacted VARCHAR(20),
     phone_number VARCHAR(50),
+    phone_number_redacted VARCHAR(50),
     address JSONB,
+    address_redacted JSONB,
 
     -- Account status
     is_active BOOLEAN DEFAULT true,
@@ -370,9 +377,9 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 -- GRANTS (adjust based on your user setup)
 -- ============================================================================
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO claims_user;
--- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO claims_user;
--- GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO claims_user;
+-- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO multi_agent_user;
+-- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO multi_agent_user;
+-- GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO multi_agent_user;
 
 -- ============================================================================
 -- TENDER (APPELS D'OFFRES) TABLES
@@ -410,6 +417,7 @@ CREATE TABLE tender_documents (
     file_size_bytes   BIGINT,
     mime_type         VARCHAR(100),
     raw_ocr_text      TEXT,
+    raw_ocr_text_redacted TEXT,
     structured_data   JSONB,
     ocr_confidence    FLOAT,
     ocr_processed_at  TIMESTAMP,
@@ -613,6 +621,43 @@ BEGIN
     LIMIT max_results;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- CHAT TABLES (orchestrator sessions and messages)
+-- ============================================================================
+CREATE TABLE chat_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id VARCHAR(100) UNIQUE NOT NULL,
+    agent_id VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'active',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_sessions_session_id ON chat_sessions(session_id);
+CREATE INDEX idx_chat_sessions_agent_id ON chat_sessions(agent_id);
+CREATE INDEX idx_chat_sessions_status ON chat_sessions(status);
+
+CREATE TABLE chat_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    agent_id VARCHAR(50),
+    entity_id UUID,
+    entity_type VARCHAR(50),
+    suggested_actions JSONB,
+    tool_calls JSONB,
+    token_usage JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_messages_session_id ON chat_messages(session_id);
+CREATE INDEX idx_chat_messages_created_at ON chat_messages(created_at);
+
+CREATE TRIGGER update_chat_sessions_updated_at BEFORE UPDATE ON chat_sessions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
 -- COMPLETION

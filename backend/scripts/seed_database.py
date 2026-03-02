@@ -13,9 +13,9 @@ from psycopg2.extras import Json
 # Database configuration - can be overridden by environment variables
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "claims_pass")
+POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
 
 # Claim data (matching the generated PDFs)
 def get_claim_data():

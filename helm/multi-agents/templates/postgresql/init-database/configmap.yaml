@@ -40,7 +40,7 @@ data:
     done
 
     # =========================================================================
-    # Initialize claims_db (functional database)
+    # Initialize multi_agent_db (functional database)
     # =========================================================================
     echo Checking for claims database ...
     if ! PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
@@ -59,35 +59,6 @@ data:
         echo " => Done"
 
         echo Fix Ownership ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql "$POSTGRESQL_DATABASE" -qAt -c \
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'" \
-            | while read -r tableName
-            do
-                PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-                    --host postgresql "$POSTGRESQL_DATABASE" -c \
-                    "ALTER TABLE \"$tableName\" OWNER TO $POSTGRESQL_OWNER"
-            done
-        echo " => Done"
-    fi
-
-    # =========================================================================
-    # Apply tender tables migration (IF NOT EXISTS - safe to re-run)
-    # =========================================================================
-    if [ -f /scripts/migration-002-tenders.sql ]; then
-        echo Applying tender tables migration ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/migration-002-tenders.sql
-        echo " => Done"
-
-        if [ -f /scripts/seed-tenders.sql ]; then
-            echo Injecting tender seed data ...
-            PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-                --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/seed-tenders.sql
-            echo " => Done"
-        fi
-
-        echo Fix Ownership for tender tables ...
         PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -qAt -c \
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'" \

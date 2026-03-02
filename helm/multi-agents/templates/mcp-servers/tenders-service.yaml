@@ -1,0 +1,20 @@
+{{- if .Values.mcp.tenders.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenders-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: tenders-server
+spec:
+  type: {{ .Values.mcp.tenders.service.type }}
+  ports:
+  - port: {{ .Values.mcp.tenders.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: tenders-server
+{{- end }}

@@ -94,6 +94,7 @@ spec:
               name: http
               protocol: TCP
           env:
+            {{- include "postgres.env" . | nindent 12 }}
             - name: OCR_GPU_ENABLED
               value: {{ .Values.mcp.ocr.env.OCR_GPU_ENABLED | quote }}
             - name: OCR_LANGUAGES

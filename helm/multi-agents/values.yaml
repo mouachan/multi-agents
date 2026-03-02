@@ -10,7 +10,7 @@ global:
   namespace: multi-agents
 
   # Image registry for custom images
-  imageRegistry: quay.io/your-org
+  imageRegistry: quay.io/mouachan/multi-agents
 
   # Image pull policy
   imagePullPolicy: IfNotPresent
@@ -20,25 +20,15 @@ global:
     NO_PROXY: .svc,.local,127.0.0.1
 
 inference:
-  enabled: true
+  enabled: false
   # deploy in same-namespace by default
   namespace: ""
   model:
     pvc:
-      # WARNING: that new model weights 72.7GB?!
-      # https://huggingface.co/RedHatAI/Llama-3.3-70B-Instruct-quantized.w8a8/tree/main
       size: 100Gi
       storageClass: ""
-    # oci storage is faster to get up and running
-    # & slower if you need to re-download model image every couple days
     source: oci
     address: registry.redhat.io/rhelai1/modelcar-llama-3-3-70b-instruct-quantized-w8a8:1.5
-    # alternatively, go with a PVC:
-    # - make sure to set .hfcli.token first provisioning model into PVC
-    # - request access to model (?) https://huggingface.co/RedHatAI/Llama-3.3-70B-Instruct-quantized.w8a8
-    #   (maybe not necessary? those from Llama org: definitely)
-    # source: huggingface
-    # address: RedHatAI/Llama-3.3-70B-Instruct-quantized.w8a8
     name: llama-3-3-70b-instruct-quantized-w8a8
   resources:
     limits:
@@ -52,18 +42,14 @@ inference:
   placement: {}
 
 embedding:
-  enabled: true
+  enabled: false
   # deploy in same-namespace by default
   namespace: ""
   model:
     pvc:
       size: 10Gi
       storageClass: ""
-    # https://docs.redhat.com/en/documentation/red_hat_ai_inference_server/3.0/html/validated_models/red_hat_ai_validated_models
-    # no OCI version for that model? then again, I'm "guessing" which model to use here ...
     source: huggingface
-    # - make sure to set .hfcli.token firs provisioning model into PVC
-    # - request access to model: https://huggingface.co/google/embeddinggemma-300m
     address: google/embeddinggemma-300m
     name: embeddinggemma-300m
   resources:
@@ -83,16 +69,12 @@ embedding:
 postgresql:
   enabled: true
 
-  # StatefulSet configuration
-  # not sure that one makes sense. unless using a PostgresCluster/crunchy or some cluster-capable setup:
-  # scaling postgres to 2 replicas isn't as easy as changing this
   replicas: 1
 
   # Authentication
   auth:
-    username: claims_user
-    database: claims_db
-    # Password will be generated or provided via secret
+    username: multi_agent_user
+    database: multi_agent_db
     existingSecret: postgresql-secret
     secretKeys:
       userPasswordKey: POSTGRES_PASSWORD
@@ -103,7 +85,7 @@ postgresql:
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: ""  # Use default storage class
+    storageClass: ""
 
   # Resources
   resources:
@@ -133,23 +115,25 @@ llamastack:
     tls:
       enabled: true  # Enable TLS edge termination
 
-  # Model configuration
+  # LiteMaaS configuration (Model as a Service - no on-cluster GPU)
+  litemaas:
+    url: "REPLACE_WITH_LITEMAAS_URL"
+    embeddingUrl: "REPLACE_WITH_LITEMAAS_EMBEDDING_URL"
+    defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
+    embeddingModel: "nomic-embed-text"
+
+  # Model configuration (legacy, kept for reference)
   model:
-    # endpoint defaults to that of InferenceService deployed as part of this Chart
-    # endpoint: "https://llama-3-3-70b-llama-3-3-70b.apps.CLUSTER_DOMAIN/v1"
     apiToken: fake
 
   # Embedding model
   embedding:
-    # endpoint defaults to that of InferenceService deployed as part of this Chart
-    # endpoint: "https://embeddinggemma-300m-edg-demo.apps.CLUSTER_DOMAIN/v1"
     dimension: 768
 
   # Database configuration (LlamaStack uses separate database)
   database:
     name: llamastack
     user: llamastack
-    # Password configured via external values file (not in git)
 
   # Resources
   resources:
@@ -171,7 +155,7 @@ mcp:
 
     image:
       repository: ocr-server
-      tag: v1.3
+      tag: v1.0
 
     service:
       type: ClusterIP
@@ -180,18 +164,16 @@ mcp:
     # Environment variables
     env:
       OCR_LANGUAGES: "en,fr"
-      OCR_GPU_ENABLED: "true"
+      OCR_GPU_ENABLED: "false"
       LOG_LEVEL: "INFO"
 
     resources:
       requests:
         cpu: 500m
         memory: 2Gi
-        nvidia.com/gpu: "1"
       limits:
         cpu: 2000m
         memory: 4Gi
-        nvidia.com/gpu: "1"
 
     placement: {}
 
@@ -202,7 +184,7 @@ mcp:
 
     image:
       repository: rag-server
-      tag: v1.3
+      tag: v1.0
 
     service:
       type: ClusterIP
@@ -218,8 +200,55 @@ mcp:
         memory: 6Gi
       limits:
         cpu: 2000m
-        # had 2Gi: OOMs processing its first claim, llamastack 500s/tells about rag refusing connections as it restarts
         memory: 6Gi
+
+  # Claims Server
+  claims:
+    enabled: true
+    replicas: 1
+
+    image:
+      repository: claims-server
+      tag: v1.0
+
+    service:
+      type: ClusterIP
+      port: 8080
+
+    env:
+      LOG_LEVEL: "INFO"
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+  # Tenders Server
+  tenders:
+    enabled: true
+    replicas: 1
+
+    image:
+      repository: tenders-server
+      tag: v1.0
+
+    service:
+      type: ClusterIP
+      port: 8080
+
+    env:
+      LOG_LEVEL: "INFO"
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
 
 # =============================================================================
 # Backend API
@@ -227,14 +256,12 @@ mcp:
 backend:
   enabled: true
 
-  # Deployment
-  # unless PVC has RWX -> can't go beyond 1
   replicas: 1
 
   # Image
   image:
     repository: backend
-    tag: v1.3
+    tag: v1.0
 
   # Service
   service:
@@ -254,12 +281,6 @@ backend:
     size: 5Gi
     storageClass: ""
 
-  pvc:
-    accessMode: ReadWriteOnce
-    initPvc: false
-    size: 5Gi
-    storageClass: ""
-
   # Environment variables
   env:
     APP_NAME: "Claims Processing Demo"
@@ -268,7 +289,6 @@ backend:
     LOG_LEVEL: "INFO"
 
   # Admin & Database Reset
-  # URL to seed data SQL file (configure to point to your GitHub repository)
   seedDataUrl: "https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql"
 
   # Resources
@@ -292,7 +312,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v1.3
+    tag: v1.0
 
   # Service
   service:
@@ -318,7 +338,7 @@ frontend:
 hfcli:
   image:
     repository: hfcli
-    tag: v1.3
+    tag: v1.0
   resources:
     requests:
       cpu: "1"
@@ -326,8 +346,6 @@ hfcli:
     limits:
       cpu: "1200m"
       memory: 4Gi
-  # only required when pulling models from HF
-  # leaving placeholder emptying value skips those jobs
   token: hf_<your-token>
 
 # =============================================================================
@@ -335,10 +353,12 @@ hfcli:
 # =============================================================================
 secrets:
   # PostgreSQL password
-  # IMPORTANT: Replace with your own password!
   postgresPassword: "REPLACE_WITH_PASSWORD"
-  # loading vector extension requires admin privileges/couldn't run init with regular user
   postgresAdminPassword: "REPLACE_WITH_ADMIN_PASSWORD"
+
+  # LiteMaaS API keys
+  litemaasApiKey: "REPLACE_WITH_KEY"
+  litemaasEmbeddingApiKey: "REPLACE_WITH_KEY"
 
   # Create secrets automatically
   create: true
@@ -368,14 +388,14 @@ minio:
   route:
     api:
       enabled: true
-      host: ""  # Auto-generated if empty
+      host: ""
       tls:
-        enabled: true  # Enable TLS edge termination
+        enabled: true
     console:
       enabled: true
-      host: ""  # Auto-generated if empty
+      host: ""
       tls:
-        enabled: true  # Enable TLS edge termination
+        enabled: true
 
   # Document storage buckets (S3-compatible, used by LlamaStack Files API)
   documentBuckets:
@@ -385,15 +405,14 @@ minio:
   # Seed documents from GitHub (downloaded and uploaded to MinIO on install)
   seedDocuments:
     enabled: true
-    # GitHub repo archive URL — the job extracts documents/ from this tarball
-    repoArchiveUrl: ""  # e.g. https://github.com/your-org/multi-agents/archive/refs/heads/feature/multi-agents.tar.gz
+    repoArchiveUrl: ""
 
   # Persistence
   persistence:
     enabled: true
     size: 20Gi
     accessMode: ReadWriteOnce
-    storageClass: ""  # Use default storage class if empty
+    storageClass: ""
 
   # Resources
   resources:
@@ -410,8 +429,8 @@ minio:
 dataInit:
   enabled: true
   image:
-    repository: python
-    tag: "3.11-slim"
+    repository: data-init
+    tag: v1.0
   backoffLimit: 3
   ttlSecondsAfterFinished: 3600
   resources:
@@ -443,7 +462,7 @@ dataSciencePipelines:
       pvcSize: 10Gi
 
   objectStorage:
-    useInternalMinio: true  # Use MinIO deployed by this chart
+    useInternalMinio: true
     bucket: pipelines
     region: us-east-1
     scheme: http
@@ -461,7 +480,7 @@ guardrails:
   configMapName: claims-guardrails-config
 
   # GuardrailsOrchestrator configuration
-  enableBuiltInDetectors: true  # Enable HAP, PII detectors as sidecars
+  enableBuiltInDetectors: true
   enableGuardrailsGateway: false
   replicas: 1
   logLevel: "info"
@@ -507,12 +526,12 @@ guardrails:
 # GPT-OSS 120B (llm-d / LLMInferenceService)
 # =============================================================================
 gptoss:
-  enabled: false  # Disabled by default - requires RHOAI 3.2 with llm-d operators
+  enabled: false
   namespace: gpt-oss-120b
   name: gpt-oss-120b
 
   model:
-    source: huggingface  # huggingface or oci
+    source: huggingface
     address: RedHatAI/gpt-oss-120b
     name: gpt-oss-120b
     pvc:
@@ -522,7 +541,7 @@ gptoss:
   replicas: 1
 
   parallelism:
-    tensor: 4  # TP=4 => 4 GPUs in single pod via NCCL
+    tensor: 4
 
   vllm:
     maxModelLen: "16384"
@@ -538,7 +557,6 @@ gptoss:
       cpu: "8"
       memory: 32Gi
 
-  # Router config (uses default Gateway openshift-ai-inference + EPP scheduler)
   router:
     route: {}
     gateway: {}

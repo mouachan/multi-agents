@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.multi-agents.svc.cluster.local")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "claims_user")
+POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 PDF_DIR = os.getenv("PDF_DIR", "/pdfs")
 

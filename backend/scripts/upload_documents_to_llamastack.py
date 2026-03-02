@@ -13,9 +13,9 @@ Environment variables:
     DOCUMENTS_DIR        - Path to documents directory (default: /documents)
     POSTGRES_HOST        - PostgreSQL host (default: postgresql)
     POSTGRES_PORT        - PostgreSQL port (default: 5432)
-    POSTGRES_DATABASE    - Database name (default: claims_db)
-    POSTGRES_USER        - Database user (default: claims_user)
-    POSTGRES_PASSWORD    - Database password (default: claims_pass)
+    POSTGRES_DATABASE    - Database name (default: multi_agent_db)
+    POSTGRES_USER        - Database user (default: multi_agent_user)
+    POSTGRES_PASSWORD    - Database password (default: multi_agents_pass)
 """
 
 import os
@@ -30,9 +30,9 @@ DOCUMENTS_DIR = Path(os.getenv("DOCUMENTS_DIR", "/documents"))
 
 PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-PG_DB = os.getenv("POSTGRES_DATABASE", "claims_db")
-PG_USER = os.getenv("POSTGRES_USER", "claims_user")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "claims_pass")
+PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
+PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
+PG_PASS = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
 
 MAX_RETRIES = 30
 RETRY_DELAY = 5

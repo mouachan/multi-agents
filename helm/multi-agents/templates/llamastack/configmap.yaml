@@ -28,20 +28,20 @@ data:
 
     providers:
       inference:
-      - provider_id: vllm-inference
+      - provider_id: litemaas
         provider_type: remote::vllm
         config:
-          url: ${env.VLLM_URL:=http://localhost:8000/v1}
-          max_tokens: ${env.VLLM_MAX_TOKENS:=4096}
-          api_token: ${env.VLLM_API_TOKEN:=fake}
-          tls_verify: ${env.VLLM_TLS_VERIFY:=true}
-      - provider_id: vllm-embedding
+          url: ${env.LITEMAAS_URL}
+          max_tokens: 4096
+          api_token: ${env.LITEMAAS_API_KEY}
+          tls_verify: false
+      - provider_id: litemaas-embedding
         provider_type: remote::vllm
         config:
-          url: ${env.VLLM_EMBEDDING_URL:=http://localhost:8001/v1}
-          max_tokens: ${env.VLLM_EMBEDDING_MAX_TOKENS:=512}
-          api_token: ${env.VLLM_EMBEDDING_API_TOKEN:=fake}
-          tls_verify: ${env.VLLM_EMBEDDING_TLS_VERIFY:=true}
+          url: ${env.LITEMAAS_EMBEDDING_URL}
+          max_tokens: 512
+          api_token: ${env.LITEMAAS_EMBEDDING_API_KEY}
+          tls_verify: false
 
       vector_io:
       - provider_id: ${env.ENABLE_PGVECTOR:+pgvector}
@@ -181,13 +181,25 @@ data:
     registered_resources:
       models:
       - metadata: {}
-        model_id: ${env.INFERENCE_MODEL}
-        provider_id: vllm-inference
+        model_id: litemaas/Mistral-Small-24B-W8A8
+        provider_id: litemaas
+        provider_model_id: Mistral-Small-24B-W8A8
+        model_type: llm
+      - metadata: {}
+        model_id: litemaas/Llama-4-Scout-17B-16E-W4A16
+        provider_id: litemaas
+        provider_model_id: Llama-4-Scout-17B-16E-W4A16
+        model_type: llm
+      - metadata: {}
+        model_id: litemaas/Qwen2.5-VL-7B-Instruct
+        provider_id: litemaas
+        provider_model_id: Qwen2.5-VL-7B-Instruct
         model_type: llm
       - metadata:
-          embedding_dimension: {{ .Values.llamastack.embedding.dimension | default 512 }}
-        model_id: ${env.EMBEDDING_MODEL}
-        provider_id: vllm-embedding
+          embedding_dimension: 768
+        model_id: nomic-embed-text
+        provider_id: litemaas-embedding
+        provider_model_id: nomic-embed-text-v1.5
         model_type: embedding
 
       shields:
@@ -228,6 +240,14 @@ data:
         provider_id: model-context-protocol
         mcp_endpoint:
           uri: http://rag-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
+      - toolgroup_id: mcp::claims-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
+      - toolgroup_id: mcp::tenders-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
       - toolgroup_id: builtin::rag
         provider_id: rag-runtime
 

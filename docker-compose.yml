@@ -7,21 +7,17 @@ services:
     image: pgvector/pgvector:pg16
     container_name: multi-agents-postgres
     environment:
-      POSTGRES_DB: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DB: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ./database/migrations/003_add_pii_redacted_fields.sql:/docker-entrypoint-initdb.d/02-pii-fields.sql:ro
-      - ./database/migrations/004_add_chat_tables.sql:/docker-entrypoint-initdb.d/03-chat-tables.sql:ro
-      - ./database/migrations/005_add_tool_calls_to_chat_messages.sql:/docker-entrypoint-initdb.d/04-tool-calls.sql:ro
-      - ./database/migrations/006_add_token_usage_to_chat_messages.sql:/docker-entrypoint-initdb.d/05-token-usage.sql:ro
-      - ./database/seed_data/001_seed_data.sql:/docker-entrypoint-initdb.d/06-seed-data.sql:ro
+      - ./database/seed_data/001_seed_data.sql:/docker-entrypoint-initdb.d/02-seed-data.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U claims_user -d claims_db"]
+      test: ["CMD-SHELL", "pg_isready -U multi_agent_user -d multi_agent_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -65,9 +61,9 @@ services:
       ENVIRONMENT: development
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DATABASE: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
       LLAMASTACK_ENDPOINT: http://llamastack:8321
       LLAMASTACK_DEFAULT_MODEL: litemaas/Llama-4-Scout-17B-16E-W4A16
       LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
@@ -122,9 +118,9 @@ services:
     environment:
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DATABASE: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
       LLAMASTACK_ENDPOINT: http://llamastack:8321
       EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-nomic-embed-text}
       VECTOR_DIMENSION: 768
@@ -145,9 +141,9 @@ services:
     environment:
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DATABASE: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
       LOG_LEVEL: INFO
     ports:
       - "8083:8080"
@@ -165,9 +161,9 @@ services:
     environment:
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DATABASE: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
       LOG_LEVEL: INFO
     ports:
       - "8084:8080"
@@ -256,9 +252,9 @@ services:
       TENDERS_SERVER_URL: http://tenders-server:8080
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: claims_db
-      POSTGRES_USER: claims_user
-      POSTGRES_PASSWORD: claims_pass
+      POSTGRES_DATABASE: multi_agent_db
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
     volumes:
       - ./backend/scripts:/scripts:ro
     networks:
