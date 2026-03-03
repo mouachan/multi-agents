@@ -226,8 +226,9 @@ backend/
 │   ├── claims_server/        # Claims CRUD + save_claim_decision + auto-embedding
 │   └── tenders_server/       # Tenders CRUD + save_tender_decision + auto-embedding
 ├── scripts/
-│   ├── init_data.py          # Data initialization (PDFs, upload, OCR, decisions)
-│   └── init_data/            # PDF generator + pre-defined decisions
+│   ├── init_data.py          # Data initialization (download, upload, OCR, decisions)
+│   ├── init_data/            # Pre-defined decisions
+│   └── utils/                # Standalone utilities (PDF generator)
 frontend/
 ├── src/
 │   ├── pages/
@@ -297,22 +298,22 @@ docker compose up --build
 | Tenders MCP Server | 8084 | Tenders CRUD + decision persistence + auto-embedding |
 | MinIO | 9000/9001 | S3-compatible document storage |
 | Frontend (React) | 3000 | Chat UI + domain pages |
-| **data-init** | — | Generates PDFs, uploads to LlamaStack, processes 10+10 items |
+| **data-init** | — | Downloads PDFs, uploads to LlamaStack, processes 10+10 items |
 
 ### Automatic Data Initialization
 
 On first startup, the `data-init` service automatically:
 
-1. **Generates 60 realistic PDF documents** (30 claims + 30 tenders) using reportlab
-2. **Uploads PDFs to LlamaStack Files API** and updates `document_path` in database
+1. **Downloads PDF documents** from the GitHub repository archive (31 claims + 31 tenders)
+2. **Uploads PDFs to LlamaStack Files API** and updates `document_path` in database with file IDs (`file-xxx`)
 3. **Processes 10 claims** via MCP tools: OCR (Qwen2.5-VL) + save_claim_decision (with embedding)
 4. **Processes 10 tenders** via MCP tools: OCR + save_tender_decision (with embedding)
 
-After init completes (~3-5 min), you'll have:
-- 30 claims: 20 pending, 4 approved, 3 denied, 3 manual_review (with processing steps, OCR text, embeddings)
-- 30 tenders: 20 pending, 4 go, 3 no_go, 3 needs_deeper_review
+After init completes, you'll have:
+- 31 claims: 21 pending, 4 approved, 3 denied, 3 manual_review (with processing steps, OCR text, embeddings)
+- 31 tenders: 21 pending, 4 go, 3 no_go, 3 needs_deeper_review
 
-The init is **idempotent** — it checks if data already exists before running.
+The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside Docker images.
 
 ### Access
 
@@ -349,37 +350,41 @@ podman compose up --build
 ### Deploy
 
 ```bash
-cd helm/multi-agents
-cp values-sample.yaml values-mydeployment.yaml
-# Edit values-mydeployment.yaml with your LiteMaaS endpoints and credentials
+# Copy and edit values with your LiteMaaS endpoints and credentials
+cp helm/values-local.yaml helm/values-mydeployment.yaml
+# Edit helm/values-mydeployment.yaml
 
-helm install multi-agents . \
-  -f values-mydeployment.yaml \
-  -n multi-agents \
-  --create-namespace \
-  --timeout=15m
+helm install multi-agents helm/multi-agents \
+  -f helm/values-mydeployment.yaml \
+  -n multi-agent \
+  --create-namespace
 ```
 
 ### Verify
 
 ```bash
-oc get pods -n multi-agents
-oc get routes -n multi-agents
+oc get pods -n multi-agent
+oc get routes -n multi-agent
 
 # Check data initialization completed
-oc logs job/data-init -n multi-agents
+oc logs -l job-name -n multi-agent
+
+# Verify file IDs in database
+oc exec postgresql-0 -n multi-agent -- \
+  psql -U multi_agent_user -d multi_agent_db -c \
+  "SELECT claim_number, document_path FROM claims WHERE document_path LIKE 'file-%' LIMIT 5;"
 
 # Verify embeddings
-oc exec statefulset/postgresql -n multi-agents -- \
-  psql -U claims_user -d claims_db -c \
+oc exec postgresql-0 -n multi-agent -- \
+  psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
 ```
 
 ### Access
 
 ```bash
-echo "Frontend: https://$(oc get route frontend -n multi-agents -o jsonpath='{.spec.host}')"
-echo "Backend:  https://$(oc get route backend -n multi-agents -o jsonpath='{.spec.host}')/api/v1"
+echo "Frontend: https://$(oc get route frontend -n multi-agent -o jsonpath='{.spec.host}')"
+echo "Backend:  https://$(oc get route backend -n multi-agent -o jsonpath='{.spec.host}')/api/v1"
 ```
 
 ---
@@ -395,11 +400,13 @@ Models are configured in `llamastack/run-litemaas.yaml` (local) or via Helm valu
 | `litemaas/Mistral-Small-24B-W8A8` | Default LLM (reasoning + French) | LiteMaaS |
 | `litemaas/Llama-4-Scout-17B-16E-W4A16` | Backup LLM (native tool calling) | LiteMaaS |
 | `litemaas/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
-| `nomic-embed-text` | Embeddings (768-dim) | LiteMaaS |
+| `litemaas-embedding/nomic-embed-text-v1.5` | Embeddings (768-dim) | LiteMaaS |
 
 ### Agent Prompts
 
-Prompts are defined in `backend/app/llamastack/prompts.py` (claims) and `ao_prompts.py` (tenders). They can be overridden via ConfigMap-mounted files at `/app/prompts/`.
+Prompts are defined in `backend/app/llamastack/prompts.py` (claims) and `ao_prompts.py` (tenders). On OpenShift, they are overridden via ConfigMap-mounted files at `/app/prompts/` and `/app/prompts-ao/`. Both sources must be kept in sync.
+
+Each agent prompt distinguishes between **information queries** (detail, list, show) that call only CRUD tools, and **processing requests** (process, traiter, evaluate) that trigger the full workflow (OCR + RAG + decision).
 
 ### Backend Environment Variables
 
@@ -407,7 +414,7 @@ Prompts are defined in `backend/app/llamastack/prompts.py` (claims) and `ao_prom
 # LlamaStack
 LLAMASTACK_ENDPOINT: http://llamastack:8321
 LLAMASTACK_DEFAULT_MODEL: litemaas/Llama-4-Scout-17B-16E-W4A16
-LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
+LLAMASTACK_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1.5
 
 # MCP Servers
 OCR_SERVER_URL: http://ocr-server:8080
@@ -423,8 +430,8 @@ S3_SECRET_ACCESS_KEY: ***
 # Database
 POSTGRES_HOST: postgresql
 POSTGRES_PORT: 5432
-POSTGRES_DATABASE: claims_db
-POSTGRES_USER: claims_user
+POSTGRES_DATABASE: multi_agent_db
+POSTGRES_USER: multi_agent_user
 POSTGRES_PASSWORD: ***
 ```
 
@@ -533,7 +540,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
 - Auto-embedding generation on decision save (no separate pipeline)
-- Automatic data initialization (60 PDFs, 20 processed items with OCR + decisions + embeddings)
+- Automatic data initialization (62 PDFs from GitHub archive, 20 processed items with OCR + decisions + embeddings)
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
@@ -547,5 +554,4 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Helm deployment on OpenShift
 
 **In Progress**:
-- OpenShift full stack deployment validation with LiteMaaS
 - OpenShift OAuth authentication
