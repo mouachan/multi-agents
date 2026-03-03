@@ -247,6 +247,14 @@ class OrchestratorService:
             metadata["last_response_id"] = new_response_id
             session.session_metadata = metadata
 
+        # Determine which model was used (short name for display)
+        model_id = None
+        if agent_id and AgentRegistry.get(agent_id):
+            full_model = model if isinstance(model, str) else settings.llamastack_default_model
+            short = full_model.split("/")[-1] if "/" in full_model else full_model
+            short = re.sub(r'-W\d+A\d+$', '', short)
+            model_id = short
+
         # Save assistant response
         assistant_msg = ChatMessage(
             session_id=session.id,
@@ -256,19 +264,10 @@ class OrchestratorService:
             suggested_actions=suggested_actions if suggested_actions else None,
             tool_calls=enriched_tool_calls if enriched_tool_calls else None,
             token_usage=token_usage,
+            model_id=model_id,
         )
         db.add(assistant_msg)
         await db.commit()
-
-        # Determine which model was used (short name for display)
-        model_id = None
-        if agent_id and AgentRegistry.get(agent_id):
-            full_model = model if isinstance(model, str) else settings.llamastack_default_model
-            # Extract short name: "litemaas/Mistral-Small-24B-W8A8" → "Mistral-Small-24B"
-            short = full_model.split("/")[-1] if "/" in full_model else full_model
-            # Remove quantization suffix (e.g. -W8A8, -W4A16)
-            short = re.sub(r'-W\d+A\d+$', '', short)
-            model_id = short
 
         return {
             "session_id": session_id,
@@ -418,6 +417,13 @@ class OrchestratorService:
             metadata["last_response_id"] = response_id
             session.session_metadata = metadata
 
+        # Model short name
+        model_id = None
+        full_model = model if isinstance(model, str) else settings.llamastack_default_model
+        short = full_model.split("/")[-1] if "/" in full_model else full_model
+        short = re.sub(r'-W\d+A\d+$', '', short)
+        model_id = short
+
         # Save assistant response to DB
         assistant_msg = ChatMessage(
             session_id=session.id,
@@ -427,16 +433,10 @@ class OrchestratorService:
             suggested_actions=suggested_actions if suggested_actions else None,
             tool_calls=tool_calls if tool_calls else None,
             token_usage=token_usage,
+            model_id=model_id,
         )
         db.add(assistant_msg)
         await db.commit()
-
-        # Model short name
-        model_id = None
-        full_model = model if isinstance(model, str) else settings.llamastack_default_model
-        short = full_model.split("/")[-1] if "/" in full_model else full_model
-        short = re.sub(r'-W\d+A\d+$', '', short)
-        model_id = short
 
         # Final done event with enriched data
         yield {
@@ -521,6 +521,7 @@ class OrchestratorService:
                 "suggested_actions": msg.suggested_actions,
                 "tool_calls": msg.tool_calls,
                 "token_usage": msg.token_usage,
+                "model_id": msg.model_id,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None,
             }
             for msg in messages

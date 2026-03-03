@@ -53,6 +53,7 @@ class ChatMessage(Base):
     suggested_actions = Column(JSONB)
     tool_calls = Column(JSONB)
     token_usage = Column(JSONB)
+    model_id = Column(String(100))
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     # Relationships

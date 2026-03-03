@@ -650,6 +650,7 @@ CREATE TABLE chat_messages (
     suggested_actions JSONB,
     tool_calls JSONB,
     token_usage JSONB,
+    model_id VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -30,28 +30,15 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 _cached_llm_model: Optional[str] = None
 
 
-async def _get_llm_model_name() -> str:
-    """Get the LLM model name from LlamaStack /v1/models, cached after first call."""
+def _get_llm_model_name() -> str:
+    """Get the LLM model short name from LLAMASTACK_DEFAULT_MODEL env var."""
     global _cached_llm_model
     if _cached_llm_model:
         return _cached_llm_model
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/models")
-            resp.raise_for_status()
-            models = resp.json().get("data", resp.json()) if isinstance(resp.json(), dict) else resp.json()
-            if isinstance(models, list):
-                for m in models:
-                    identifier = m.get("identifier") or m.get("id") or ""
-                    model_type = m.get("model_type") or m.get("type") or ""
-                    if "embedding" not in identifier.lower() and model_type != "embedding":
-                        import re
-                        short = identifier.split("/")[-1] if "/" in identifier else identifier
-                        _cached_llm_model = re.sub(r'-W\d+A\d+$', '', short)
-                        return _cached_llm_model
-    except Exception as e:
-        logger.warning(f"Failed to query LlamaStack models: {e}")
-    _cached_llm_model = os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown")
+    import re
+    full_model = os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown")
+    short = full_model.split("/")[-1] if "/" in full_model else full_model
+    _cached_llm_model = re.sub(r'-W\d+A\d+$', '', short)
     return _cached_llm_model
 
 # Configure logging
@@ -619,7 +606,7 @@ async def save_claim_decision(
         )
 
         # Get model name from LlamaStack (cached)
-        llm_model = await _get_llm_model_name()
+        llm_model = _get_llm_model_name()
 
         # INSERT into claim_decisions
         await run_db_execute(

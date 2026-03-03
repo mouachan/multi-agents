@@ -167,7 +167,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
       <div className="mt-6">
         <p className="text-sm text-gray-600 mb-2">System Reasoning</p>
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-gray-900">{decision.initial_reasoning || decision.reasoning || 'N/A'}</p>
+          <p className="text-gray-900 whitespace-pre-wrap">{decision.initial_reasoning || decision.reasoning || 'N/A'}</p>
         </div>
       </div>
 

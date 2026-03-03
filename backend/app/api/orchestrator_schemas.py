@@ -72,6 +72,7 @@ class MessageItem(BaseModel):
     suggested_actions: Optional[List[Dict[str, Any]]] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
     token_usage: Optional[Dict[str, Any]] = None
+    model_id: Optional[str] = None
     created_at: Optional[str] = None
 
 
