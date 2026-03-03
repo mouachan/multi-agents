@@ -1,5 +1,4 @@
 {{- if .Values.mcp.ocr.enabled }}
-# PVC is shared between backend deployment and OCR
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,11 +60,4 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
-          volumeMounts:
-            - name: claim-documents
-              mountPath: /claim_documents
-      volumes:
-        - name: claim-documents
-          persistentVolumeClaim:
-            claimName: claim-documents
 {{- end }}
