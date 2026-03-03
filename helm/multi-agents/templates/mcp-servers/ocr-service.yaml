@@ -1,5 +1,4 @@
-{{- if or (and .Values.mcp.ocr.enabled (eq .Values.backend.pvc.accessMode "ReadWriteMany"))
-          (and .Values.backend.enabled (ne .Values.backend.pvc.accessMode "ReadWriteMany")) }}
+{{- if .Values.mcp.ocr.enabled }}
 ---
 apiVersion: v1
 kind: Service
@@ -12,18 +11,10 @@ metadata:
 spec:
   type: {{ .Values.mcp.ocr.service.type }}
   ports:
-    - port: {{ .Values.mcp.ocr.service.port }}
-{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
-      targetPort: 8080
-{{- else }}
-      targetPort: 8081
-{{- end }}
-      protocol: TCP
-      name: http
+  - port: {{ .Values.mcp.ocr.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
   selector:
-{{- if eq .Values.backend.pvc.accessMode "ReadWriteMany" }}
     app: ocr-server
-{{- else }}
-    app: backend
-{{- end }}
 {{- end }}

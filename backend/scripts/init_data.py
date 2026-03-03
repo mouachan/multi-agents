@@ -2,8 +2,9 @@
 """
 Data initialization script for multi-agents platform.
 
-Generates PDFs, uploads to LlamaStack, and processes 10 claims + 10 tenders
-via MCP server tools (OCR + decision saving with embeddings).
+Downloads PDFs from GitHub, uploads to LlamaStack Files API,
+and processes 10 claims + 10 tenders via MCP server tools
+(OCR + decision saving with embeddings).
 
 Usage:
     python init_data.py
@@ -13,14 +14,18 @@ Environment variables:
     OCR_SERVER_URL: OCR MCP server URL (default: http://ocr-server:8080)
     CLAIMS_SERVER_URL: Claims MCP server URL (default: http://claims-server:8080)
     TENDERS_SERVER_URL: Tenders MCP server URL (default: http://tenders-server:8080)
+    DOCUMENTS_ARCHIVE_URL: URL of the tar.gz archive containing PDFs
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DATABASE, POSTGRES_USER, POSTGRES_PASSWORD
 """
 
 import asyncio
+import glob
 import json
 import logging
 import os
+import subprocess
 import sys
+import tarfile
 import time
 
 import httpx
@@ -30,7 +35,6 @@ import psycopg2
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from init_data.decisions import CLAIM_DECISIONS, TENDER_DECISIONS
-from init_data.pdf_generator import generate_all_pdfs
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +48,7 @@ LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack:8321")
 OCR_SERVER_URL = os.getenv("OCR_SERVER_URL", "http://ocr-server:8080")
 CLAIMS_SERVER_URL = os.getenv("CLAIMS_SERVER_URL", "http://claims-server:8080")
 TENDERS_SERVER_URL = os.getenv("TENDERS_SERVER_URL", "http://tenders-server:8080")
+DOCUMENTS_ARCHIVE_URL = os.getenv("DOCUMENTS_ARCHIVE_URL", "")
 
 PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -51,8 +56,9 @@ PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
 
-MAX_RETRIES = 30
-RETRY_INTERVAL = 5  # seconds
+DOCUMENTS_DIR = "/tmp/documents"
+MAX_RETRIES = 60
+RETRY_INTERVAL = 10  # seconds
 
 
 # ============================================================================
@@ -118,17 +124,19 @@ async def wait_for_mcp_servers():
 
 
 def check_already_initialized() -> bool:
-    """Check if data init has already been run (idempotent)."""
+    """Check if data init has already been run (idempotent).
+
+    Checks if document_path values have been replaced with LlamaStack file IDs.
+    """
     conn = get_pg_conn()
     try:
         cur = conn.cursor()
-        # Check if any CLM-2024-* claim has been processed by data-init
         cur.execute(
-            "SELECT COUNT(*) FROM claims WHERE claim_number LIKE 'CLM-2024-%%' AND status != 'pending'"
+            "SELECT COUNT(*) FROM claims WHERE document_path LIKE 'file-%%'"
         )
         count = cur.fetchone()[0]
         if count > 0:
-            logger.info(f"Data already initialized ({count} non-pending claims). Skipping.")
+            logger.info(f"Data already initialized ({count} claims with file IDs). Skipping.")
             return True
         return False
     finally:
@@ -136,70 +144,60 @@ def check_already_initialized() -> bool:
 
 
 # ============================================================================
-# Data loading from DB
+# Download PDFs from GitHub
 # ============================================================================
 
-def load_claims_data() -> list[dict]:
-    """Load all claims with user info for PDF generation."""
-    conn = get_pg_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT c.claim_number, c.claim_type, c.document_path, c.submitted_at,
-                   u.full_name, u.address,
-                   uc.contract_number
-            FROM claims c
-            LEFT JOIN users u ON c.user_id = u.user_id
-            LEFT JOIN user_contracts uc ON c.user_id = uc.user_id
-                AND uc.is_active = true
-            ORDER BY c.claim_number
-        """)
-        rows = cur.fetchall()
+def download_documents(archive_url: str, dest_dir: str = DOCUMENTS_DIR):
+    """Download and extract PDF documents from a GitHub archive URL."""
+    if not archive_url:
+        # Fall back to local /documents mount (docker-compose)
+        if os.path.isdir("/documents"):
+            logger.info("Using locally mounted /documents directory")
+            # Copy to dest_dir for consistency
+            os.makedirs(dest_dir, exist_ok=True)
+            subprocess.run(
+                ["cp", "-r", "/documents/claims", "/documents/tenders", dest_dir],
+                check=True,
+            )
+            return
+        raise RuntimeError(
+            "No DOCUMENTS_ARCHIVE_URL set and no /documents mount found"
+        )
 
-        # Deduplicate by claim_number (user may have multiple contracts)
-        seen = {}
-        for row in rows:
-            cn = row[0]
-            if cn not in seen:
-                address = row[5] if row[5] else {}
-                city = address.get("city", "France") if isinstance(address, dict) else "France"
-                seen[cn] = {
-                    "claim_number": row[0],
-                    "claim_type": row[1],
-                    "document_path": row[2],
-                    "submitted_at": str(row[3]) if row[3] else "2025-11-15",
-                    "user_name": row[4] or "Assure",
-                    "address": city,
-                    "contract_number": row[6] or "N/A",
-                }
-        return list(seen.values())
-    finally:
-        conn.close()
+    logger.info(f"Downloading documents from {archive_url}")
+    archive_path = "/tmp/repo.tar.gz"
 
+    subprocess.run(
+        ["curl", "-sL", archive_url, "-o", archive_path],
+        check=True,
+    )
 
-def load_tenders_data() -> list[dict]:
-    """Load all tenders for PDF generation."""
-    conn = get_pg_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT tender_number, document_path, metadata
-            FROM tenders
-            ORDER BY tender_number
-        """)
-        results = []
-        for row in cur.fetchall():
-            metadata = row[2] if row[2] else {}
-            if isinstance(metadata, str):
-                metadata = json.loads(metadata)
-            results.append({
-                "tender_number": row[0],
-                "document_path": row[1],
-                "metadata": metadata,
-            })
-        return results
-    finally:
-        conn.close()
+    os.makedirs(dest_dir, exist_ok=True)
+
+    with tarfile.open(archive_path, "r:gz") as tar:
+        tar.extractall("/tmp/repo_extract")
+
+    # Find the extracted directory (e.g., multi-agents-main/)
+    extracted_dirs = os.listdir("/tmp/repo_extract")
+    if not extracted_dirs:
+        raise RuntimeError("Archive extraction produced no directories")
+
+    repo_dir = os.path.join("/tmp/repo_extract", extracted_dirs[0], "documents")
+    if not os.path.isdir(repo_dir):
+        raise RuntimeError(f"No documents/ directory found in archive at {repo_dir}")
+
+    # Copy claims/ and tenders/ to dest_dir
+    for subdir in ["claims", "tenders"]:
+        src = os.path.join(repo_dir, subdir)
+        dst = os.path.join(dest_dir, subdir)
+        if os.path.isdir(src):
+            subprocess.run(["cp", "-r", src, dst], check=True)
+            pdf_count = len(glob.glob(os.path.join(dst, "*.pdf")))
+            logger.info(f"Extracted {pdf_count} PDFs to {dst}")
+
+    # Cleanup
+    os.remove(archive_path)
+    subprocess.run(["rm", "-rf", "/tmp/repo_extract"], check=False)
 
 
 # ============================================================================
@@ -223,43 +221,52 @@ async def upload_pdf_to_llamastack(filepath: str, purpose: str = "assistants") -
             return file_id
 
 
-async def upload_all_pdfs(claim_paths: list[str], tender_paths: list[str]):
-    """Upload all PDFs to LlamaStack and update DB with file IDs."""
+async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
+    """Upload all PDFs from documents_dir to LlamaStack and update DB with file IDs."""
     conn = get_pg_conn()
     conn.autocommit = True
     cur = conn.cursor()
 
+    claims_dir = os.path.join(documents_dir, "claims")
+    tenders_dir = os.path.join(documents_dir, "tenders")
+
+    claim_count = 0
+    tender_count = 0
+
     # Upload claims
-    for filepath in claim_paths:
-        filename = os.path.basename(filepath)
-        # Find matching document_path in DB
-        doc_path = f"claims/{filename}"
-        try:
-            file_id = await upload_pdf_to_llamastack(filepath)
-            cur.execute(
-                "UPDATE claims SET document_path = %s WHERE document_path = %s",
-                (file_id, doc_path),
-            )
-            logger.info(f"Claim {doc_path} -> {file_id}")
-        except Exception as e:
-            logger.error(f"Failed to upload {filepath}: {e}")
+    if os.path.isdir(claims_dir):
+        for filepath in sorted(glob.glob(os.path.join(claims_dir, "*.pdf"))):
+            filename = os.path.basename(filepath)
+            doc_path = f"claims/{filename}"
+            try:
+                file_id = await upload_pdf_to_llamastack(filepath)
+                cur.execute(
+                    "UPDATE claims SET document_path = %s WHERE document_path = %s",
+                    (file_id, doc_path),
+                )
+                claim_count += 1
+                logger.info(f"Claim {doc_path} -> {file_id}")
+            except Exception as e:
+                logger.error(f"Failed to upload {filepath}: {e}")
 
     # Upload tenders
-    for filepath in tender_paths:
-        filename = os.path.basename(filepath)
-        doc_path = f"tenders/{filename}"
-        try:
-            file_id = await upload_pdf_to_llamastack(filepath)
-            cur.execute(
-                "UPDATE tenders SET document_path = %s WHERE document_path = %s",
-                (file_id, doc_path),
-            )
-            logger.info(f"Tender {doc_path} -> {file_id}")
-        except Exception as e:
-            logger.error(f"Failed to upload {filepath}: {e}")
+    if os.path.isdir(tenders_dir):
+        for filepath in sorted(glob.glob(os.path.join(tenders_dir, "*.pdf"))):
+            filename = os.path.basename(filepath)
+            doc_path = f"tenders/{filename}"
+            try:
+                file_id = await upload_pdf_to_llamastack(filepath)
+                cur.execute(
+                    "UPDATE tenders SET document_path = %s WHERE document_path = %s",
+                    (file_id, doc_path),
+                )
+                tender_count += 1
+                logger.info(f"Tender {doc_path} -> {file_id}")
+            except Exception as e:
+                logger.error(f"Failed to upload {filepath}: {e}")
 
     conn.close()
-    logger.info(f"Uploaded {len(claim_paths)} claim PDFs and {len(tender_paths)} tender PDFs")
+    logger.info(f"Uploaded {claim_count} claim PDFs and {tender_count} tender PDFs to LlamaStack")
 
 
 # ============================================================================
@@ -452,29 +459,23 @@ async def main():
     logger.info("Step 3: Waiting for MCP servers...")
     await wait_for_mcp_servers()
 
-    # Step 4: Load data from DB
-    logger.info("Step 4: Loading data from DB...")
-    claims_data = load_claims_data()
-    tenders_data = load_tenders_data()
-    logger.info(f"Loaded {len(claims_data)} claims and {len(tenders_data)} tenders")
+    # Step 4: Download PDFs from GitHub (or use local mount)
+    logger.info("Step 4: Downloading PDFs...")
+    download_documents(DOCUMENTS_ARCHIVE_URL)
 
-    # Step 5: Generate PDFs
-    logger.info("Step 5: Generating PDFs...")
-    claim_paths, tender_paths = generate_all_pdfs(claims_data, tenders_data)
+    # Step 5: Upload to LlamaStack Files API
+    logger.info("Step 5: Uploading PDFs to LlamaStack Files API...")
+    await upload_all_pdfs_to_llamastack()
 
-    # Step 6: Upload to LlamaStack
-    logger.info("Step 6: Uploading PDFs to LlamaStack...")
-    await upload_all_pdfs(claim_paths, tender_paths)
-
-    # Step 7: Process 10 claims (OCR + decision)
-    logger.info("Step 7: Processing 10 claims (OCR + decision)...")
+    # Step 6: Process 10 claims (OCR + decision)
+    logger.info("Step 6: Processing 10 claims (OCR + decision)...")
     await process_claims(CLAIM_DECISIONS)
 
-    # Step 8: Process 10 tenders (OCR + decision)
-    logger.info("Step 8: Processing 10 tenders (OCR + decision)...")
+    # Step 7: Process 10 tenders (OCR + decision)
+    logger.info("Step 7: Processing 10 tenders (OCR + decision)...")
     await process_tenders(TENDER_DECISIONS)
 
-    # Step 9: Summary
+    # Step 8: Summary
     total_elapsed = time.time() - total_start
     logger.info("=" * 60)
     logger.info(f"DATA INITIALIZATION COMPLETED in {total_elapsed:.0f}s")

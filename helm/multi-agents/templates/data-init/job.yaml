@@ -34,6 +34,8 @@ spec:
               value: "http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
             - name: TENDERS_SERVER_URL
               value: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
+            - name: DOCUMENTS_ARCHIVE_URL
+              value: {{ .Values.dataInit.documentsArchiveUrl | quote }}
             {{- include "postgres.env" . | nindent 12 }}
           resources:
             requests:

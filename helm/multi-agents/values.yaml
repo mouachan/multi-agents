@@ -120,7 +120,7 @@ llamastack:
     url: "REPLACE_WITH_LITEMAAS_URL"
     embeddingUrl: "REPLACE_WITH_LITEMAAS_EMBEDDING_URL"
     defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
-    embeddingModel: "nomic-embed-text"
+    embeddingModel: "litemaas-embedding/nomic-embed-text-v1.5"
 
   # Model configuration (legacy, kept for reference)
   model:
@@ -402,11 +402,6 @@ minio:
     claims: claims
     tenders: tenders
 
-  # Seed documents from GitHub (downloaded and uploaded to MinIO on install)
-  seedDocuments:
-    enabled: true
-    repoArchiveUrl: ""
-
   # Persistence
   persistence:
     enabled: true
@@ -431,6 +426,7 @@ dataInit:
   image:
     repository: data-init
     tag: v1.0
+  documentsArchiveUrl: ""
   backoffLimit: 3
   ttlSecondsAfterFinished: 3600
   resources:
