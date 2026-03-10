@@ -599,9 +599,9 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v4.1.0
+### Current Version: v1.0
 
-**What's new in v4.1.0**:
+**What's new in v1.0**:
 - RHOAI 3.3 / llama-stack 0.4.x full compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
 - Multi-namespace Helm deployment support (deploy multiple instances on the same cluster)
 - Route timeout 300s on frontend and backend (prevents gateway timeouts during agent processing)
