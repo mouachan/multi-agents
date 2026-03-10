@@ -255,7 +255,7 @@ frontend/
 | **LLM Inference** | LiteMaaS (Model as a Service) | Mistral-Small-24B (default) / Llama-4-Scout-17B (backup) |
 | **Vision OCR** | Qwen2.5-VL-7B via LiteMaaS | PDF page images -> structured text extraction |
 | **Embeddings** | nomic-embed-text-v1.5 via LiteMaaS | 768-dim vectors for similarity search |
-| **AI Orchestration** | LlamaStack (Red Hat) | ReAct agent, MCP tool routing, Responses API |
+| **AI Orchestration** | LlamaStack RHOAI 3.3 (llama-stack 0.4.x) | ReAct agent, MCP tool routing, Responses API |
 | **Backend** | Python 3.12 + FastAPI | REST API + SSE streaming |
 | **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
 | **Database** | PostgreSQL 16 + pgvector (HNSW) | Claims, tenders, vectors, chat sessions |
@@ -351,14 +351,47 @@ podman compose up --build
 
 ```bash
 # Copy and edit values with your LiteMaaS endpoints and credentials
-cp helm/values-local.yaml helm/values-mydeployment.yaml
-# Edit helm/values-mydeployment.yaml
+cp helm/multi-agents/values-pauline.yaml helm/multi-agents/values-mydeployment.yaml
+# Edit helm/multi-agents/values-mydeployment.yaml
 
 helm install multi-agents helm/multi-agents \
-  -f helm/values-mydeployment.yaml \
+  -f helm/multi-agents/values-mydeployment.yaml \
   -n multi-agent \
   --create-namespace
 ```
+
+### Multi-namespace deployment
+
+You can deploy multiple independent instances on the same cluster by using different namespaces and value files:
+
+```bash
+# Instance 1
+helm install multi-agents helm/multi-agents \
+  -f helm/multi-agents/values-multi-agents.yaml \
+  -n multi-agent --create-namespace
+
+# Instance 2 (different namespace, different LiteMaaS tokens)
+helm install p-multi-agents helm/multi-agents \
+  -f helm/multi-agents/values-pauline.yaml \
+  -n p-multi-agent --create-namespace
+```
+
+Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
+
+### RHOAI 3.3 / LlamaStack 0.4.x compatibility
+
+The Helm chart is compatible with **RHOAI 3.3** which ships **llama-stack 0.4.2.1+rhai0**. This version introduced several breaking changes from earlier llama-stack releases:
+
+| Change | Before (llama-stack 0.2.x) | After (llama-stack 0.4.x / RHOAI 3.3) |
+|--------|---------------------------|----------------------------------------|
+| ConfigMap key | `run.yaml` | `config.yaml` (operator mounts at `/etc/llama-stack/config.yaml`) |
+| vLLM provider URL field | `url` | `base_url` (in `VLLMInferenceAdapterConfig`) |
+| Config variable substitution | `${env.XXX}` works everywhere | `${env.XXX}` works for secrets but URLs should be hardcoded via Helm template values |
+| Embedding model ID | Hardcoded in config | Templated from `values.yaml` (must match the LiteLLM proxy model name exactly) |
+
+The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of these automatically. LiteMaaS URLs are injected via Helm template values (`.Values.llamastack.litemaas.url` / `.embeddingUrl`), while secrets (API keys, DB passwords) use `${env.XXX}` variable substitution from the LlamaStackDistribution CRD environment variables.
+
+**Important**: The embedding `provider_model_id` must match the model name registered on the LiteLLM proxy exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This is configurable via `llamastack.embedding.providerModelId` in values.
 
 ### Verify
 
@@ -400,7 +433,21 @@ Models are configured in `llamastack/run-litemaas.yaml` (local) or via Helm valu
 | `litemaas/Mistral-Small-24B-W8A8` | Default LLM (reasoning + French) | LiteMaaS |
 | `litemaas/Llama-4-Scout-17B-16E-W4A16` | Backup LLM (native tool calling) | LiteMaaS |
 | `litemaas/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
-| `litemaas-embedding/nomic-embed-text-v1.5` | Embeddings (768-dim) | LiteMaaS |
+| `litemaas-embedding/nomic-embed-text-v1-5` | Embeddings (768-dim) | LiteMaaS |
+
+Model IDs are fully configurable via Helm values:
+
+```yaml
+llamastack:
+  litemaas:
+    url: "https://your-litemaas-llm-endpoint/v1"
+    embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
+    defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
+    embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+  embedding:
+    dimension: 768
+    providerModelId: "nomic-embed-text-v1-5"  # Must match LiteLLM proxy model name exactly
+```
 
 ### Agent Prompts
 
@@ -491,9 +538,30 @@ curl http://localhost:8321/v1/health
 
 # Check LlamaStack logs for model connection errors
 podman logs multi-agents-llamastack
+
+# On OpenShift
+oc logs -l app=llama-stack -n multi-agent
 ```
 
 **Solution**: Verify `LITEMAAS_URL` and `LITEMAAS_API_KEY` environment variables are set correctly.
+
+### LlamaStack CrashLoopBackOff on RHOAI 3.3
+
+Common causes and fixes:
+
+1. **"Could not resolve config"** — The configmap key must be `config.yaml` (not `run.yaml`). The RHOAI operator mounts the configmap at `/etc/llama-stack/` and the entrypoint expects `config.yaml`.
+
+2. **"You must provide a URL in config.yaml"** — llama-stack 0.4.x uses `base_url` instead of `url` in the vLLM provider config. Check `templates/llamastack/configmap.yaml`.
+
+3. **"Object already exists"** — Model already registered in PostgreSQL kvstore from a previous run. Clean up:
+   ```bash
+   oc exec postgresql-0 -n multi-agent -- \
+     psql -U multi_agent_user -d multi_agent_db -c \
+     "DELETE FROM llamastack_kvstore WHERE key LIKE '%model%';"
+   ```
+   Then restart the LlamaStack pod.
+
+4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens). Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
 
 ### RAG Returns No Similar Claims
 
@@ -531,7 +599,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v4.0.0
+### Current Version: v4.1.0
+
+**What's new in v4.1.0**:
+- RHOAI 3.3 / llama-stack 0.4.x full compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
+- Multi-namespace Helm deployment support (deploy multiple instances on the same cluster)
+- Route timeout 300s on frontend and backend (prevents gateway timeouts during agent processing)
+- Frontend tenders: i18n labels (FR/EN), decision rendering with Go/No-Go badges, search on metadata fields
+- Configurable embedding model ID and dimension via Helm values (no more hardcoded model names)
+- LiteMaaS URLs injected via Helm template values instead of `${env.}` substitution (more reliable)
 
 **Working**:
 - End-to-end claim processing via multi-agent chat (4 parallel tool calls)
@@ -551,7 +627,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Token consumption tracking (per-message and per-session)
 - Bilingual support FR/EN
 - Local development with docker-compose / podman-compose
-- Helm deployment on OpenShift
+- Helm deployment on OpenShift (RHOAI 3.3 compatible)
 
 **In Progress**:
 - OpenShift OAuth authentication

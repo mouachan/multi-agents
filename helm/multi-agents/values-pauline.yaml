@@ -1,0 +1,149 @@
+---
+# =============================================================================
+# values-pauline.yaml
+# Deploiement multi-agents pour Pauline dans le namespace p-multi-agent
+# Utilise LiteMaaS (pas de GPU on-cluster)
+# =============================================================================
+
+global:
+  namespace: p-multi-agent
+  clusterDomain: "apps.cluster-7gtng.7gtng.sandbox1630.opentlc.com"
+  imageRegistry: quay.io/mouachan/multi-agents
+
+# =============================================================================
+# MODELES GPU : NE PAS DEPLOYER - utilise LiteMaaS
+# =============================================================================
+inference:
+  enabled: false
+
+embedding:
+  enabled: false
+
+# =============================================================================
+# PostgreSQL Database
+# =============================================================================
+postgresql:
+  enabled: true
+  image:
+    repository: docker.io/pgvector/pgvector
+    tag: pg15
+
+# =============================================================================
+# LlamaStack
+# =============================================================================
+llamastack:
+  enabled: true
+  litemaas:
+    url: "https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1"
+    embeddingUrl: "https://litellm-prod.apps.maas.redhatworkshops.io/v1"
+    defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
+    embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+  embedding:
+    dimension: 768
+    providerModelId: "nomic-embed-text-v1-5"
+
+# =============================================================================
+# Backend API
+# =============================================================================
+backend:
+  enabled: true
+  image:
+    repository: backend
+    tag: v1.0
+  pvc:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+  seedDataUrl: "https://raw.githubusercontent.com/mouachan/multi-agents/main/database/seed_data/001_seed_data.sql"
+
+# =============================================================================
+# Frontend
+# =============================================================================
+frontend:
+  enabled: true
+  image:
+    repository: frontend
+    tag: v2.1
+
+# =============================================================================
+# MCP Servers
+# =============================================================================
+mcp:
+  ocr:
+    enabled: true
+    image:
+      repository: ocr-server
+      tag: v1.0
+    env:
+      OCR_LANGUAGES: "en,fr"
+      OCR_GPU_ENABLED: "false"
+      LOG_LEVEL: "INFO"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+  rag:
+    enabled: true
+    image:
+      repository: rag-server
+      tag: v1.0
+  claims:
+    enabled: true
+    image:
+      repository: claims-server
+      tag: v1.0
+  tenders:
+    enabled: true
+    image:
+      repository: tenders-server
+      tag: v1.0
+
+# =============================================================================
+# Guardrails (TrustyAI) - sans Llama Guard (pas de GPU)
+# =============================================================================
+guardrails:
+  enabled: true
+  chatGeneration:
+    hostname: claims-llamastack-service.p-multi-agent.svc.cluster.local
+    port: 8321
+  detectors:
+    llamaGuard:
+      enabled: false
+
+# =============================================================================
+# MinIO (S3-compatible object storage)
+# =============================================================================
+minio:
+  enabled: true
+  seedDocuments:
+    enabled: true
+    repoArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
+
+# =============================================================================
+# Data Initialization
+# =============================================================================
+dataInit:
+  enabled: true
+  image:
+    repository: data-init
+    tag: v1.0
+  documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
+
+# =============================================================================
+# Data Science Pipelines - pas necessaire pour la demo
+# =============================================================================
+dataSciencePipelines:
+  enabled: false
+
+# =============================================================================
+# Secrets
+# =============================================================================
+secrets:
+  postgresPassword: "multi_agents_pass"
+  postgresAdminPassword: "multi_agents_pass"
+  llamastackPassword: "multi_agents_pass"
+  litemaasApiKey: "REMOVED_SECRET"
+  litemaasEmbeddingApiKey: "REMOVED_SECRET"
+  create: true
