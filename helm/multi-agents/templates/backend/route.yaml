@@ -5,6 +5,7 @@ kind: Route
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+    haproxy.router.openshift.io/timeout: 300s
   name: backend
   namespace: {{ include "multi-agents.namespace" . }}
   labels:

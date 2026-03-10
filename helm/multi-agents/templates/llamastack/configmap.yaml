@@ -10,7 +10,7 @@ metadata:
   name: llamastack-rhoai
   namespace: {{ include "multi-agents.namespace" . }}
 data:
-  run.yaml: |
+  config.yaml: |
     version: 2
     image_name: rh-dev
 
@@ -31,14 +31,15 @@ data:
       - provider_id: litemaas
         provider_type: remote::vllm
         config:
-          url: ${env.LITEMAAS_URL}
+          # RHOAI 3.3 / llama-stack 0.4.x uses base_url (not url)
+          base_url: {{ .Values.llamastack.litemaas.url | quote }}
           max_tokens: 4096
           api_token: ${env.LITEMAAS_API_KEY}
           tls_verify: false
       - provider_id: litemaas-embedding
         provider_type: remote::vllm
         config:
-          url: ${env.LITEMAAS_EMBEDDING_URL}
+          base_url: {{ .Values.llamastack.litemaas.embeddingUrl | quote }}
           max_tokens: 512
           api_token: ${env.LITEMAAS_EMBEDDING_API_KEY}
           tls_verify: false
@@ -196,10 +197,10 @@ data:
         provider_model_id: Qwen2.5-VL-7B-Instruct
         model_type: llm
       - metadata:
-          embedding_dimension: 768
-        model_id: nomic-embed-text
+          embedding_dimension: {{ .Values.llamastack.embedding.dimension | default 768 }}
+        model_id: {{ .Values.llamastack.litemaas.embeddingModel }}
         provider_id: litemaas-embedding
-        provider_model_id: nomic-embed-text-v1.5
+        provider_model_id: {{ .Values.llamastack.embedding.providerModelId | default "nomic-embed-text-v1.5" }}
         model_type: embedding
 
       shields:

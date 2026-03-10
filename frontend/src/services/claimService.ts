@@ -29,7 +29,7 @@ export class ClaimService {
     let logs: ProcessingStepLog[] = []
 
     // Load logs if claim has been processed
-    if (['processing', 'completed', 'manual_review', 'failed'].includes(claim.status)) {
+    if (['processing', 'completed', 'manual_review', 'failed', 'denied'].includes(claim.status)) {
       try {
         const logsData = await claimsApi.getClaimLogs(claimId)
         logs = logsData.logs || []
@@ -39,7 +39,7 @@ export class ClaimService {
     }
 
     // Load decision if processed
-    if (['completed', 'manual_review', 'failed'].includes(claim.status)) {
+    if (['completed', 'manual_review', 'failed', 'denied'].includes(claim.status)) {
       try {
         decision = await claimsApi.getClaimDecision(claimId)
       } catch (err) {

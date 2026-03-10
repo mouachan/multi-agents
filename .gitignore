@@ -95,6 +95,7 @@ REACTAGENT_SDK_TESTING.md
 # Build artifacts
 BUILD.md
 deploy.sh
+build-all.sh
 
 # Documentation READMEs (local only)
 backend/mcp_servers/*/README.md

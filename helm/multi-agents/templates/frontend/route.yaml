@@ -8,7 +8,7 @@ metadata:
     # processing claims always takes over 30s. usually less than 50s
     # if we don't want to end up with the "failed to start processing claim" page, Route
     # timeout should allow for a response to come back. 120s is "large". fail-safe.
-    haproxy.router.openshift.io/timeout: 120s
+    haproxy.router.openshift.io/timeout: 300s
   name: frontend
   namespace: {{ include "multi-agents.namespace" . }}
   labels:

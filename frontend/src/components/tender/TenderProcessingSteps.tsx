@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Tender, TenderStatusResponse, ProcessingStepLog } from '../../types/tender'
 import { useTranslation } from '../../i18n/LanguageContext'
 
@@ -233,6 +234,59 @@ function CapabilitiesResult({ data, t }: { data: Record<string, any>; t: (key: s
   )
 }
 
+// ---- Decision Rendering ----
+function DecisionResult({ data, t }: { data: Record<string, any>; t: (key: string) => string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const decision = (data.decision || data.recommendation || '').toUpperCase()
+  const confidence = data.confidence ?? data.confidence_score
+  const reasoning = data.reasoning || data.justification || ''
+
+  const getBadgeStyle = (d: string) => {
+    if (d.includes('GO') && !d.includes('NO')) return 'bg-green-100 text-green-800 border-green-300'
+    if (d.includes('NO')) return 'bg-red-100 text-red-800 border-red-300'
+    return 'bg-amber-100 text-amber-800 border-amber-300'
+  }
+
+  const getBadgeLabel = (d: string) => {
+    if (d.includes('GO') && !d.includes('NO')) return 'GO'
+    if (d.includes('NO')) return 'NO-GO'
+    return 'A APPROFONDIR'
+  }
+
+  return (
+    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200 space-y-3">
+      <div className="flex items-center gap-3">
+        <span className={`text-sm font-bold px-3 py-1 rounded-full border ${getBadgeStyle(decision)}`}>
+          {getBadgeLabel(decision)}
+        </span>
+        {confidence != null && (
+          <span className="text-sm text-gray-700">
+            {t('tenderDecision.confidence')} : <strong>{typeof confidence === 'number' && confidence <= 1 ? `${(confidence * 100).toFixed(0)}%` : `${confidence}%`}</strong>
+          </span>
+        )}
+      </div>
+
+      {reasoning && (
+        <div>
+          <p className="text-xs font-semibold text-gray-700 mb-1">{t('tenderDecision.reasoning')}</p>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">
+            {expanded || reasoning.length <= 300 ? reasoning : `${reasoning.substring(0, 300)}...`}
+          </p>
+          {reasoning.length > 300 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-indigo-600 hover:text-indigo-800 mt-1 font-medium"
+            >
+              {expanded ? '- ' : '+ '}{expanded ? t('tenderSteps.data') : t('tenderSteps.data')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---- Step Content Router ----
 function StepContent({ step, t }: { step: ProcessingStepLog; t: (key: string) => string }) {
   if (!step.output_data) return null
@@ -246,6 +300,8 @@ function StepContent({ step, t }: { step: ProcessingStepLog; t: (key: string) =>
       return <HistoricalResult data={step.output_data} t={t} />
     case 'retrieve_capabilities':
       return <CapabilitiesResult data={step.output_data} t={t} />
+    case 'decision':
+      return <DecisionResult data={step.output_data} t={t} />
     default:
       return (
         <details className="bg-gray-50 p-3 rounded border border-gray-200">
@@ -297,6 +353,7 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
     retrieve_similar_references: t('tenderSteps.similarReferences'),
     retrieve_historical_tenders: t('tenderSteps.historicalTenders'),
     retrieve_capabilities: t('tenderSteps.internalCapabilities'),
+    decision: t('tenderDecision.title'),
   }
 
   if (!['processing', 'completed', 'manual_review', 'failed'].includes(tender.status) && logs.length === 0) {
