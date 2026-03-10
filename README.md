@@ -382,7 +382,7 @@ Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, and route
 
 The Helm chart is compatible with **RHOAI 3.3** which ships **llama-stack 0.4.2.1+rhai0**. This version introduced several breaking changes from earlier llama-stack releases:
 
-| Change | Before (llama-stack 0.2.x) | After (llama-stack 0.4.x / RHOAI 3.3) |
+| Change | Before (llama-stack 0.3.5) | After (llama-stack 0.4.x / RHOAI 3.3) |
 |--------|---------------------------|----------------------------------------|
 | ConfigMap key | `run.yaml` | `config.yaml` (operator mounts at `/etc/llama-stack/config.yaml`) |
 | vLLM provider URL field | `url` | `base_url` (in `VLLMInferenceAdapterConfig`) |
