@@ -18,7 +18,7 @@ providers:
   - provider_id: litemaas
     provider_type: remote::vllm
     config:
-      url: ${env.LITEMAAS_URL:=https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1}
+      url: ${env.LITEMAAS_URL:=https://your-litemaas-llm-endpoint.example.com/v1}
       max_tokens: 4096
       api_token: ${env.LITEMAAS_API_KEY:=sk-change-me}
       tls_verify: false
@@ -26,7 +26,7 @@ providers:
   - provider_id: litemaas-embedding
     provider_type: remote::vllm
     config:
-      url: ${env.LITEMAAS_EMBEDDING_URL:=https://nomic-embed-text-v1-5-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1}
+      url: ${env.LITEMAAS_EMBEDDING_URL:=https://your-litemaas-embedding-endpoint.example.com/v1}
       max_tokens: 512
       api_token: ${env.LITEMAAS_EMBEDDING_API_KEY:=sk-change-me}
       tls_verify: false
