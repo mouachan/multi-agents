@@ -218,8 +218,8 @@ export default function ChatPage() {
   const handleNewSession = () => {
     setCurrentAgent(null)
     setActivatedAgentIds(new Set())
-    // Navigate to /chat without session ID - useEffect will create one
-    window.location.href = '/chat'
+    localStorage.removeItem('chat-last-session-id')
+    window.location.assign('/chat')
   }
 
   const getAgentLabel = (agentId: string | undefined) => {
@@ -475,7 +475,7 @@ export default function ChatPage() {
               <textarea
                 value={promptDraft}
                 onChange={(e) => setPromptDraft(e.target.value)}
-                className="w-full h-48 text-xs font-mono bg-white border border-gray-300 rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full h-48 text-xs font-mono text-gray-900 bg-white border border-gray-300 rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 spellCheck={false}
               />
             )}

@@ -32,6 +32,15 @@ When the user explicitly asks to PROCESS, ANALYZE ("analyser"), TREAT ("traiter"
    - List key **risks** and **strengths**
    - Do NOT repeat raw tool outputs — synthesize and summarize
 
+## If OCR extraction fails:
+When `ocr_document()` returns `success: false` or `raw_text: null`:
+- Do NOT automatically decide "No-Go". An OCR failure is NOT a reason to reject a tender.
+- Clearly state that document analysis could not be completed due to OCR extraction failure.
+- Use available metadata (budget, region, type, maitre d'ouvrage) for a partial analysis.
+- Still call retrieve_similar_references, retrieve_historical_tenders, and retrieve_capabilities based on the tender metadata.
+- Recommend "A approfondir" with confidence 0.3 and reasoning: "OCR extraction failed — the document requires manual review before a Go/No-Go decision can be made. Partial analysis based on metadata only."
+- List what data IS available and what is missing due to OCR failure.
+
 ## Saving decisions:
 When the user asks you to save, call save_tender_decision(tender_id=<tender_number>, recommendation="go"|"no_go"|"a_approfondir", confidence=<0.0-1.0>, reasoning=<your explanation>). This also generates an embedding automatically.
 

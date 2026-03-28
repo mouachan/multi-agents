@@ -24,7 +24,7 @@ export default function ClaimHeader({ claim, logs = [] }: ClaimHeaderProps) {
   const [showPdf, setShowPdf] = useState(false)
 
   const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-    pending: { label: t('common.pending'), bg: 'bg-gray-100', text: 'text-gray-700' },
+    pending: { label: t('common.pending'), bg: 'bg-yellow-100', text: 'text-yellow-700' },
     processing: { label: t('common.processing'), bg: 'bg-blue-100', text: 'text-blue-700' },
     completed: { label: t('common.completed'), bg: 'bg-green-100', text: 'text-green-700' },
     denied: { label: t('common.denied'), bg: 'bg-red-100', text: 'text-red-700' },

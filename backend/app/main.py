@@ -62,8 +62,8 @@ def register_agents():
 
     AgentRegistry.register(AgentDefinition(
         id="tenders",
-        name="Analyse Appels d'Offres",
-        description="Analyse automatisee d'appels d'offres BTP avec references, historique et capacites",
+        name="Tender Analysis",
+        description="Automated analysis of construction tenders with references, history and capabilities",
         entity_type="tender",
         service_class=TenderService,
         instructions=AO_PROCESSING_AGENT_INSTRUCTIONS,

@@ -203,20 +203,35 @@ MEDICAL_SCENARIOS = [
      "doctor": "Dr. Andrew Lee, MD", "npi": "5566778899", "cost": 1400},
 ]
 
-NAMES = [
-    "Michael Brown", "Sarah Johnson", "David Garcia", "Jennifer Martinez",
-    "Robert Wilson", "Linda Anderson", "James Taylor", "Patricia Thomas",
-    "John Moore", "Mary Jackson", "William White", "Barbara Harris",
-    "Richard Martin", "Susan Thompson", "Charles Lee",
+# Names matching seed data (001_seed_data.sql) user assignments per claim type
+AUTO_NAMES = [
+    "Marie Leroy", "Jean Moreau", "Isabelle Durand", "Antoine Rousseau",
+    "Nathalie Thomas", "Catherine Richard", "Valerie Michel", "Sebastien Roux",
+    "Sandrine Lopez", "Cecile Andre", "Audrey Chevalier",
+    "Pierre Dupont", "Sophie Bernard", "Thomas Petit", "Claire Fontaine",
+]
+
+MEDICAL_NAMES = [
+    "Pierre Dupont", "Thomas Petit", "Claire Fontaine", "Philippe Garcia",
+    "David Simon", "Laurent Martinez", "Benoit Giraud", "Delphine Blanc",
+    "Marie Leroy", "Jean Moreau", "Sophie Bernard", "Isabelle Durand",
+    "Nicolas Lambert", "Antoine Rousseau", "Julie Martin",
+]
+
+HOME_NAMES = [
+    "Sophie Bernard", "Nicolas Lambert", "Julie Martin", "Francois Robert",
+    "Arnaud Lefebvre", "Emilie Girard", "Christophe Muller", "Guillaume Mercier",
+    "Pierre Dupont", "Marie Leroy", "Jean Moreau", "Isabelle Durand",
+    "Claire Fontaine", "Antoine Rousseau", "Nathalie Thomas",
 ]
 
 ADDRESSES = [
-    "123 Main St, Chicago, IL 60601",
-    "456 Oak Ave, Springfield, IL 62701",
-    "789 Pine St, Naperville, IL 60540",
-    "321 Maple Dr, Peoria, IL 61602",
-    "654 Cedar Ln, Aurora, IL 60505",
-    "987 Birch Rd, Joliet, IL 60432",
+    "12 rue de la Paix, 75002 Paris",
+    "45 avenue Victor Hugo, 69006 Lyon",
+    "8 boulevard Haussmann, 75009 Paris",
+    "23 rue Garibaldi, 69003 Lyon",
+    "156 route de Vannes, 44000 Nantes",
+    "3 place Bellecour, 69002 Lyon",
 ]
 
 
@@ -615,7 +630,7 @@ def main():
     print("Auto Insurance Claims (20):")
     for i in range(1, 21):
         claim_number = f"CLM-2024-AUTO-{i:03d}"
-        name = NAMES[(i - 1) % len(NAMES)]
+        name = AUTO_NAMES[(i - 1) % len(AUTO_NAMES)]
         address = ADDRESSES[(i - 1) % len(ADDRESSES)]
         date_incident = base_date + timedelta(days=random.randint(0, 120))
         pdf_path = os.path.join(output_dir, f"claim_auto_{i:03d}.pdf")
@@ -628,7 +643,7 @@ def main():
     print("\nHome Insurance Claims (15):")
     for i in range(1, 16):
         claim_number = f"CLM-2024-HOME-{i:03d}"
-        name = NAMES[(i - 1) % len(NAMES)]
+        name = HOME_NAMES[(i - 1) % len(HOME_NAMES)]
         address = ADDRESSES[(i - 1) % len(ADDRESSES)]
         date_loss = base_date + timedelta(days=random.randint(0, 120))
         pdf_path = os.path.join(output_dir, f"claim_home_{i:03d}.pdf")
@@ -641,7 +656,7 @@ def main():
     print("\nMedical Insurance Claims (15):")
     for i in range(1, 16):
         claim_number = f"CLM-2024-MED-{i:03d}"
-        name = NAMES[(i - 1) % len(NAMES)]
+        name = MEDICAL_NAMES[(i - 1) % len(MEDICAL_NAMES)]
         address = ADDRESSES[(i - 1) % len(ADDRESSES)]
         date_service = base_date + timedelta(days=random.randint(0, 120))
         pdf_path = os.path.join(output_dir, f"claim_medical_{i:03d}.pdf")
