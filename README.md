@@ -200,21 +200,33 @@ backend/
 ├── app/
 │   ├── api/                  # Thin HTTP layer (routing, validation, schemas)
 │   │   ├── claims.py         # Claims REST endpoints
+│   │   ├── schemas.py        # Claims Pydantic schemas
 │   │   ├── tenders.py        # Tenders REST endpoints
+│   │   ├── ao_schemas.py     # Tenders Pydantic schemas
 │   │   ├── orchestrator.py   # Multi-agent chat/orchestrator endpoints
+│   │   ├── orchestrator_schemas.py  # Orchestrator Pydantic schemas
+│   │   ├── documents.py      # Document upload/download endpoints
 │   │   ├── hitl.py           # Human-in-the-Loop review endpoints
+│   │   ├── a2a.py            # Agent-to-Agent protocol endpoints
+│   │   ├── a2a_schemas.py    # A2A Pydantic schemas
 │   │   └── admin.py          # Admin panel (database reset, stats)
 │   ├── services/
 │   │   ├── claim_service.py              # Claims orchestration
 │   │   ├── tender_service.py             # Tenders orchestration
+│   │   ├── document_storage.py           # Document storage (MinIO/S3)
 │   │   ├── agents/                       # Multi-agent layer
 │   │   │   ├── base_agent_service.py     # Common agent pattern
 │   │   │   ├── orchestrator_service.py   # Intent routing & chat sessions
-│   │   │   └── registry.py              # Dynamic agent registry
+│   │   │   ├── registry.py              # Dynamic agent registry
+│   │   │   └── conversation_utils.py    # Chat conversation helpers
 │   │   ├── agent/                        # Shared AI components
 │   │   │   ├── responses_orchestrator.py # LlamaStack Responses API client
-│   │   │   └── response_parser.py        # Extract structured decisions
+│   │   │   ├── response_parser.py        # Extract structured decisions
+│   │   │   ├── context_builder.py        # Entity → markdown context formatter
+│   │   │   └── reviewer.py              # HITL review logic
 │   │   └── pii/                          # PII detection & redaction
+│   │       ├── pii_service.py            # PII detection service
+│   │       └── redactor.py               # Text redaction utilities
 │   ├── models/               # Database ORM (claims, tenders, conversations)
 │   └── llamastack/           # Prompts & integration config
 │       ├── prompts.py              # Claims agent prompts
@@ -229,7 +241,9 @@ backend/
 ├── scripts/
 │   ├── init_data.py          # Data initialization (download, upload, OCR, decisions)
 │   ├── init_data/            # Pre-defined decisions
-│   └── utils/                # Standalone utilities (PDF generator)
+│   ├── generate_claim_pdfs.py    # Generate claim PDF test data
+│   ├── generate_tender_pdfs.py   # Generate tender PDF test data
+│   └── seed_database.py         # Database seeding utility
 frontend/
 ├── src/
 │   ├── pages/
@@ -238,12 +252,30 @@ frontend/
 │   │   ├── ClaimsListPage.tsx    # Claims list with filters & search
 │   │   ├── ClaimDetailPage.tsx   # Claim detail with processing steps
 │   │   ├── TendersListPage.tsx   # Tenders list & filtering
-│   │   └── TenderDetailPage.tsx  # Tender detail with processing steps
+│   │   ├── TenderDetailPage.tsx  # Tender detail with processing steps
+│   │   └── AdminPage.tsx         # Admin panel (reset, stats)
 │   ├── components/
-│   │   ├── chat/                 # Chat UI (messages, tool calls, tokens)
-│   │   └── claim/                # ClaimHeader, ProcessingSteps, StepOutputDisplay
+│   │   ├── Layout.tsx            # App layout with navigation
+│   │   ├── ReviewChatPanel.tsx   # HITL review chat panel
+│   │   ├── chat/                 # Chat UI (messages, agent graph, tool calls)
+│   │   ├── claim/                # ClaimHeader, ClaimDecision, ProcessingSteps
+│   │   ├── tender/               # TenderHeader, TenderDecision, TenderProcessingSteps
+│   │   └── common/               # Shared components (AgentCard, PIIBadge)
 │   ├── hooks/
-│   │   └── useChat.ts            # Chat session management + SSE streaming
+│   │   ├── useChat.ts            # Chat session management + SSE streaming
+│   │   ├── useAgents.ts          # Agent registry hook
+│   │   ├── useClaim.ts           # Claim data fetching
+│   │   ├── useClaimPolling.ts    # Claim status polling
+│   │   ├── useTender.ts          # Tender data fetching
+│   │   ├── useTenderPolling.ts   # Tender status polling
+│   │   └── useToolDisplay.ts     # Tool call display formatting
+│   ├── services/               # API clients
+│   │   ├── api.ts                # Base axios instance
+│   │   ├── claimService.ts       # Claims API client
+│   │   ├── orchestratorService.ts # Orchestrator API client
+│   │   ├── tenderApi.ts          # Tenders API client
+│   │   ├── tenderService.ts      # Tender business logic
+│   │   └── reviewService.ts      # HITL review API client
 │   └── i18n/                     # Internationalization FR/EN
 ```
 
