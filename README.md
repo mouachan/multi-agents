@@ -10,6 +10,7 @@ An intelligent multi-agent decision platform powered by AI agents, demonstrating
 
 - [Business Overview](#business-overview)
 - [Architecture](#architecture)
+- [Backend Architecture](docs/backend-architecture.md) — Processing flows, modular design, and how to add a new agent
 - [Technology Stack](#technology-stack)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)

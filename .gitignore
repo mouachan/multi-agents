@@ -100,6 +100,7 @@ build-all.sh
 # Documentation READMEs (local only)
 backend/mcp_servers/*/README.md
 docs/*.md
+!docs/backend-architecture.md
 openshift/llama-32-3b-instruct/README.md
 openshift/README-OPENSHIFT-AI.md
 
