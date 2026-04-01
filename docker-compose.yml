@@ -79,6 +79,12 @@ services:
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
       S3_BUCKET_CLAIMS: claims
       S3_BUCKET_TENDERS: tenders
+      # MLflow Tracing (disabled by default for local dev)
+      MLFLOW_TRACING_ENABLED: "false"
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://localhost:5000}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-multi-agents}
+      # Kagenti (OpenShift only, disabled for local dev)
+      KAGENTI_ENABLED: "false"
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
     ports:
       - "8000:8000"

@@ -122,6 +122,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
+    # MLflow Tracing (observability)
+    mlflow_tracing_enabled: bool = False
+    mlflow_tracking_uri: str = "http://localhost:5000"
+    mlflow_experiment_name: str = "multi-agents"
+
+    # Kagenti (agent governance -- OpenShift only)
+    kagenti_enabled: bool = False
+    kagenti_mcp_gateway_url: str = ""
+
     # Monitoring
     enable_metrics: bool = True
     metrics_port: int = 9090

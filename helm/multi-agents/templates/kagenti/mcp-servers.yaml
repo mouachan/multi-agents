@@ -1,0 +1,58 @@
+{{- if and .Values.kagenti.enabled .Values.kagenti.mcpGateway.registerServers }}
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: MCPServer
+metadata:
+  name: ocr-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: ocr-server
+spec:
+  name: "OCR Server"
+  description: "Document OCR extraction service"
+  url: "http://ocr-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.mcp.ocr.service.port }}/sse"
+  transport: sse
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: MCPServer
+metadata:
+  name: rag-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: rag-server
+spec:
+  name: "RAG Server"
+  description: "Retrieval-Augmented Generation service for semantic search"
+  url: "http://rag-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.mcp.rag.service.port }}/sse"
+  transport: sse
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: MCPServer
+metadata:
+  name: claims-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: claims-server
+spec:
+  name: "Claims Server"
+  description: "Insurance claims CRUD operations"
+  url: "http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.mcp.claims.service.port }}/sse"
+  transport: sse
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: MCPServer
+metadata:
+  name: tenders-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: tenders-server
+spec:
+  name: "Tenders Server"
+  description: "Construction tenders CRUD operations"
+  url: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.mcp.tenders.service.port }}/sse"
+  transport: sse
+{{- end }}

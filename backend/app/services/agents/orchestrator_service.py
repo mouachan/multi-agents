@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.tracing import trace, enrich_span
 from app.llamastack.orchestrator_prompts import (
     CHAT_AGENT_WRAPPER,
     LANGUAGE_RULE_TEMPLATE,
@@ -110,6 +111,7 @@ class OrchestratorService:
             "welcome_message": welcome,
         }
 
+    @trace("orchestrator_process_message", span_type="AGENT")
     async def process_message(
         self,
         db: AsyncSession,
@@ -149,6 +151,12 @@ class OrchestratorService:
         token_usage = None
         model = None
         result = {}
+
+        enrich_span({
+            "session_id": session_id,
+            "intent": intent,
+            "agent_id": agent_id or "",
+        })
 
         # Get previous_response_id for stateful conversation chaining
         metadata = dict(session.session_metadata or {})
@@ -281,6 +289,7 @@ class OrchestratorService:
             "model_id": model_id,
         }
 
+    @trace("orchestrator_process_message_stream", span_type="AGENT")
     async def process_message_stream(
         self,
         db: AsyncSession,
@@ -317,6 +326,12 @@ class OrchestratorService:
         classification = self._fallback_classification(message, session.agent_id)
         intent = classification.get("intent", "general")
         agent_id = classification.get("agent_id") or session.agent_id
+
+        enrich_span({
+            "session_id": session_id,
+            "intent": intent,
+            "agent_id": agent_id or "",
+        })
 
         # Get previous_response_id for stateful conversation chaining
         metadata = dict(session.session_metadata or {})

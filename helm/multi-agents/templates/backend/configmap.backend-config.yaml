@@ -75,6 +75,19 @@ data:
   # Format: tool_name:agent_name,tool_name:agent_name,...
   TOOL_AGENT_MAPPING: "ocr_extract_claim_info:ocr-agent,ocr_document:ocr-agent,retrieve_user_info:rag-agent,retrieve_similar_claims:rag-agent,search_knowledge_base:rag-agent,retrieve_similar_references:rag-agent,retrieve_historical_tenders:rag-agent,retrieve_capabilities:rag-agent"
 
+{{- if .Values.backend.mlflow.enabled }}
+  MLFLOW_TRACING_ENABLED: "true"
+  MLFLOW_TRACKING_URI: {{ .Values.backend.mlflow.trackingUri | quote }}
+  MLFLOW_EXPERIMENT_NAME: {{ .Values.backend.mlflow.experimentName | quote }}
+{{- end }}
+
+{{- if .Values.kagenti.enabled }}
+  KAGENTI_ENABLED: "true"
+  {{- if .Values.kagenti.mcpGateway.enabled }}
+  KAGENTI_MCP_GATEWAY_URL: {{ .Values.kagenti.mcpGateway.url | quote }}
+  {{- end }}
+{{- end }}
+
   # Admin & Database Reset
   SEED_DATA_URL: {{ .Values.backend.seedDataUrl | quote }}
 {{- end }}

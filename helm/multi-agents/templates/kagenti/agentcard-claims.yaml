@@ -1,0 +1,26 @@
+{{- if .Values.kagenti.enabled }}
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: AgentCard
+metadata:
+  name: claims-agent
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: claims-agent
+spec:
+  name: "Insurance Claims Processing"
+  description: "Automated insurance claims analysis with OCR, RAG, and decision-making"
+  version: {{ .Chart.AppVersion | quote }}
+  url: "http://backend.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.backend.service.port }}/api/v1/a2a"
+  capabilities:
+    - name: "claims-processing"
+      description: "Process insurance claims with automated OCR extraction, knowledge base search, and AI-driven decision making"
+  skills:
+    - id: "process-claim"
+      name: "Process Claim"
+      description: "Analyze and process an insurance claim"
+    - id: "list-claims"
+      name: "List Claims"
+      description: "List insurance claims with filtering"
+{{- end }}

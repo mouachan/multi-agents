@@ -1,0 +1,26 @@
+{{- if .Values.kagenti.enabled }}
+---
+apiVersion: kagenti.redhat.com/v1alpha1
+kind: AgentCard
+metadata:
+  name: tenders-agent
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: tenders-agent
+spec:
+  name: "Tender Analysis"
+  description: "Automated analysis of construction tenders with references, history and capabilities"
+  version: {{ .Chart.AppVersion | quote }}
+  url: "http://backend.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.backend.service.port }}/api/v1/a2a"
+  capabilities:
+    - name: "tender-analysis"
+      description: "Analyze construction tenders with reference matching, historical data, and go/no-go recommendations"
+  skills:
+    - id: "analyze-tender"
+      name: "Analyze Tender"
+      description: "Perform go/no-go analysis on a construction tender"
+    - id: "list-tenders"
+      name: "List Tenders"
+      description: "List tenders with filtering"
+{{- end }}

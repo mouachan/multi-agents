@@ -97,6 +97,10 @@ async def lifespan(app: FastAPI):
     # Register agents
     register_agents()
 
+    # Initialize MLflow tracing (no-op when disabled)
+    from app.core.tracing import init_tracing
+    init_tracing()
+
     # Check database connection
     if not await check_database_connection():
         logger.error("Failed to connect to database on startup")

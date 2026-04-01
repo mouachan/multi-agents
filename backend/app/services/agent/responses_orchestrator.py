@@ -11,6 +11,7 @@ import re
 from typing import AsyncGenerator, Dict, Any, List, Optional
 
 from app.core.config import settings
+from app.core.tracing import trace, enrich_span
 
 logger = logging.getLogger(__name__)
 
@@ -20,25 +21,35 @@ class ResponsesOrchestrator:
 
     @staticmethod
     def _default_mcp_servers() -> Dict[str, Any]:
-        """Build MCP server configs from environment-driven settings."""
-        return {
-            "ocr-server": {
-                "server_label": "ocr-server",
-                "server_url": f"{settings.ocr_server_url}/sse"
-            },
-            "rag-server": {
-                "server_label": "rag-server",
-                "server_url": f"{settings.rag_server_url}/sse"
-            },
-            "claims-server": {
-                "server_label": "claims-server",
-                "server_url": f"{settings.claims_server_url}/sse"
-            },
-            "tenders-server": {
-                "server_label": "tenders-server",
-                "server_url": f"{settings.tenders_server_url}/sse"
-            },
+        """Build MCP server configs from environment-driven settings.
+
+        When Kagenti MCP Gateway is enabled, rewrites server URLs to route
+        through the gateway. Otherwise, uses direct MCP server URLs.
+        """
+        servers = {
+            "ocr-server": settings.ocr_server_url,
+            "rag-server": settings.rag_server_url,
+            "claims-server": settings.claims_server_url,
+            "tenders-server": settings.tenders_server_url,
         }
+
+        use_gateway = settings.kagenti_enabled and settings.kagenti_mcp_gateway_url
+
+        result = {}
+        for label, direct_url in servers.items():
+            if use_gateway:
+                server_url = f"{settings.kagenti_mcp_gateway_url}/{label}/sse"
+            else:
+                server_url = f"{direct_url}/sse"
+            result[label] = {
+                "server_label": label,
+                "server_url": server_url,
+            }
+
+        if use_gateway:
+            logger.info("MCP servers routed through Kagenti Gateway: %s", settings.kagenti_mcp_gateway_url)
+
+        return result
 
     # Default tool-to-server mapping
     DEFAULT_TOOL_TO_SERVER = {
@@ -127,6 +138,7 @@ class ResponsesOrchestrator:
 
         return mcp_tools
 
+    @trace("llamastack_responses_api", span_type="LLM")
     async def process_with_agent(
         self,
         agent_config: Dict[str, Any],
@@ -224,14 +236,24 @@ class ResponsesOrchestrator:
             logger.info(f"Response completed: tools_used={len(tool_calls)}, messages={len(all_message_texts)}")
             logger.info(f"Full output text ({len(output_text)} chars):\n{output_text[:2000]}")
 
+            usage = result.get("usage", {})
+            enrich_span({
+                "response_id": result.get("id", ""),
+                "model": result.get("model") or agent_config.get("model", self.model),
+                "tool_calls_count": len(tool_calls),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+            })
+
             return {
                 "response_id": result.get("id"),
                 "model": result.get("model") or agent_config.get("model", self.model),
                 "output": output_text,
                 "tool_calls": tool_calls,
-                "usage": result.get("usage", {}),
+                "usage": usage,
             }
 
+    @trace("llamastack_responses_api_stream", span_type="LLM")
     async def process_with_agent_stream(
         self,
         agent_config: Dict[str, Any],

@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.tracing import trace, enrich_span
 from app.services.agent.context_builder import ContextBuilder
 from app.services.agent.response_parser import ResponseParser
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
@@ -151,6 +152,7 @@ class BaseAgentService(ABC):
 
         return processing_steps
 
+    @trace("agent_process_entity", span_type="AGENT")
     async def process_entity(
         self,
         db: AsyncSession,
@@ -168,6 +170,11 @@ class BaseAgentService(ABC):
         entity = await self.get_entity_by_id(db, entity_id)
         if not entity:
             raise ValueError(f"{self.get_entity_type().title()} {entity_id} not found")
+
+        enrich_span({
+            "entity_type": self.get_entity_type(),
+            "entity_id": str(entity_id),
+        })
 
         # Set status to processing
         self.set_entity_status(entity, "processing")
@@ -210,6 +217,7 @@ class BaseAgentService(ABC):
 
             # Update entity status based on recommendation
             recommendation = decision_data.get("recommendation", "manual_review")
+            enrich_span({"recommendation": recommendation})
             new_status = self.map_recommendation_to_status(recommendation)
             self.set_entity_status(entity, new_status)
 

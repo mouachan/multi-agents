@@ -291,6 +291,12 @@ backend:
   # Admin & Database Reset
   seedDataUrl: "https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql"
 
+  # MLflow Tracing (observability)
+  mlflow:
+    enabled: false
+    trackingUri: "http://mlflow.mlflow.svc.cluster.local:5000"
+    experimentName: "multi-agents"
+
   # Resources
   resources:
     requests:
@@ -299,6 +305,16 @@ backend:
     limits:
       cpu: 1000m
       memory: 1Gi
+
+# =============================================================================
+# Kagenti (Agent Governance)
+# =============================================================================
+kagenti:
+  enabled: false
+  mcpGateway:
+    enabled: false
+    url: ""
+    registerServers: false
 
 # =============================================================================
 # Frontend
