@@ -781,19 +781,14 @@ async def rag_health_check() -> str:
         health["checks"]["database"] = f"error: {str(e)}"
         health["status"] = "unhealthy"
 
-    try:
-        await create_embedding("health check")
-        health["checks"]["embedding_service"] = "ok"
-    except Exception as e:
-        health["checks"]["embedding_service"] = f"error: {str(e)}"
-        health["status"] = "degraded"
+    health["checks"]["embedding_service"] = "not checked (on-demand only)"
 
     return json.dumps(health)
 
 
 async def health_check(request):
     """Health check endpoint for liveness/readiness probes."""
-    health_status = {"status": "healthy", "service": "rag-server", "database_ready": False, "embedding_ready": False}
+    health_status = {"status": "healthy", "service": "rag-server", "database_ready": False}
 
     try:
         await run_db_query_one(text("SELECT 1"), {})
@@ -801,14 +796,6 @@ async def health_check(request):
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         health_status["status"] = "unhealthy"
-
-    try:
-        await create_embedding("test")
-        health_status["embedding_ready"] = True
-    except Exception as e:
-        logger.warning(f"Embedding service health check failed: {e}")
-        if health_status["status"] == "healthy":
-            health_status["status"] = "degraded"
 
     return JSONResponse(health_status)
 
