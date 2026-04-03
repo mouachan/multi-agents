@@ -151,9 +151,9 @@ graph TB
         end
 
         subgraph "LiteMaaS — Model as a Service"
-            LLM["Mistral-Small-24B / Llama-4-Scout-17B<br/>Reasoning + Tool Calling"]
+            LLM["Llama-4-Scout-17B<br/>Reasoning + Tool Calling"]
             VIS["Qwen2.5-VL-7B<br/>Vision OCR"]
-            EMB["nomic-embed-text-v1.5<br/>768-dim embeddings"]
+            EMB["nomic-embed-text-v1-5<br/>768-dim embeddings"]
         end
 
         subgraph "MCP Tool Servers"
@@ -285,9 +285,9 @@ frontend/
 
 | Component | Technology | Details |
 |-----------|-----------|---------|
-| **LLM Inference** | LiteMaaS (Model as a Service) | Mistral-Small-24B (default) / Llama-4-Scout-17B (backup) |
+| **LLM Inference** | LiteMaaS (Model as a Service) | Llama-4-Scout-17B (llama-scout-17b) |
 | **Vision OCR** | Qwen2.5-VL-7B via LiteMaaS | PDF page images -> structured text extraction |
-| **Embeddings** | nomic-embed-text-v1.5 via LiteMaaS | 768-dim vectors for similarity search |
+| **Embeddings** | nomic-embed-text-v1-5 via LiteMaaS | 768-dim vectors for similarity search |
 | **AI Orchestration** | LlamaStack RHOAI 3.3 (llama-stack 0.4.x) | ReAct agent, MCP tool routing, Responses API |
 | **Backend** | Python 3.12 + FastAPI | REST API + SSE streaming |
 | **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
@@ -463,10 +463,11 @@ Models are configured in `llamastack/run-litemaas.yaml` (local) or via Helm valu
 
 | Model | Role | Provider |
 |-------|------|----------|
-| `litemaas/Mistral-Small-24B-W8A8` | Default LLM (reasoning + French) | LiteMaaS |
-| `litemaas/Llama-4-Scout-17B-16E-W4A16` | Backup LLM (native tool calling) | LiteMaaS |
+| `litemaas/llama-scout-17b` | Default LLM (reasoning + tool calling) | LiteMaaS |
 | `litemaas/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
 | `litemaas-embedding/nomic-embed-text-v1-5` | Embeddings (768-dim) | LiteMaaS |
+
+> **Note**: LLM and vision models can point to different LiteMaaS endpoints. In the LlamaStack config, each model is registered under its own provider (`litemaas`, `litemaas-vision`, `litemaas-embedding`), each with its own `base_url` and `api_token`. This allows mixing endpoints — e.g., LLM on one endpoint, vision on another.
 
 Model IDs are fully configurable via Helm values:
 
@@ -475,7 +476,7 @@ llamastack:
   litemaas:
     url: "https://your-litemaas-llm-endpoint/v1"
     embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
-    defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
+    defaultModel: "litemaas/llama-scout-17b"
     embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
   embedding:
     dimension: 768
@@ -493,8 +494,8 @@ Each agent prompt distinguishes between **information queries** (detail, list, s
 ```yaml
 # LlamaStack
 LLAMASTACK_ENDPOINT: http://llamastack:8321
-LLAMASTACK_DEFAULT_MODEL: litemaas/Llama-4-Scout-17B-16E-W4A16
-LLAMASTACK_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1.5
+LLAMASTACK_DEFAULT_MODEL: litemaas/llama-scout-17b
+LLAMASTACK_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1-5
 
 # MCP Servers
 OCR_SERVER_URL: http://ocr-server:8080
@@ -594,7 +595,7 @@ Common causes and fixes:
    ```
    Then restart the LlamaStack pod.
 
-4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens). Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
+4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This also applies to the `EMBEDDING_MODEL` env var on the RAG server and Claims server. Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
 
 ### RAG Returns No Similar Claims
 
@@ -632,9 +633,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v1.0
+### Current Version: v2.0
 
-**What's new in v1.0**:
+**What's new in v2.0**:
+- Switched default LLM to `llama-scout-17b` (Llama-4-Scout-17B)
+- Multi-provider LlamaStack config: LLM, vision, and embedding can each point to different endpoints
+- Fixed RAG server health check — no longer calls embedding API on every K8s probe (was burning LiteLLM budget)
+- Fixed embedding model name mismatch (`nomic-embed-text-v1-5` with hyphens, not dots)
+
+**What was in v1.0**:
 - RHOAI 3.3 / llama-stack 0.4.x full compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
 - Multi-namespace Helm deployment support (deploy multiple instances on the same cluster)
 - Route timeout 300s on frontend and backend (prevents gateway timeouts during agent processing)
