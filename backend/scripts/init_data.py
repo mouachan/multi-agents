@@ -49,6 +49,7 @@ OCR_SERVER_URL = os.getenv("OCR_SERVER_URL", "http://ocr-server:8080")
 CLAIMS_SERVER_URL = os.getenv("CLAIMS_SERVER_URL", "http://claims-server:8080")
 TENDERS_SERVER_URL = os.getenv("TENDERS_SERVER_URL", "http://tenders-server:8080")
 DOCUMENTS_ARCHIVE_URL = os.getenv("DOCUMENTS_ARCHIVE_URL", "")
+FORCE_REINIT = os.getenv("FORCE_REINIT", "false").lower() == "true"
 
 PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -139,6 +140,100 @@ def check_already_initialized() -> bool:
             logger.info(f"Data already initialized ({count} claims with file IDs). Skipping.")
             return True
         return False
+    finally:
+        conn.close()
+
+
+def reset_for_reinit():
+    """Reset DB state so init_data can re-process all documents from scratch.
+
+    Called when FORCE_REINIT=true. Restores original document_path values,
+    resets statuses, and deletes all OCR/decision/processing data.
+    """
+    logger.info("FORCE_REINIT: Resetting database for re-initialization...")
+    conn = get_pg_conn()
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    try:
+        # --- Claims ---
+        # Rebuild document_path from claim_type for standard claims (CLM-2024-*)
+        cur.execute("""
+            UPDATE claims c SET
+                document_path = sub.new_path,
+                status = 'pending',
+                processed_at = NULL,
+                total_processing_time_ms = NULL
+            FROM (
+                SELECT claim_number,
+                       'claims/claim_' ||
+                       CASE claim_type
+                           WHEN 'Medical' THEN 'medical'
+                           WHEN 'Auto' THEN 'auto'
+                           WHEN 'Home' THEN 'home'
+                           WHEN 'Life' THEN 'life'
+                           ELSE LOWER(REPLACE(claim_type, ' ', '_'))
+                       END || '_' ||
+                       LPAD(
+                           (ROW_NUMBER() OVER (
+                               PARTITION BY claim_type ORDER BY claim_number
+                           ))::text, 3, '0'
+                       ) || '.pdf' AS new_path
+                FROM claims
+                WHERE claim_number LIKE 'CLM-2024-%%'
+            ) sub
+            WHERE c.claim_number = sub.claim_number
+        """)
+        logger.info(f"  Reset {cur.rowcount} standard claims (document_path + status)")
+
+        # Reset cross-domain claim (CLM-ENT-001)
+        cur.execute("""
+            UPDATE claims SET
+                document_path = 'claims/clm-ent-001-sinistre.pdf',
+                status = 'pending',
+                processed_at = NULL,
+                total_processing_time_ms = NULL
+            WHERE claim_number = 'CLM-ENT-001'
+        """)
+
+        # Delete claim-related data
+        cur.execute("DELETE FROM claim_documents")
+        logger.info(f"  Deleted {cur.rowcount} claim_documents")
+        cur.execute("DELETE FROM claim_decisions")
+        logger.info(f"  Deleted {cur.rowcount} claim_decisions")
+        cur.execute("DELETE FROM processing_logs")
+        logger.info(f"  Deleted {cur.rowcount} processing_logs")
+
+        # --- Tenders ---
+        # Rebuild document_path from tender_number for standard tenders (AO-2026-*)
+        cur.execute("""
+            UPDATE tenders SET
+                document_path = 'tenders/' || LOWER(REPLACE(tender_number, '-', '_')) || '.pdf',
+                status = 'pending',
+                processed_at = NULL,
+                total_processing_time_ms = NULL
+            WHERE tender_number LIKE 'AO-2026-%%'
+        """)
+        logger.info(f"  Reset {cur.rowcount} standard tenders (document_path + status)")
+
+        # Reset cross-domain tender (AO-2025-IDF-003)
+        cur.execute("""
+            UPDATE tenders SET
+                document_path = 'tenders/ao-2025-idf-003-dce.pdf',
+                status = 'pending',
+                processed_at = NULL,
+                total_processing_time_ms = NULL
+            WHERE tender_number = 'AO-2025-IDF-003'
+        """)
+
+        # Delete tender-related data
+        cur.execute("DELETE FROM tender_documents")
+        logger.info(f"  Deleted {cur.rowcount} tender_documents")
+        cur.execute("DELETE FROM tender_decisions")
+        logger.info(f"  Deleted {cur.rowcount} tender_decisions")
+
+        logger.info("FORCE_REINIT: Database reset complete")
+
     finally:
         conn.close()
 
@@ -449,9 +544,12 @@ async def main():
     wait_for_postgres()
     await wait_for_llamastack()
 
-    # Step 2: Check idempotency
+    # Step 2: Check idempotency (or force reinit)
     logger.info("Step 2: Checking if already initialized...")
-    if check_already_initialized():
+    if FORCE_REINIT:
+        logger.info("FORCE_REINIT is enabled — resetting data for re-processing")
+        reset_for_reinit()
+    elif check_already_initialized():
         logger.info("Skipping init (already done). Exiting.")
         return
 

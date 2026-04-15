@@ -36,6 +36,8 @@ spec:
               value: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
             - name: DOCUMENTS_ARCHIVE_URL
               value: {{ .Values.dataInit.documentsArchiveUrl | quote }}
+            - name: FORCE_REINIT
+              value: {{ .Values.dataInit.forceReinit | default "false" | quote }}
             {{- include "postgres.env" . | nindent 12 }}
           resources:
             requests:
