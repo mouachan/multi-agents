@@ -348,6 +348,81 @@ After init completes, you'll have:
 
 The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside Docker images.
 
+### Force Re-initialization (FORCE_REINIT)
+
+If you need to re-ingest PDFs (e.g., after regenerating documents or updating seed data), set `FORCE_REINIT=true`. This resets the database state without requiring a full DB wipe:
+
+```bash
+# Local (docker/podman compose)
+FORCE_REINIT=true podman compose up data-init
+
+# OpenShift (via Helm)
+helm upgrade multi-agents helm/multi-agents \
+  --set dataInit.forceReinit=true \
+  -n multi-agent
+
+# OpenShift (standalone job)
+oc delete job data-init-force-reinit -n multi-agent 2>/dev/null
+cat <<'EOF' | oc apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-init-force-reinit
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: data-init
+          image: quay.io/mouachan/multi-agents/data-init:v1.0
+          imagePullPolicy: Always
+          env:
+            - name: FORCE_REINIT
+              value: "true"
+            - name: DOCUMENTS_ARCHIVE_URL
+              value: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
+            - name: LLAMASTACK_ENDPOINT
+              value: "http://<llamastack-service>:8321"
+            - name: OCR_SERVER_URL
+              value: "http://ocr-server:8080"
+            - name: CLAIMS_SERVER_URL
+              value: "http://claims-server:8080"
+            - name: TENDERS_SERVER_URL
+              value: "http://tenders-server:8080"
+            - name: POSTGRES_HOST
+              value: "postgresql"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_DATABASE
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_PASSWORD
+EOF
+```
+
+**What FORCE_REINIT does:**
+1. Resets `claims.document_path` to original filenames (rebuilt from `claim_type`)
+2. Resets `tenders.document_path` to original filenames (rebuilt from `tender_number`)
+3. Sets `status = 'pending'`, clears `processed_at` and `total_processing_time_ms`
+4. Deletes all `claim_documents`, `claim_decisions`, `processing_logs`
+5. Deletes all `tender_documents`, `tender_decisions`
+6. Then continues with the normal init flow (download, upload, OCR, decisions)
+
+> **Note**: After re-init, remember to set `forceReinit` back to `"false"` to avoid re-processing on every upgrade.
+
 ### Access
 
 - **Frontend**: http://localhost:3000
