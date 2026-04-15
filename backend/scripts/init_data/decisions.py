@@ -278,3 +278,139 @@ TENDER_DECISIONS = [
         ),
     },
 ]
+
+
+# 10 reclamation decisions: 3 rembourser, 2 reexpedier, 2 rejeter, 3 escalader
+RECLAMATION_DECISIONS = [
+    {
+        "reclamation_number": "RECL-2025-0001",
+        "recommendation": "rembourser",
+        "confidence": 0.91,
+        "reasoning": (
+            "Colis endommage confirme par les photos. Le Colissimo 6C123456789FR "
+            "presente des traces d'ecrasement visibles sur l'emballage et le contenu. "
+            "Le client a signale le probleme dans les 48h suivant la livraison. "
+            "L'assurance ad valorem couvre ce type de dommage. "
+            "Montant de remboursement: valeur declaree de 89.90 EUR. "
+            "Recommandation: REMBOURSER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0002",
+        "recommendation": "reexpedier",
+        "confidence": 0.88,
+        "reasoning": (
+            "Colis livre a une mauvaise adresse. Le tracking 8R987654321FR montre "
+            "une livraison au 12 rue des Lilas alors que le destinataire habite "
+            "au 12 rue des Iris. Erreur d'acheminement confirmee par le facteur. "
+            "Le colis a ete recupere par le bureau de poste local. "
+            "Reexpedition possible sous 48h ouvrees. "
+            "Recommandation: REEXPEDIER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0003",
+        "recommendation": "rejeter",
+        "confidence": 0.84,
+        "reasoning": (
+            "Reclamation pour retard de livraison Lettre Verte. "
+            "Le courrier a ete distribue en J+3 au lieu de J+2. "
+            "Les conditions generales de la Lettre Verte precisent un delai indicatif "
+            "sans engagement contractuel de delai (art. 3.2 CGV). "
+            "Aucun prejudice financier demontre par le reclamant. "
+            "Recommandation: REJETER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0004",
+        "recommendation": "escalader",
+        "confidence": 0.62,
+        "reasoning": (
+            "Colis declare perdu depuis 15 jours. Le Chronopost XY456789012FR "
+            "n'a plus de mise a jour de tracking depuis le centre de tri de Roissy. "
+            "Enquete interne en cours mais non conclusive. "
+            "Valeur declaree elevee (1 250 EUR) depasse le seuil de decision autonome. "
+            "Necessite une investigation approfondie avec le centre de tri. "
+            "Recommandation: ESCALADER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0005",
+        "recommendation": "rembourser",
+        "confidence": 0.93,
+        "reasoning": (
+            "Contenu manquant dans un colis Colissimo. Le colis 6C234567890FR "
+            "a ete recu avec un scotch de reconditionnement du centre de tri. "
+            "Le poids a l'arrivee (0.8 kg) est inferieur au poids expedie (2.1 kg). "
+            "Ouverture accidentelle documentee. "
+            "Remboursement integral du contenu manquant: 145.50 EUR. "
+            "Recommandation: REMBOURSER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0006",
+        "recommendation": "reexpedier",
+        "confidence": 0.86,
+        "reasoning": (
+            "Colis retourne a l'expediteur par erreur. Le destinataire etait present "
+            "mais le facteur a laisse un avis de passage errone indiquant 'boite aux lettres inaccessible'. "
+            "Le client conteste et les photos montrent une boite normalement accessible. "
+            "Le colis est actuellement au bureau de poste de rattachement. "
+            "Reexpedition avec presentation obligatoire au destinataire. "
+            "Recommandation: REEXPEDIER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0007",
+        "recommendation": "rejeter",
+        "confidence": 0.80,
+        "reasoning": (
+            "Reclamation pour emballage legerement abime sur un Colissimo. "
+            "Les photos fournies montrent des traces superficielles sur le carton "
+            "mais le contenu est intact et fonctionnel selon le reclamant lui-meme. "
+            "Aucun dommage materiel sur le contenu. L'emballage a rempli sa fonction "
+            "de protection. Pas de prejudice reel constate. "
+            "Recommandation: REJETER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0008",
+        "recommendation": "escalader",
+        "confidence": 0.58,
+        "reasoning": (
+            "Reclamation recurrente du meme client pour le 4eme colis endommage en 3 mois. "
+            "Pattern inhabituel: tous les colis transitent par le meme centre de tri (Wissous). "
+            "Possible probleme systemique sur la chaine de tri ou tentative d'abus. "
+            "Necessite une analyse croisee avec le responsable qualite du centre de tri "
+            "et une verification du profil client. "
+            "Recommandation: ESCALADER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0009",
+        "recommendation": "rembourser",
+        "confidence": 0.90,
+        "reasoning": (
+            "Colis livre en point relais ferme definitivement. Le point relais "
+            "reference PR-75012-003 a cesse son activite depuis le 01/03/2025 "
+            "mais n'a pas ete desactive dans le systeme. Le colis 6C345678901FR "
+            "est considere comme perdu. Erreur systeme confirmee. "
+            "Remboursement de la valeur declaree: 67.00 EUR + frais d'expedition 8.50 EUR. "
+            "Recommandation: REMBOURSER."
+        ),
+    },
+    {
+        "reclamation_number": "RECL-2025-0010",
+        "recommendation": "escalader",
+        "confidence": 0.55,
+        "reasoning": (
+            "Litige avec un expediteur professionnel concernant 23 colis endommages "
+            "sur un envoi de 150 colis (taux de casse de 15.3%). "
+            "Montant total reclame: 3 420 EUR. Le contrat professionnel prevoit "
+            "un taux de casse acceptable de 2%. Depassement significatif. "
+            "Necessite une negociation commerciale avec le responsable grands comptes "
+            "et une expertise du conditionnement utilise. "
+            "Recommandation: ESCALADER."
+        ),
+    },
+]

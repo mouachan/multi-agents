@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AgentGraph from '../components/chat/AgentGraph'
 import ChatWindow from '../components/chat/ChatWindow'
@@ -13,7 +13,7 @@ export default function ChatPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const agentIdParam = searchParams.get('agent')
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
 
   const { agents } = useAgents()
   const {
@@ -222,10 +222,45 @@ export default function ChatPage() {
     window.location.assign('/chat')
   }
 
+  const getLocalizedName = (agent: AgentInfo | null | undefined) => {
+    if (!agent) return ''
+    return locale === 'fr' && agent.name_fr ? agent.name_fr : agent.name
+  }
+
   const getAgentLabel = (agentId: string | undefined) => {
     if (!agentId) return t('chat.orchestrator')
+    const agent = agents.find((a) => a.id === agentId)
+    if (agent) return getLocalizedName(agent)
     return t(`agentNames.${agentId}`) || agentId
   }
+
+  // Localize welcome message (first assistant message) based on current locale
+  const WELCOME_PATTERNS = [
+    /^Welcome! I'm the multi-agent orchestrator/,
+    /^Bienvenue ! Je suis l'orchestrateur multi-agents/,
+    /^Session started with agent \*\*(.+?)\*\*/,
+    /^Session demarree avec l'agent \*\*(.+?)\*\*/,
+  ]
+  const localizedMessages = useMemo(() => {
+    if (messages.length === 0) return messages
+    const first = messages[0]
+    if (first.role !== 'assistant') return messages
+    const isWelcome = WELCOME_PATTERNS.some(p => p.test(first.content))
+    if (!isWelcome) return messages
+    // Detect if it's an agent-specific or orchestrator welcome
+    const agentMatch = first.content.match(/\*\*(.+?)\*\*/)
+    let localized: string
+    if (agentMatch) {
+      // Agent-specific welcome — find the agent and use localized name
+      const rawName = agentMatch[1]
+      const matchedAgent = agents.find(a => a.name === rawName || a.name_fr === rawName)
+      const localName = matchedAgent ? getLocalizedName(matchedAgent) : rawName
+      localized = t('welcome.agent').replace('{agent}', localName)
+    } else {
+      localized = t('welcome.orchestrator')
+    }
+    return [{ ...first, content: localized }, ...messages.slice(1)]
+  }, [messages, locale, agents])
 
   const isDraftChanged = prompt !== null && promptDraft !== prompt
 
@@ -257,6 +292,7 @@ export default function ChatPage() {
               <div
                 className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
                   currentAgent.color === 'amber' ? 'bg-amber-500'
+                    : currentAgent.color === 'yellow' ? 'bg-yellow-500'
                     : currentAgent.color === 'emerald' || currentAgent.color === 'green' ? 'bg-emerald-500'
                     : 'bg-blue-500'
                 }`}
@@ -264,11 +300,11 @@ export default function ChatPage() {
                 {currentAgent.id === 'claims' ? 'SI' : currentAgent.id === 'tenders' ? 'AO' : currentAgent.name.substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900">{currentAgent.name}</p>
+                <p className="text-sm font-semibold text-gray-900">{getLocalizedName(currentAgent)}</p>
                 <p className="text-xs text-gray-400">{currentAgent.tools.length} {t('chat.mcpTools')}</p>
               </div>
             </div>
-            <p className="text-xs text-gray-500 leading-relaxed">{currentAgent.description}</p>
+            <p className="text-xs text-gray-500 leading-relaxed">{locale === 'fr' && currentAgent.description_fr ? currentAgent.description_fr : currentAgent.description}</p>
           </div>
         ) : (
           <div className="bg-white shadow rounded-lg p-3 border border-gray-200">
@@ -352,6 +388,7 @@ export default function ChatPage() {
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
               currentAgent
                 ? currentAgent.color === 'amber' ? 'bg-amber-500'
+                  : currentAgent.color === 'yellow' ? 'bg-yellow-500'
                   : currentAgent.color === 'emerald' || currentAgent.color === 'green' ? 'bg-emerald-500'
                   : 'bg-blue-500'
                 : 'bg-blue-600'
@@ -362,7 +399,7 @@ export default function ChatPage() {
             </div>
             <div>
               <h2 className="font-semibold text-gray-900 text-sm">
-                {currentAgent ? currentAgent.name : t('chat.orchestratorMulti')}
+                {currentAgent ? (getLocalizedName(currentAgent)) : t('chat.orchestratorMulti')}
               </h2>
               {session && (
                 <p className="text-xs text-gray-400">{t('chat.session')}: {session.session_id}</p>
@@ -492,14 +529,14 @@ export default function ChatPage() {
         {/* Chat window */}
         <div className="flex-1 overflow-hidden">
           <ChatWindow
-            messages={messages}
+            messages={localizedMessages}
             isSending={isSending}
             activeAgentId={currentAgent?.id}
             onSendMessage={handleSendMessage}
             onActionClick={handleActionClick}
             placeholder={
               currentAgent
-                ? `${t('chat.messageFor')} ${currentAgent.name}...`
+                ? `${t('chat.messageFor')} ${getLocalizedName(currentAgent)}...`
                 : t('chat.whatToDo')
             }
           />

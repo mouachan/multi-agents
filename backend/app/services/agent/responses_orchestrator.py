@@ -21,7 +21,7 @@ class ResponsesOrchestrator:
     @staticmethod
     def _default_mcp_servers() -> Dict[str, Any]:
         """Build MCP server configs from environment-driven settings."""
-        return {
+        servers = {
             "ocr-server": {
                 "server_label": "ocr-server",
                 "server_url": f"{settings.ocr_server_url}/sse"
@@ -39,6 +39,17 @@ class ResponsesOrchestrator:
                 "server_url": f"{settings.tenders_server_url}/sse"
             },
         }
+        if settings.postal_server_url:
+            servers["postal-server"] = {
+                "server_label": "postal-server",
+                "server_url": f"{settings.postal_server_url}/sse"
+            }
+        if settings.tracking_server_url:
+            servers["tracking-server"] = {
+                "server_label": "tracking-server",
+                "server_url": f"{settings.tracking_server_url}/sse"
+            }
+        return servers
 
     # Default tool-to-server mapping
     DEFAULT_TOOL_TO_SERVER = {
@@ -69,6 +80,19 @@ class ResponsesOrchestrator:
         "save_tender_decision": "tenders-server",
         # Embedding generation
         "generate_document_embedding": "rag-server",
+        # Postal server (CRUD operations)
+        "list_reclamations": "postal-server",
+        "get_reclamation": "postal-server",
+        "get_reclamation_documents": "postal-server",
+        "get_reclamation_statistics": "postal-server",
+        "analyze_reclamation": "postal-server",
+        "save_reclamation_decision": "postal-server",
+        # Tracking server
+        "get_tracking": "tracking-server",
+        "search_tracking": "tracking-server",
+        # RAG server — courrier extensions
+        "search_courrier_knowledge": "rag-server",
+        "retrieve_similar_reclamations": "rag-server",
     }
 
     def __init__(

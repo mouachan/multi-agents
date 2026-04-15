@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorApi } from '../services/orchestratorService'
+import { useTranslation } from '../i18n/LanguageContext'
 import type { ChatMessage, ChatResponse, ChatSession } from '../types/chat'
 
 interface UseChatReturn {
@@ -22,6 +23,7 @@ interface UseChatReturn {
 }
 
 export function useChat(initialSessionId?: string): UseChatReturn {
+  const { locale } = useTranslation()
   const [session, setSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -45,7 +47,7 @@ export function useChat(initialSessionId?: string): UseChatReturn {
     setIsLoading(true)
     setError(null)
     try {
-      const newSession = await orchestratorApi.createSession(agentId)
+      const newSession = await orchestratorApi.createSession(agentId, locale)
       setSession(newSession)
       // Load initial messages (welcome message)
       const result = await orchestratorApi.getMessages(newSession.session_id)
@@ -56,7 +58,7 @@ export function useChat(initialSessionId?: string): UseChatReturn {
       setIsLoading(false)
       creatingRef.current = false
     }
-  }, [])
+  }, [locale])
 
   const loadMessages = useCallback(async (sessionId: string) => {
     setIsLoading(true)

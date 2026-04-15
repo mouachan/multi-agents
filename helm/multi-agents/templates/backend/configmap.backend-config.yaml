@@ -36,6 +36,12 @@ data:
   RAG_SERVER_URL: "http://rag-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
   CLAIMS_SERVER_URL: "http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
   TENDERS_SERVER_URL: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
+{{- if .Values.mcp.postal.enabled }}
+  POSTAL_SERVER_URL: "http://postal-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
+{{- end }}
+{{- if .Values.mcp.tracking.enabled }}
+  TRACKING_SERVER_URL: "http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
+{{- end }}
 {{- if .Values.guardrails.enabled }}
   GUARDRAILS_SERVER_URL: "https://guardrails-orchestrator-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8032"
   ENABLE_PII_DETECTION: "true"

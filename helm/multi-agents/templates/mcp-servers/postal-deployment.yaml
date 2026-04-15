@@ -1,0 +1,60 @@
+{{- if .Values.mcp.postal.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  name: postal-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: postal-server
+    component: mcp-server
+spec:
+  replicas: {{ .Values.mcp.postal.replicas }}
+  selector:
+    matchLabels:
+      app: postal-server
+  template:
+    metadata:
+      labels:
+        app: postal-server
+        component: mcp-server
+    spec:
+      containers:
+      - name: postal-server
+        image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.mcp.postal.image.repository }}:{{ .Values.mcp.postal.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        {{- include "postgres.env" . | nindent 8 }}
+        - name: LLAMASTACK_ENDPOINT
+          value: {{ quote (include "llamastack.endpoint" .) }}
+        - name: LLAMASTACK_DEFAULT_MODEL
+          value: {{ .Values.llamastack.litemaas.defaultModel | quote }}
+        - name: EMBEDDING_MODEL
+          value: {{ .Values.llamastack.litemaas.embeddingModel | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.mcp.postal.env.LOG_LEVEL | quote }}
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          {{- toYaml .Values.mcp.postal.resources | nindent 10 }}
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 2
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 10
+{{- end }}

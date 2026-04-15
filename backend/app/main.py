@@ -31,6 +31,7 @@ def register_agents():
     from app.services.agents.registry import AgentRegistry, AgentDefinition
     from app.services.claim_service import ClaimService, CLAIM_TOOLS
     from app.services.tender_service import TenderService, TENDER_TOOLS
+    from app.services.reclamation_service import ReclamationService, RECLAMATION_TOOLS
     from app.llamastack.prompts import (
         CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
@@ -39,11 +40,21 @@ def register_agents():
         AO_PROCESSING_AGENT_INSTRUCTIONS,
         AO_USER_MESSAGE_TEMPLATE,
     )
+    from app.llamastack.courrier_prompts import (
+        COURRIER_RECLAMATION_INSTRUCTIONS,
+        COURRIER_RECLAMATION_USER_TEMPLATE,
+        COURRIER_INFO_INSTRUCTIONS,
+        COURRIER_INFO_USER_TEMPLATE,
+        COURRIER_SUIVI_INSTRUCTIONS,
+        COURRIER_SUIVI_USER_TEMPLATE,
+    )
 
     AgentRegistry.register(AgentDefinition(
         id="claims",
         name="Insurance Claims Processing",
+        name_fr="Traitement des Sinistres",
         description="Automated insurance claims analysis with OCR, RAG, and decision-making",
+        description_fr="Analyse automatisee des sinistres assurance avec OCR, RAG et prise de decision",
         entity_type="claim",
         service_class=ClaimService,
         instructions=CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
@@ -63,7 +74,9 @@ def register_agents():
     AgentRegistry.register(AgentDefinition(
         id="tenders",
         name="Tender Analysis",
+        name_fr="Analyse d'Appels d'Offres",
         description="Automated analysis of construction tenders with references, history and capabilities",
+        description_fr="Analyse automatisee des appels d'offres BTP avec references, historique et capacites",
         entity_type="tender",
         service_class=TenderService,
         instructions=AO_PROCESSING_AGENT_INSTRUCTIONS,
@@ -82,6 +95,87 @@ def register_agents():
         ],
     ))
 
+    # Courrier & Colis — 3 sub-agents with per-agent model override
+    AgentRegistry.register(AgentDefinition(
+        id="courrier_reclamation",
+        name="Postal Complaints Processing",
+        name_fr="Reclamations Courrier & Colis",
+        description="Automated postal complaints analysis with OCR, tracking, RAG, and decision-making",
+        description_fr="Analyse automatisee des reclamations postales avec OCR, suivi, RAG et prise de decision",
+        entity_type="reclamation",
+        service_class=ReclamationService,
+        instructions=COURRIER_RECLAMATION_INSTRUCTIONS,
+        user_message_template=COURRIER_RECLAMATION_USER_TEMPLATE,
+        tools=RECLAMATION_TOOLS,
+        color="yellow",
+        icon="package",
+        api_prefix="/api/v1/postal",
+        frontend_path="/postal",
+        decision_values=["rembourser", "reexpedier", "rejeter", "escalader"],
+        routing_keywords=[
+            "reclamation", "reclamations", "recl-",
+            "la poste", "poste", "courrier", "colis",
+            "colis endommage", "colis perdu", "colis abime",
+            "non livre", "pas recu", "mauvaise adresse",
+            "vol point relais", "retard livraison",
+            "lettre", "recommande",
+        ],
+    ))
+
+    # Courrier info uses a cheaper model (RAG Q&A only)
+    COURRIER_INFO_TOOLS = [
+        "search_courrier_knowledge",
+    ]
+    AgentRegistry.register(AgentDefinition(
+        id="courrier_info",
+        name="Postal Information",
+        name_fr="Informations Postales",
+        description="Q&A about postal services: rates, delays, packaging, customs, refunds",
+        description_fr="Questions/reponses sur les services postaux : tarifs, delais, emballage, douane, remboursements",
+        entity_type="reclamation",
+        service_class=None,
+        instructions=COURRIER_INFO_INSTRUCTIONS,
+        user_message_template=COURRIER_INFO_USER_TEMPLATE,
+        tools=COURRIER_INFO_TOOLS,
+        color="blue",
+        icon="info",
+        frontend_path="/postal",
+        model="litemaas/deepseek-r1-distill-qwen-14b",
+        routing_keywords=[
+            "tarif", "tarifs", "colissimo", "chronopost",
+            "affranchissement", "emballage", "douane",
+            "delai livraison", "delais", "conditions transport",
+            "quel est le prix", "combien coute",
+        ],
+    ))
+
+    # Courrier tracking uses a cheaper model (simple tool call)
+    COURRIER_SUIVI_TOOLS = [
+        "get_tracking",
+        "search_tracking",
+    ]
+    AgentRegistry.register(AgentDefinition(
+        id="courrier_suivi",
+        name="Parcel Tracking",
+        name_fr="Suivi de Colis",
+        description="Track parcels and view delivery status with timeline",
+        description_fr="Suivre les colis et consulter le statut de livraison avec timeline",
+        entity_type="reclamation",
+        service_class=None,
+        instructions=COURRIER_SUIVI_INSTRUCTIONS,
+        user_message_template=COURRIER_SUIVI_USER_TEMPLATE,
+        tools=COURRIER_SUIVI_TOOLS,
+        color="green",
+        icon="truck",
+        frontend_path="/postal",
+        model="litemaas/deepseek-r1-distill-qwen-14b",
+        routing_keywords=[
+            "suivi", "suivre", "tracking", "numero suivi",
+            "ou est mon colis", "ou en est", "livraison",
+            "statut colis", "tr1", "tr2", "tr3",
+        ],
+    ))
+
     logger.info(f"Registered {len(AgentRegistry.list_agents())} agents")
 
 
@@ -96,6 +190,10 @@ async def lifespan(app: FastAPI):
 
     # Register agents
     register_agents()
+
+    # Initialize MLflow tracing
+    from app.core.tracing import init_mlflow
+    init_mlflow()
 
     # Check database connection
     if not await check_database_connection():
@@ -198,12 +296,27 @@ _DEFAULT_TOOL_DISPLAY = {
         "save_claim_decision": {"label": {"fr": "Sauvegarder Decision", "en": "Save Decision"}, "short": "SAV", "category": "crud"},
         "save_tender_decision": {"label": {"fr": "Sauvegarder Decision AO", "en": "Save Tender Decision"}, "short": "SAV", "category": "crud"},
         "generate_document_embedding": {"label": {"fr": "Generer Embedding", "en": "Generate Embedding"}, "short": "EMB", "category": "rag"},
+        # Postal server tools
+        "list_reclamations": {"label": {"fr": "Liste Reclamations", "en": "List Complaints"}, "short": "LST", "category": "crud"},
+        "get_reclamation": {"label": {"fr": "Detail Reclamation", "en": "Get Complaint"}, "short": "GET", "category": "crud"},
+        "get_reclamation_documents": {"label": {"fr": "Documents Reclamation", "en": "Complaint Documents"}, "short": "DOC", "category": "crud"},
+        "get_reclamation_statistics": {"label": {"fr": "Statistiques Reclamations", "en": "Complaint Statistics"}, "short": "STA", "category": "crud"},
+        "analyze_reclamation": {"label": {"fr": "Analyser Reclamation", "en": "Analyze Complaint"}, "short": "ANL", "category": "crud"},
+        "save_reclamation_decision": {"label": {"fr": "Sauvegarder Decision", "en": "Save Decision"}, "short": "SAV", "category": "crud"},
+        # Tracking server tools
+        "get_tracking": {"label": {"fr": "Suivi Colis", "en": "Track Parcel"}, "short": "TRK", "category": "crud"},
+        "search_tracking": {"label": {"fr": "Recherche Suivi", "en": "Search Tracking"}, "short": "SRC", "category": "crud"},
+        # RAG courrier tools
+        "search_courrier_knowledge": {"label": {"fr": "Base Connaissances Courrier", "en": "Postal Knowledge Base"}, "short": "RAG", "category": "rag"},
+        "retrieve_similar_reclamations": {"label": {"fr": "Reclamations Similaires", "en": "Similar Complaints"}, "short": "SIM", "category": "rag"},
     },
     "servers": {
         "ocr-server": {"label": "OCR", "color": "blue"},
         "rag-server": {"label": "RAG", "color": "purple"},
         "claims-server": {"label": "Claims", "color": "emerald"},
         "tenders-server": {"label": "Tenders", "color": "amber"},
+        "postal-server": {"label": "Postal", "color": "yellow"},
+        "tracking-server": {"label": "Tracking", "color": "green"},
     },
     "categories": {
         "extraction": {"label": {"fr": "OCR", "en": "OCR"}, "icon": "scan"},
@@ -232,7 +345,7 @@ async def get_tool_display_config():
 # Import and Include API Routers
 # =============================================================================
 
-from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a
+from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal
 
 app.include_router(
     claims.router,
@@ -268,6 +381,11 @@ app.include_router(
     a2a.router,
     prefix=f"{settings.api_v1_prefix}/a2a",
     tags=["a2a"]
+)
+app.include_router(
+    postal.router,
+    prefix=f"{settings.api_v1_prefix}/postal",
+    tags=["postal"]
 )
 
 

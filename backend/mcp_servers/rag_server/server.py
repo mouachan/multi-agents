@@ -766,6 +766,184 @@ async def _create_document_entry(entity_type: str, entity_id: str, text_content:
 
 
 # =============================================================================
+# Courrier & Colis RAG Tools
+# =============================================================================
+
+@mcp.tool()
+async def search_courrier_knowledge(
+    query: str,
+    category: str = "",
+    limit: int = 5,
+) -> str:
+    """
+    Search the postal/courrier knowledge base for information about rates,
+    delivery times, packaging, customs, refunds, and regulations.
+
+    Uses semantic vector search to find the most relevant knowledge base articles.
+
+    Args:
+        query: The search query (e.g., "tarif colissimo international")
+        category: Optional category filter (tarifs, delais, emballage, douane, remboursement)
+        limit: Maximum number of results (default 5)
+
+    Returns:
+        JSON with matching knowledge base articles, titles, and similarity scores
+    """
+    logger.info(f"Searching courrier knowledge base: query='{query}', category='{category}', limit={limit}")
+
+    if not query or not query.strip():
+        return json.dumps({"success": False, "error": "query is required"})
+
+    try:
+        # Generate embedding for the query
+        embedding = await create_embedding(query.strip())
+        if not embedding:
+            return json.dumps({"success": False, "error": "Failed to generate query embedding"})
+
+        emb_str = "[" + ",".join(map(str, embedding)) + "]"
+        limit = min(max(1, limit), 20)
+
+        if category and category.strip():
+            search_query = text("""
+                SELECT
+                    id, title, content, category, tags,
+                    1 - (embedding <=> CAST(:embedding AS vector)) AS similarity_score
+                FROM courrier_knowledge_base
+                WHERE is_active = TRUE AND category = :category
+                ORDER BY embedding <=> CAST(:embedding AS vector)
+                LIMIT :limit
+            """)
+            results = await run_db_query(search_query, {
+                "embedding": emb_str, "category": category.strip(), "limit": limit
+            })
+        else:
+            search_query = text("""
+                SELECT
+                    id, title, content, category, tags,
+                    1 - (embedding <=> CAST(:embedding AS vector)) AS similarity_score
+                FROM courrier_knowledge_base
+                WHERE is_active = TRUE
+                ORDER BY embedding <=> CAST(:embedding AS vector)
+                LIMIT :limit
+            """)
+            results = await run_db_query(search_query, {
+                "embedding": emb_str, "limit": limit
+            })
+
+        articles = []
+        for row in results:
+            article = dict(row._mapping)
+            article["id"] = str(article["id"])
+            article["similarity_score"] = round(float(article["similarity_score"]), 4) if article["similarity_score"] else 0.0
+            articles.append(article)
+
+        logger.info(f"Found {len(articles)} knowledge base articles for query '{query}'")
+
+        return json.dumps({
+            "success": True,
+            "query": query.strip(),
+            "articles": articles,
+            "total_found": len(articles),
+        }, default=str)
+
+    except Exception as e:
+        logger.error(f"Error searching courrier knowledge base: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def retrieve_similar_reclamations(
+    reclamation_text: str,
+    limit: int = 5,
+) -> str:
+    """
+    Find similar past reclamations using semantic vector search on OCR-extracted document text.
+
+    Compares the input text against embeddings of previously processed reclamation documents
+    to find similar cases and their decisions.
+
+    Args:
+        reclamation_text: Text describing the reclamation or the reclamation number (RECL-YYYY-NNNN)
+        limit: Maximum number of similar reclamations to return (default 5)
+
+    Returns:
+        JSON with similar reclamations including their decisions and similarity scores
+    """
+    logger.info(f"Retrieving similar reclamations: text='{reclamation_text[:100]}...', limit={limit}")
+
+    if not reclamation_text or not reclamation_text.strip():
+        return json.dumps({"success": False, "error": "reclamation_text is required"})
+
+    search_text = reclamation_text.strip()
+
+    try:
+        # If input looks like a reclamation number, fetch its OCR text
+        if search_text.upper().startswith("RECL-"):
+            doc_query = text("""
+                SELECT rd.raw_ocr_text
+                FROM reclamation_documents rd
+                JOIN reclamations r ON rd.reclamation_id = r.id
+                WHERE r.reclamation_number = :rn
+                ORDER BY rd.created_at DESC
+                LIMIT 1
+            """)
+            doc_result = await run_db_query_one(doc_query, {"rn": search_text})
+            if doc_result and doc_result.raw_ocr_text:
+                search_text = doc_result.raw_ocr_text[:2000]
+            else:
+                return json.dumps({"success": False, "error": f"No OCR text found for {reclamation_text}"})
+
+        # Generate embedding
+        embedding = await create_embedding(search_text)
+        if not embedding:
+            return json.dumps({"success": False, "error": "Failed to generate embedding"})
+
+        emb_str = "[" + ",".join(map(str, embedding)) + "]"
+        limit = min(max(1, limit), 20)
+
+        # Search for similar reclamation documents
+        similar_query = text("""
+            SELECT
+                r.id, r.reclamation_number, r.reclamation_type, r.status,
+                r.client_nom, r.description,
+                rd.raw_ocr_text,
+                rdc.decision, rdc.confidence, rdc.reasoning,
+                1 - (rd.embedding <=> CAST(:embedding AS vector)) AS similarity_score
+            FROM reclamation_documents rd
+            JOIN reclamations r ON rd.reclamation_id = r.id
+            LEFT JOIN reclamation_decisions rdc ON rdc.reclamation_id = r.id
+            WHERE rd.embedding IS NOT NULL
+            ORDER BY rd.embedding <=> CAST(:embedding AS vector)
+            LIMIT :limit
+        """)
+        results = await run_db_query(similar_query, {
+            "embedding": emb_str, "limit": limit
+        })
+
+        similar = []
+        for row in results:
+            item = dict(row._mapping)
+            item["id"] = str(item["id"])
+            item["similarity_score"] = round(float(item["similarity_score"]), 4) if item["similarity_score"] else 0.0
+            # Truncate OCR text for readability
+            if item.get("raw_ocr_text") and len(item["raw_ocr_text"]) > 500:
+                item["raw_ocr_text"] = item["raw_ocr_text"][:500] + "..."
+            similar.append(item)
+
+        logger.info(f"Found {len(similar)} similar reclamations")
+
+        return json.dumps({
+            "success": True,
+            "similar_reclamations": similar,
+            "total_found": len(similar),
+        }, default=str)
+
+    except Exception as e:
+        logger.error(f"Error retrieving similar reclamations: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
+# =============================================================================
 # Health Check
 # =============================================================================
 

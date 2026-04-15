@@ -52,6 +52,12 @@ export default function Layout({ children }: LayoutProps) {
                   {t('nav.tenders')}
                 </Link>
                 <Link
+                  to="/postal"
+                  className={`${isActive('/postal')} inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md hover:bg-blue-700 transition-colors`}
+                >
+                  {t('nav.postal')}
+                </Link>
+                <Link
                   to="/admin"
                   className={`${isActive('/admin')} inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md hover:bg-blue-700 transition-colors`}
                 >

@@ -2,6 +2,7 @@
 -- Unified Seed Data for Multi-Agents Platform
 -- Contains: Claims domain (users, contracts, claims, knowledge base)
 --           Tenders domain (references, capabilities, historical, tenders)
+--           Courrier & Colis domain (reclamations, tracking, knowledge base)
 --           Cross-domain harmonized scenario (AO -> Claim)
 -- ============================================================================
 
@@ -21,6 +22,12 @@ DELETE FROM users;
 DELETE FROM company_references;
 DELETE FROM company_capabilities;
 DELETE FROM historical_tenders;
+DELETE FROM reclamation_processing_logs;
+DELETE FROM reclamation_decisions;
+DELETE FROM reclamation_documents;
+DELETE FROM reclamations;
+DELETE FROM tracking_events;
+DELETE FROM courrier_knowledge_base;
 
 
 -- ============================================================================
@@ -1392,3 +1399,427 @@ INSERT INTO guardrails_detections (id, claim_id, detection_type, severity, actio
      '{"field_name": "ocr_text", "source": "regex", "entity_type": "claim", "entity_id": "f6a7b8c9-d0e1-2345-fabc-456789012345"}'),
     (uuid_generate_v4(), 'f6a7b8c9-d0e1-2345-fabc-456789012345', 'DATE_FR', 'low', 'redacted', '2025-07-22 14:32:00+00',
      '{"field_name": "ocr_text", "source": "regex", "entity_type": "claim", "entity_id": "f6a7b8c9-d0e1-2345-fabc-456789012345"}');
+
+-- ============================================================================
+-- COURRIER & COLIS DOMAIN
+-- ============================================================================
+DELETE FROM reclamation_processing_logs;
+DELETE FROM reclamation_decisions;
+DELETE FROM reclamation_documents;
+DELETE FROM reclamations;
+DELETE FROM tracking_events;
+DELETE FROM courrier_knowledge_base;
+
+-- ============================================================================
+-- RECLAMATIONS (30 entries)
+-- ============================================================================
+
+-- 1-10: status = 'completed' (with processed_at set)
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0001', '6C198745632FR', 'RECL-2025-0001', 'colis_endommage', 'Jean-Pierre Dupont', 'jp.dupont@gmail.com', '06 12 34 56 78', 'Colis reçu avec le carton complètement écrasé. Le contenu (service à thé en porcelaine) est brisé en plusieurs morceaux.', 89.90, 'completed', '2025-06-10 09:15:00', '2025-06-10 09:18:42', 222000, '{"source": "web", "browser": "Chrome"}', '2025-06-10 09:15:00', '2025-06-10 09:18:42'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0002', '6C234567891FR', 'RECL-2025-0002', 'colis_perdu', 'Marie-Claire Lefebvre', 'mc.lefebvre@orange.fr', '07 23 45 67 89', 'Colis expédié le 2 juin, toujours pas reçu. Le suivi indique un dernier scan au centre de tri de Roissy le 4 juin.', 245.00, 'completed', '2025-06-12 14:30:00', '2025-06-12 14:35:12', 312000, '{"source": "phone", "operator_id": "OP-042"}', '2025-06-12 14:30:00', '2025-06-12 14:35:12'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0003', '6C345678912FR', 'RECL-2025-0003', 'non_livre', 'François Martin', 'f.martin@free.fr', '06 34 56 78 90', 'Le livreur a laissé un avis de passage alors que j''étais présent à mon domicile toute la journée. Aucune tentative de sonnette.', 32.50, 'completed', '2025-06-15 10:45:00', '2025-06-15 10:48:30', 210000, '{"source": "web"}', '2025-06-15 10:45:00', '2025-06-15 10:48:30'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0004', '6C456789123FR', 'RECL-2025-0004', 'retard_livraison', 'Sophie Bernard', 'sophie.bernard@laposte.net', '06 45 67 89 01', 'Colis commandé en Colissimo J+2 le 8 juin, toujours pas livré au 18 juin. Délai largement dépassé pour un anniversaire.', 67.00, 'completed', '2025-06-18 16:20:00', '2025-06-18 16:24:55', 295000, '{"source": "web", "priority": "high"}', '2025-06-18 16:20:00', '2025-06-18 16:24:55'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0005', '6C567891234FR', 'RECL-2025-0005', 'vol_point_relais', 'Ahmed Benali', 'a.benali@hotmail.fr', '07 56 78 90 12', 'Mon colis a été marqué comme livré au point relais Tabac Presse du Marais, mais le commerçant affirme ne jamais l''avoir reçu.', 189.99, 'completed', '2025-06-20 11:00:00', '2025-06-20 11:05:20', 320000, '{"source": "web", "point_relais_id": "PR-75004-12"}', '2025-06-20 11:00:00', '2025-06-20 11:05:20'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0006', '6C678912345FR', 'RECL-2025-0006', 'colis_endommage', 'Isabelle Moreau', 'i.moreau@sfr.fr', '06 67 89 01 23', 'Emballage extérieur intact mais l''intérieur du colis sentait fortement l''humidité. Livres complètement gondolés et inutilisables.', 54.80, 'completed', '2025-06-22 08:30:00', '2025-06-22 08:33:15', 195000, '{"source": "app_mobile"}', '2025-06-22 08:30:00', '2025-06-22 08:33:15'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0007', '6C789123456FR', 'RECL-2025-0007', 'mauvaise_adresse', 'Pierre Dubois', 'p.dubois@gmail.com', '06 78 90 12 34', 'Colis livré au 12 rue des Lilas au lieu du 12 rue des Tilleuls. Le voisin qui l''a reçu refuse de me le remettre.', 125.00, 'completed', '2025-06-25 13:45:00', '2025-06-25 13:49:10', 250000, '{"source": "web"}', '2025-06-25 13:45:00', '2025-06-25 13:49:10'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0008', '6C891234567FR', 'RECL-2025-0008', 'colis_perdu', 'Nathalie Girard', 'n.girard@yahoo.fr', '07 89 01 23 45', 'Colis expédié depuis la Belgique. Le suivi s''arrête à la douane de Lille depuis 3 semaines. Aucune information disponible.', 340.00, 'completed', '2025-06-28 15:10:00', '2025-06-28 15:15:45', 345000, '{"source": "phone", "international": true}', '2025-06-28 15:10:00', '2025-06-28 15:15:45'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0009', '6C912345678FR', 'RECL-2025-0009', 'non_livre', 'Laurent Petit', 'l.petit@outlook.fr', '06 90 12 34 56', 'Troisième tentative de livraison échouée. Je suis en télétravail et personne ne sonne. La caméra de surveillance ne montre aucun passage.', 78.50, 'completed', '2025-07-01 09:00:00', '2025-07-01 09:04:20', 260000, '{"source": "web", "attempts": 3}', '2025-07-01 09:00:00', '2025-07-01 09:04:20'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0010', '6C123456789FR', 'RECL-2025-0010', 'retard_livraison', 'Camille Roux', 'c.roux@gmail.com', '07 01 23 45 67', 'Colissimo express 24h envoyé le lundi, toujours en attente le vendredi. Contenu périssable (chocolats artisanaux), probablement fichu.', 95.00, 'completed', '2025-07-03 17:30:00', '2025-07-03 17:34:50', 320000, '{"source": "web", "perishable": true}', '2025-07-03 17:30:00', '2025-07-03 17:34:50')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- 11-15: status = 'rejected'
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0011', '6C111222333FR', 'RECL-2025-0011', 'colis_endommage', 'Gérard Fontaine', 'g.fontaine@wanadoo.fr', '06 11 22 33 44', 'Légère éraflure sur le carton d''emballage extérieur. Le contenu (vêtements) est intact et en parfait état.', 29.90, 'rejected', '2025-07-05 10:00:00', '2025-07-05 10:03:10', 190000, '{"source": "web"}', '2025-07-05 10:00:00', '2025-07-05 10:03:10'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0012', '6C222333444FR', 'RECL-2025-0012', 'retard_livraison', 'Monique Duval', 'm.duval@free.fr', '07 22 33 44 55', 'Colis livré avec 1 jour de retard sur la date estimée. Pas de préjudice particulier, mais c''est le principe.', 15.00, 'rejected', '2025-07-06 14:15:00', '2025-07-06 14:17:30', 150000, '{"source": "web"}', '2025-07-06 14:15:00', '2025-07-06 14:17:30'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0013', '6C333444555FR', 'RECL-2025-0013', 'colis_perdu', 'Éric Leroy', 'e.leroy@gmail.com', '06 33 44 55 66', 'Je n''ai pas reçu mon colis. EDIT : en fait il était chez le gardien, je ne l''avais pas vu. Désolé.', 45.00, 'rejected', '2025-07-07 11:30:00', '2025-07-07 11:32:50', 170000, '{"source": "web", "self_resolved": true}', '2025-07-07 11:30:00', '2025-07-07 11:32:50'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0014', '6C444555666FR', 'RECL-2025-0014', 'non_livre', 'Valérie Simon', 'v.simon@orange.fr', '07 44 55 66 77', 'Colis non livré. En vérifiant, je me suis rendu compte que j''avais donné une mauvaise adresse lors de la commande.', 22.00, 'rejected', '2025-07-08 16:45:00', '2025-07-08 16:47:20', 155000, '{"source": "phone"}', '2025-07-08 16:45:00', '2025-07-08 16:47:20'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0015', '6C555666777FR', 'RECL-2025-0015', 'colis_endommage', 'Thierry Lambert', 't.lambert@laposte.net', '06 55 66 77 88', 'Réclamation pour colis endommagé datant de 14 mois. Je viens seulement de m''en apercevoir en ouvrant le carton.', 180.00, 'rejected', '2025-07-09 09:20:00', '2025-07-09 09:23:40', 220000, '{"source": "web", "claim_age_months": 14}', '2025-07-09 09:20:00', '2025-07-09 09:23:40')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- 16-20: status = 'pending'
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0016', '6C666777888FR', 'RECL-2025-0016', 'colis_endommage', 'Claire Rousseau', 'c.rousseau@gmail.com', '06 66 77 88 99', 'Reçu un colis dont le contenu (appareil photo) est cassé. L''objectif est fêlé et le boîtier rayé profondément.', 499.00, 'pending', '2025-07-10 08:00:00', '{"source": "web"}', '2025-07-10 08:00:00', '2025-07-10 08:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0017', '6C777888999FR', 'RECL-2025-0017', 'colis_perdu', 'David Mercier', 'd.mercier@hotmail.fr', '07 77 88 99 00', 'Envoi recommandé avec AR contenant des documents administratifs importants. Perdu depuis le 5 juillet.', 50.00, 'pending', '2025-07-10 10:30:00', '{"source": "bureau_poste", "recommande": true}', '2025-07-10 10:30:00', '2025-07-10 10:30:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0018', '6C888999000FR', 'RECL-2025-0018', 'vol_point_relais', 'Émilie Fournier', 'e.fournier@sfr.fr', '06 88 99 00 11', 'Colis déposé en point relais (Relais Colis Boulangerie Martin). Quand je suis allée le chercher, on m''a dit qu''il avait déjà été retiré par quelqu''un d''autre.', 156.50, 'pending', '2025-07-11 12:00:00', '{"source": "web", "point_relais_id": "PR-69003-08"}', '2025-07-11 12:00:00', '2025-07-11 12:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0019', '6C999000111FR', 'RECL-2025-0019', 'mauvaise_adresse', 'Nicolas Bonnet', 'n.bonnet@outlook.fr', '07 99 00 11 22', 'Mon colis a été livré à mon ancienne adresse malgré un changement d''adresse effectué il y a 2 mois auprès de La Poste.', 88.00, 'pending', '2025-07-11 14:45:00', '{"source": "app_mobile", "address_change_date": "2025-05-11"}', '2025-07-11 14:45:00', '2025-07-11 14:45:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0020', '6C000111222FR', 'RECL-2025-0020', 'retard_livraison', 'Audrey Blanc', 'a.blanc@gmail.com', '06 00 11 22 33', 'Commande passée il y a 10 jours en Colissimo 48h. Le suivi est bloqué sur "en cours de traitement" depuis le départ.', 42.00, 'pending', '2025-07-12 09:15:00', '{"source": "web"}', '2025-07-12 09:15:00', '2025-07-12 09:15:00')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- 21-25: status = 'processing'
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0021', '6C101112131FR', 'RECL-2025-0021', 'colis_endommage', 'Philippe Garnier', 'p.garnier@free.fr', '06 10 11 12 13', 'Colis contenant une guitare classique. Le manche est cassé net. Emballage visiblement maltraité (traces de choc).', 350.00, 'processing', '2025-07-12 11:00:00', '{"source": "web", "fragile_sticker": true}', '2025-07-12 11:00:00', '2025-07-12 11:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0022', '6C121314151FR', 'RECL-2025-0022', 'non_livre', 'Sandrine Chevalier', 's.chevalier@yahoo.fr', '07 12 13 14 15', 'Colis marqué comme livré le 9 juillet, mais je n''ai rien reçu. Pas d''avis de passage, rien dans la boîte aux lettres.', 76.00, 'processing', '2025-07-12 13:30:00', '{"source": "web"}', '2025-07-12 13:30:00', '2025-07-12 13:30:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0023', '6C131415161FR', 'RECL-2025-0023', 'colis_perdu', 'Julien Morel', 'j.morel@laposte.net', '06 13 14 15 16', 'Colis international (Japon -> France) bloqué en douane depuis plus d''un mois. Aucune mise à jour du suivi.', 420.00, 'processing', '2025-07-12 15:00:00', '{"source": "phone", "international": true, "origin": "JP"}', '2025-07-12 15:00:00', '2025-07-12 15:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0024', '6C141516171FR', 'RECL-2025-0024', 'retard_livraison', 'Véronique Blanc', 've.blanc@orange.fr', '07 14 15 16 17', 'Colis Chronopost (sous-traité par La Poste) en retard de 5 jours. Contenu : médicaments vétérinaires urgents pour mon chien.', 210.00, 'processing', '2025-07-12 16:30:00', '{"source": "phone", "urgent_medical": true}', '2025-07-12 16:30:00', '2025-07-12 16:30:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0025', '6C151617181FR', 'RECL-2025-0025', 'vol_point_relais', 'Rémi Faure', 'r.faure@gmail.com', '06 15 16 17 18', 'Colis récupéré par une personne non autorisée au point relais. Le commerçant dit avoir vérifié la pièce d''identité mais le nom ne correspond pas.', 299.00, 'processing', '2025-07-13 08:00:00', '{"source": "web", "point_relais_id": "PR-31000-05", "identity_check_claimed": true}', '2025-07-13 08:00:00', '2025-07-13 08:00:00')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- 26-28: status = 'manual_review'
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0026', '6C161718191FR', 'RECL-2025-0026', 'colis_endommage', 'Hélène Picard', 'h.picard@sfr.fr', '07 16 17 18 19', 'Colis contenant du matériel informatique (carte graphique RTX 4090). Le produit ne fonctionne plus après livraison. Emballage d''origine insuffisant ou colis maltraité ?', 500.00, 'manual_review', '2025-07-13 09:30:00', '{"source": "web", "high_value": true, "ambiguous_cause": true}', '2025-07-13 09:30:00', '2025-07-13 09:30:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0027', '6C171819202FR', 'RECL-2025-0027', 'colis_perdu', 'Yannick Lemaire', 'y.lemaire@hotmail.fr', '06 17 18 19 20', 'Envoi de bijoux de valeur (bague en or). Le suivi montre une livraison mais je n''ai rien reçu. Troisième réclamation similaire en 6 mois.', 480.00, 'manual_review', '2025-07-13 11:00:00', '{"source": "web", "repeat_claimant": true, "previous_claims": 2}', '2025-07-13 11:00:00', '2025-07-13 11:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0028', '6C181920213FR', 'RECL-2025-0028', 'mauvaise_adresse', 'Stéphanie Vincent', 's.vincent@gmail.com', '07 18 19 20 21', 'Le colis a été livré à un homonyme habitant dans la même rue. Le destinataire refuse de restituer le colis. Situation complexe.', 175.00, 'manual_review', '2025-07-13 14:00:00', '{"source": "bureau_poste", "homonyme_confirmed": true}', '2025-07-13 14:00:00', '2025-07-13 14:00:00')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- 29-30: status = 'escalated'
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0029', '6C192021224FR', 'RECL-2025-0029', 'vol_point_relais', 'Marc-Antoine Dupuis', 'ma.dupuis@orange.fr', '06 19 20 21 22', 'Vol organisé au point relais : 3 colis de clients différents disparus le même jour. Le commerçant est soupçonné. Plainte déposée.', 450.00, 'escalated', '2025-07-13 16:00:00', '{"source": "phone", "police_report": "PV-2025-07890", "multiple_victims": true}', '2025-07-13 16:00:00', '2025-07-13 16:00:00'),
+    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0030', '6C202122235FR', 'RECL-2025-0030', 'colis_perdu', 'Christine Delorme', 'c.delorme@free.fr', '07 20 21 22 23', 'Colis contenant un tableau de valeur (oeuvre d''art originale). Disparu depuis 3 semaines. Assurance ad valorem souscrite. Litige avec l''assureur sur le montant.', 500.00, 'escalated', '2025-07-14 08:00:00', '{"source": "courrier_recommande", "insured": true, "insurance_dispute": true, "art_piece": true}', '2025-07-14 08:00:00', '2025-07-14 08:00:00')
+ON CONFLICT (reclamation_number) DO NOTHING;
+
+-- ============================================================================
+-- TRACKING EVENTS (for reclamations 1-15)
+-- ============================================================================
+
+-- Tracking for RECL-2025-0001 (colis_endommage, completed) — delivered but damaged
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C198745632FR', 'prise_en_charge', '2025-06-06 14:00:00', 'Bureau de Poste Lyon Part-Dieu', 'Prise en charge du colis', '69003', false, '{}'),
+    (uuid_generate_v4(), '6C198745632FR', 'tri', '2025-06-06 22:30:00', 'Centre de tri Lyon Vénissieux', 'Tri effectué', '69200', false, '{}'),
+    (uuid_generate_v4(), '6C198745632FR', 'en_cours_acheminement', '2025-06-07 03:15:00', 'Plateforme Colis Lyon', 'En cours d''acheminement vers le site de distribution', '69008', false, '{}'),
+    (uuid_generate_v4(), '6C198745632FR', 'arrive_centre', '2025-06-08 06:00:00', 'Centre courrier Marseille Capelette', 'Arrivé au centre de distribution', '13010', false, '{}'),
+    (uuid_generate_v4(), '6C198745632FR', 'en_livraison', '2025-06-08 08:45:00', 'Marseille 6e', 'En cours de livraison', '13006', false, '{}'),
+    (uuid_generate_v4(), '6C198745632FR', 'incident', '2025-06-08 09:10:00', 'Marseille 6e', 'Colis présentant des dommages visibles constatés à la livraison', '13006', false, '{"damage_noted": true}'),
+    (uuid_generate_v4(), '6C198745632FR', 'livre', '2025-06-08 09:15:00', 'Marseille 6e', 'Distribué — signé avec réserves pour dommages', '13006', true, '{"signed_with_reserve": true}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0002 (colis_perdu, completed) — trail stops at sorting center
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C234567891FR', 'prise_en_charge', '2025-06-02 10:00:00', 'Bureau de Poste Bordeaux Mériadeck', 'Prise en charge du colis', '33000', false, '{}'),
+    (uuid_generate_v4(), '6C234567891FR', 'tri', '2025-06-02 20:00:00', 'Centre de tri Bordeaux Bègles', 'Tri effectué', '33130', false, '{}'),
+    (uuid_generate_v4(), '6C234567891FR', 'en_cours_acheminement', '2025-06-03 02:00:00', 'Plateforme Colis Bordeaux', 'En cours d''acheminement', '33300', false, '{}'),
+    (uuid_generate_v4(), '6C234567891FR', 'arrive_centre', '2025-06-04 05:30:00', 'Centre de tri Roissy Hub', 'Arrivé au centre de tri', '95700', false, '{}'),
+    (uuid_generate_v4(), '6C234567891FR', 'tri', '2025-06-04 08:00:00', 'Centre de tri Roissy Hub', 'En cours de traitement', '95700', false, '{"last_known_scan": true}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0003 (non_livre, completed) — ends with avis_passage
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C345678912FR', 'prise_en_charge', '2025-06-12 09:00:00', 'Bureau de Poste Nantes Centre', 'Prise en charge du colis', '44000', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'tri', '2025-06-12 19:00:00', 'Centre de tri Nantes Rezé', 'Tri effectué', '44400', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'en_cours_acheminement', '2025-06-13 01:30:00', 'Plateforme Colis Nantes', 'En cours d''acheminement', '44300', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'arrive_centre', '2025-06-13 22:00:00', 'Centre courrier Paris 11e', 'Arrivé au centre de distribution', '75011', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'en_livraison', '2025-06-14 07:30:00', 'Paris 11e', 'Pris en charge par le facteur', '75011', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'avis_passage', '2025-06-14 10:45:00', 'Paris 11e', 'Avis de passage déposé — destinataire absent', '75011', false, '{"attempt_number": 1}'),
+    (uuid_generate_v4(), '6C345678912FR', 'en_livraison', '2025-06-15 07:30:00', 'Paris 11e', 'Nouvelle tentative de livraison', '75011', false, '{}'),
+    (uuid_generate_v4(), '6C345678912FR', 'avis_passage', '2025-06-15 10:30:00', 'Paris 11e', 'Deuxième avis de passage — destinataire absent', '75011', false, '{"attempt_number": 2}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0004 (retard_livraison, completed) — shows delay
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C456789123FR', 'prise_en_charge', '2025-06-08 16:00:00', 'Bureau de Poste Toulouse Capitole', 'Prise en charge du colis — Colissimo J+2', '31000', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'tri', '2025-06-08 23:00:00', 'Centre de tri Toulouse Colomiers', 'Tri effectué', '31770', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'en_cours_acheminement', '2025-06-09 04:00:00', 'Plateforme Colis Toulouse', 'En cours d''acheminement', '31100', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'incident', '2025-06-10 12:00:00', 'Centre de tri Limoges', 'Erreur d''acheminement — colis mal orienté', '87000', false, '{"routing_error": true}'),
+    (uuid_generate_v4(), '6C456789123FR', 'en_cours_acheminement', '2025-06-11 06:00:00', 'Centre de tri Limoges', 'Réacheminement vers la bonne destination', '87000', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'arrive_centre', '2025-06-14 07:00:00', 'Centre courrier Strasbourg Neudorf', 'Arrivé au centre de distribution', '67100', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'en_livraison', '2025-06-15 08:00:00', 'Strasbourg Centre', 'En cours de livraison', '67000', false, '{}'),
+    (uuid_generate_v4(), '6C456789123FR', 'livre', '2025-06-15 11:30:00', 'Strasbourg Centre', 'Distribué — livré avec 5 jours de retard', '67000', true, '{"days_late": 5}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0005 (vol_point_relais, completed) — delivered to point relais
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C567891234FR', 'prise_en_charge', '2025-06-16 11:00:00', 'Bureau de Poste Nice Jean Médecin', 'Prise en charge du colis', '06000', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'tri', '2025-06-16 21:00:00', 'Centre de tri Nice Saint-Augustin', 'Tri effectué', '06200', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'en_cours_acheminement', '2025-06-17 03:00:00', 'Plateforme Colis Nice', 'En cours d''acheminement vers Paris', '06300', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'arrive_centre', '2025-06-18 05:00:00', 'Centre courrier Paris 4e', 'Arrivé au centre de distribution', '75004', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'en_livraison', '2025-06-18 08:00:00', 'Paris 4e', 'En cours de livraison', '75004', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'avis_passage', '2025-06-18 11:00:00', 'Paris 4e', 'Absent — colis déposé en point relais', '75004', false, '{}'),
+    (uuid_generate_v4(), '6C567891234FR', 'point_relais', '2025-06-18 14:00:00', 'Tabac Presse du Marais, Paris 4e', 'Colis disponible en point relais', '75004', true, '{"point_relais_id": "PR-75004-12", "available_until": "2025-07-02"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0006 (colis_endommage, completed) — delivered, damaged by moisture
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C678912345FR', 'prise_en_charge', '2025-06-18 15:00:00', 'Bureau de Poste Lille Flandres', 'Prise en charge du colis', '59000', false, '{}'),
+    (uuid_generate_v4(), '6C678912345FR', 'tri', '2025-06-19 00:00:00', 'Centre de tri Lille Lesquin', 'Tri effectué', '59810', false, '{}'),
+    (uuid_generate_v4(), '6C678912345FR', 'en_cours_acheminement', '2025-06-19 05:00:00', 'Plateforme Colis Lille', 'En cours d''acheminement', '59800', false, '{}'),
+    (uuid_generate_v4(), '6C678912345FR', 'arrive_centre', '2025-06-20 06:00:00', 'Centre courrier Montpellier Antigone', 'Arrivé au centre de distribution', '34000', false, '{}'),
+    (uuid_generate_v4(), '6C678912345FR', 'en_livraison', '2025-06-20 08:30:00', 'Montpellier Centre', 'En cours de livraison', '34000', false, '{}'),
+    (uuid_generate_v4(), '6C678912345FR', 'livre', '2025-06-20 10:45:00', 'Montpellier Centre', 'Distribué', '34000', true, '{}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0007 (mauvaise_adresse, completed) — delivered to wrong address
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C789123456FR', 'prise_en_charge', '2025-06-22 09:30:00', 'Bureau de Poste Rennes République', 'Prise en charge du colis', '35000', false, '{}'),
+    (uuid_generate_v4(), '6C789123456FR', 'tri', '2025-06-22 20:00:00', 'Centre de tri Rennes Saint-Jacques', 'Tri effectué', '35136', false, '{}'),
+    (uuid_generate_v4(), '6C789123456FR', 'en_cours_acheminement', '2025-06-23 03:00:00', 'Plateforme Colis Rennes', 'En cours d''acheminement', '35200', false, '{}'),
+    (uuid_generate_v4(), '6C789123456FR', 'arrive_centre', '2025-06-24 06:30:00', 'Centre courrier Grenoble Europole', 'Arrivé au centre de distribution', '38000', false, '{}'),
+    (uuid_generate_v4(), '6C789123456FR', 'en_livraison', '2025-06-24 08:00:00', 'Grenoble Centre', 'En cours de livraison', '38000', false, '{}'),
+    (uuid_generate_v4(), '6C789123456FR', 'livre', '2025-06-24 10:20:00', 'Grenoble Centre', 'Distribué au 12 rue des Lilas', '38000', true, '{"delivered_to": "12 rue des Lilas", "intended_address": "12 rue des Tilleuls"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0008 (colis_perdu, completed) — stuck at customs
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C891234567FR', 'prise_en_charge', '2025-06-05 12:00:00', 'Bureau de Poste Bruxelles Centre', 'Prise en charge du colis — envoi international', '1000', false, '{"country": "BE"}'),
+    (uuid_generate_v4(), '6C891234567FR', 'en_cours_acheminement', '2025-06-06 08:00:00', 'Centre international Bruxelles', 'En cours d''acheminement vers la France', '1000', false, '{"country": "BE"}'),
+    (uuid_generate_v4(), '6C891234567FR', 'arrive_centre', '2025-06-07 04:00:00', 'Centre de tri international Lille', 'Arrivé au centre de tri international', '59810', false, '{}'),
+    (uuid_generate_v4(), '6C891234567FR', 'tri', '2025-06-07 10:00:00', 'Douane Lille', 'Dédouanement en cours', '59810', false, '{"customs_status": "in_progress"}'),
+    (uuid_generate_v4(), '6C891234567FR', 'incident', '2025-06-08 14:00:00', 'Douane Lille', 'Retenu en douane — documents complémentaires requis', '59810', false, '{"customs_hold": true}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0009 (non_livre, completed) — multiple failed delivery attempts
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C912345678FR', 'prise_en_charge', '2025-06-26 10:00:00', 'Bureau de Poste Dijon Centre', 'Prise en charge du colis', '21000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'tri', '2025-06-26 21:00:00', 'Centre de tri Dijon Longvic', 'Tri effectué', '21600', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'en_cours_acheminement', '2025-06-27 02:30:00', 'Plateforme Colis Dijon', 'En cours d''acheminement', '21000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'arrive_centre', '2025-06-27 18:00:00', 'Centre courrier Annecy', 'Arrivé au centre de distribution', '74000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'en_livraison', '2025-06-28 07:30:00', 'Annecy Centre', 'Tentative de livraison n 1', '74000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'avis_passage', '2025-06-28 10:00:00', 'Annecy Centre', 'Destinataire absent', '74000', false, '{"attempt_number": 1}'),
+    (uuid_generate_v4(), '6C912345678FR', 'en_livraison', '2025-06-29 07:30:00', 'Annecy Centre', 'Tentative de livraison n 2', '74000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'avis_passage', '2025-06-29 09:45:00', 'Annecy Centre', 'Destinataire absent', '74000', false, '{"attempt_number": 2}'),
+    (uuid_generate_v4(), '6C912345678FR', 'en_livraison', '2025-06-30 07:30:00', 'Annecy Centre', 'Tentative de livraison n 3', '74000', false, '{}'),
+    (uuid_generate_v4(), '6C912345678FR', 'avis_passage', '2025-06-30 10:15:00', 'Annecy Centre', 'Troisième avis de passage — colis mis en instance', '74000', false, '{"attempt_number": 3, "mise_en_instance": true}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0010 (retard_livraison, completed) — express with major delay
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C123456789FR', 'prise_en_charge', '2025-06-30 09:00:00', 'Bureau de Poste Aix-en-Provence', 'Prise en charge — Colissimo Express 24h', '13100', false, '{"service": "express_24h"}'),
+    (uuid_generate_v4(), '6C123456789FR', 'tri', '2025-06-30 20:00:00', 'Centre de tri Aix-en-Provence', 'Tri effectué', '13100', false, '{}'),
+    (uuid_generate_v4(), '6C123456789FR', 'en_cours_acheminement', '2025-07-01 02:00:00', 'Plateforme Colis Marseille', 'En cours d''acheminement', '13000', false, '{}'),
+    (uuid_generate_v4(), '6C123456789FR', 'incident', '2025-07-01 14:00:00', 'Centre de tri Paris Gennevilliers', 'Retard de traitement — surcharge plateforme', '92230', false, '{"delay_reason": "platform_overload"}'),
+    (uuid_generate_v4(), '6C123456789FR', 'en_cours_acheminement', '2025-07-02 06:00:00', 'Centre de tri Paris Gennevilliers', 'Reprise d''acheminement', '92230', false, '{}'),
+    (uuid_generate_v4(), '6C123456789FR', 'arrive_centre', '2025-07-03 07:00:00', 'Centre courrier Tours Centre', 'Arrivé au centre de distribution', '37000', false, '{}'),
+    (uuid_generate_v4(), '6C123456789FR', 'en_livraison', '2025-07-03 08:30:00', 'Tours Centre', 'En cours de livraison', '37000', false, '{}'),
+    (uuid_generate_v4(), '6C123456789FR', 'livre', '2025-07-03 11:00:00', 'Tours Centre', 'Distribué — livré avec 3 jours de retard', '37000', true, '{"days_late": 3, "service": "express_24h"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0011 (colis_endommage, rejected) — minor scuff, delivered OK
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C111222333FR', 'prise_en_charge', '2025-07-01 14:00:00', 'Bureau de Poste Clermont-Ferrand', 'Prise en charge du colis', '63000', false, '{}'),
+    (uuid_generate_v4(), '6C111222333FR', 'tri', '2025-07-01 22:00:00', 'Centre de tri Clermont-Ferrand', 'Tri effectué', '63100', false, '{}'),
+    (uuid_generate_v4(), '6C111222333FR', 'en_cours_acheminement', '2025-07-02 03:00:00', 'Plateforme Colis Clermont', 'En cours d''acheminement', '63000', false, '{}'),
+    (uuid_generate_v4(), '6C111222333FR', 'arrive_centre', '2025-07-03 06:00:00', 'Centre courrier Perpignan', 'Arrivé au centre de distribution', '66000', false, '{}'),
+    (uuid_generate_v4(), '6C111222333FR', 'en_livraison', '2025-07-03 08:00:00', 'Perpignan Centre', 'En cours de livraison', '66000', false, '{}'),
+    (uuid_generate_v4(), '6C111222333FR', 'livre', '2025-07-03 10:30:00', 'Perpignan Centre', 'Distribué', '66000', true, '{}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0012 (retard_livraison, rejected) — 1 day late
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C222333444FR', 'prise_en_charge', '2025-07-02 10:00:00', 'Bureau de Poste Rouen Centre', 'Prise en charge du colis', '76000', false, '{}'),
+    (uuid_generate_v4(), '6C222333444FR', 'tri', '2025-07-02 20:00:00', 'Centre de tri Rouen Sotteville', 'Tri effectué', '76300', false, '{}'),
+    (uuid_generate_v4(), '6C222333444FR', 'en_cours_acheminement', '2025-07-03 04:00:00', 'Plateforme Colis Rouen', 'En cours d''acheminement', '76000', false, '{}'),
+    (uuid_generate_v4(), '6C222333444FR', 'arrive_centre', '2025-07-04 07:00:00', 'Centre courrier Caen', 'Arrivé au centre de distribution', '14000', false, '{}'),
+    (uuid_generate_v4(), '6C222333444FR', 'en_livraison', '2025-07-05 08:00:00', 'Caen Centre', 'En cours de livraison', '14000', false, '{}'),
+    (uuid_generate_v4(), '6C222333444FR', 'livre', '2025-07-05 10:00:00', 'Caen Centre', 'Distribué — 1 jour de retard sur estimation', '14000', true, '{"days_late": 1}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0013 (colis_perdu, rejected — self-resolved) — actually delivered
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C333444555FR', 'prise_en_charge', '2025-07-03 09:00:00', 'Bureau de Poste Metz Centre', 'Prise en charge du colis', '57000', false, '{}'),
+    (uuid_generate_v4(), '6C333444555FR', 'tri', '2025-07-03 19:00:00', 'Centre de tri Metz Woippy', 'Tri effectué', '57140', false, '{}'),
+    (uuid_generate_v4(), '6C333444555FR', 'en_cours_acheminement', '2025-07-04 02:00:00', 'Plateforme Colis Metz', 'En cours d''acheminement', '57000', false, '{}'),
+    (uuid_generate_v4(), '6C333444555FR', 'arrive_centre', '2025-07-05 06:00:00', 'Centre courrier Nancy', 'Arrivé au centre de distribution', '54000', false, '{}'),
+    (uuid_generate_v4(), '6C333444555FR', 'en_livraison', '2025-07-05 08:00:00', 'Nancy Centre', 'En cours de livraison', '54000', false, '{}'),
+    (uuid_generate_v4(), '6C333444555FR', 'livre', '2025-07-05 09:30:00', 'Nancy Centre', 'Distribué — remis au gardien', '54000', true, '{"delivered_to": "gardien"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0014 (non_livre, rejected — client error) — returned to sender
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C444555666FR', 'prise_en_charge', '2025-07-04 11:00:00', 'Bureau de Poste Orléans Centre', 'Prise en charge du colis', '45000', false, '{}'),
+    (uuid_generate_v4(), '6C444555666FR', 'tri', '2025-07-04 21:00:00', 'Centre de tri Orléans Saran', 'Tri effectué', '45770', false, '{}'),
+    (uuid_generate_v4(), '6C444555666FR', 'en_cours_acheminement', '2025-07-05 03:00:00', 'Plateforme Colis Orléans', 'En cours d''acheminement', '45000', false, '{}'),
+    (uuid_generate_v4(), '6C444555666FR', 'arrive_centre', '2025-07-06 06:30:00', 'Centre courrier Poitiers', 'Arrivé au centre de distribution', '86000', false, '{}'),
+    (uuid_generate_v4(), '6C444555666FR', 'en_livraison', '2025-07-06 08:00:00', 'Poitiers Centre', 'En cours de livraison', '86000', false, '{}'),
+    (uuid_generate_v4(), '6C444555666FR', 'incident', '2025-07-06 10:00:00', 'Poitiers Centre', 'Adresse incorrecte — destinataire inconnu à cette adresse', '86000', false, '{"reason": "wrong_address"}'),
+    (uuid_generate_v4(), '6C444555666FR', 'retour_expediteur', '2025-07-07 09:00:00', 'Poitiers Centre', 'Retour à l''expéditeur — adresse erronée', '86000', true, '{"return_reason": "incorrect_address"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0015 (colis_endommage, rejected — too old) — delivered long ago
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C555666777FR', 'prise_en_charge', '2024-05-10 10:00:00', 'Bureau de Poste Avignon Centre', 'Prise en charge du colis', '84000', false, '{}'),
+    (uuid_generate_v4(), '6C555666777FR', 'tri', '2024-05-10 20:00:00', 'Centre de tri Avignon', 'Tri effectué', '84000', false, '{}'),
+    (uuid_generate_v4(), '6C555666777FR', 'en_cours_acheminement', '2024-05-11 03:00:00', 'Plateforme Colis Avignon', 'En cours d''acheminement', '84000', false, '{}'),
+    (uuid_generate_v4(), '6C555666777FR', 'arrive_centre', '2024-05-12 06:00:00', 'Centre courrier Toulon', 'Arrivé au centre de distribution', '83000', false, '{}'),
+    (uuid_generate_v4(), '6C555666777FR', 'en_livraison', '2024-05-12 08:00:00', 'Toulon Centre', 'En cours de livraison', '83000', false, '{}'),
+    (uuid_generate_v4(), '6C555666777FR', 'livre', '2024-05-12 10:00:00', 'Toulon Centre', 'Distribué', '83000', true, '{}')
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- RECLAMATION DECISIONS (for completed and rejected reclamations)
+-- ============================================================================
+
+-- Decisions for completed reclamations (1-10)
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at) VALUES
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0001', 'rembourser', 0.92, 'Colis endommagé avec preuves photographiques. Dommages visibles sur le contenu (porcelaine brisée). Valeur déclarée raisonnable.', '2025-06-10 09:18:00', 'rembourser', 0.92, 'Remboursement approuvé — dommages confirmés par photos et réserves à la livraison.', 'mistral-large-latest', false, '2025-06-10 09:18:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0002', 'rembourser', 0.88, 'Colis perdu confirmé — dernier scan au centre de tri il y a plus de 10 jours. Aucune mise à jour du suivi.', '2025-06-12 14:34:00', 'rembourser', 0.88, 'Remboursement approuvé — colis considéré comme perdu après 10 jours sans mouvement.', 'mistral-large-latest', false, '2025-06-12 14:34:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0003', 'reexpedier', 0.85, 'Non-livraison malgré présence du destinataire. Avis de passage sans tentative réelle. Réexpédition recommandée.', '2025-06-15 10:47:00', 'reexpedier', 0.85, 'Réexpédition ordonnée — défaut de livraison imputable au facteur.', 'mistral-large-latest', false, '2025-06-15 10:47:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0004', 'rembourser', 0.90, 'Retard majeur (5 jours pour un J+2). Erreur d''acheminement documentée. Indemnisation conforme aux CGV.', '2025-06-18 16:24:00', 'rembourser', 0.90, 'Remboursement des frais de port + indemnité forfaitaire pour retard excessif.', 'mistral-large-latest', false, '2025-06-18 16:24:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0005', 'rembourser', 0.87, 'Vol en point relais suspecté. Le colis est marqué comme arrivé mais le commerçant nie l''avoir reçu.', '2025-06-20 11:04:00', 'rembourser', 0.87, 'Remboursement approuvé — responsabilité du point relais engagée.', 'mistral-large-latest', false, '2025-06-20 11:04:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0006', 'rembourser', 0.82, 'Dommages causés par l''humidité durant le transport. Contenu (livres) inutilisable.', '2025-06-22 08:32:00', 'rembourser', 0.82, 'Remboursement partiel — dommages liés aux conditions de transport.', 'mistral-large-latest', false, '2025-06-22 08:32:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0007', 'reexpedier', 0.91, 'Erreur d''adresse imputable au service de livraison. Colis livré à la mauvaise rue.', '2025-06-25 13:48:00', 'reexpedier', 0.91, 'Réexpédition à la bonne adresse — erreur du facteur confirmée.', 'mistral-large-latest', false, '2025-06-25 13:48:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0008', 'rembourser', 0.86, 'Colis bloqué en douane depuis 3 semaines sans évolution. Considéré comme perdu.', '2025-06-28 15:14:00', 'rembourser', 0.86, 'Remboursement approuvé — colis bloqué en douane sans perspective de déblocage.', 'mistral-large-latest', false, '2025-06-28 15:14:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0009', 'reexpedier', 0.89, 'Trois tentatives de livraison échouées sans preuve de passage réel. Caméra du client confirme l''absence du facteur.', '2025-07-01 09:03:00', 'reexpedier', 0.89, 'Réexpédition avec instruction de livraison spécifique au facteur.', 'mistral-large-latest', false, '2025-07-01 09:03:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0010', 'rembourser', 0.93, 'Express 24h livré avec 3 jours de retard. Contenu périssable détérioré. Faute manifeste du service.', '2025-07-03 17:34:00', 'rembourser', 0.93, 'Remboursement total — retard excessif ayant entraîné la perte du contenu périssable.', 'mistral-large-latest', false, '2025-07-03 17:34:00')
+ON CONFLICT DO NOTHING;
+
+-- Decisions for rejected reclamations (11-15)
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at) VALUES
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0011', 'rejeter', 0.95, 'Dommages superficiels sur l''emballage uniquement. Contenu intact et fonctionnel. Pas de préjudice.', '2025-07-05 10:02:00', 'rejeter', 0.95, 'Réclamation rejetée — aucun dommage sur le contenu du colis.', 'mistral-large-latest', false, '2025-07-05 10:02:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0012', 'rejeter', 0.94, 'Retard de 1 jour seulement par rapport à l''estimation. Les dates estimées ne sont pas contractuelles.', '2025-07-06 14:17:00', 'rejeter', 0.94, 'Réclamation rejetée — retard mineur dans les tolérances du service.', 'mistral-large-latest', false, '2025-07-06 14:17:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0013', 'rejeter', 0.97, 'Le client a retrouvé son colis chez le gardien. Réclamation sans objet.', '2025-07-07 11:32:00', 'rejeter', 0.97, 'Réclamation rejetée — colis retrouvé par le client.', 'mistral-large-latest', false, '2025-07-07 11:32:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0014', 'rejeter', 0.93, 'Adresse erronée fournie par le client. La non-livraison n''est pas imputable au service postal.', '2025-07-08 16:47:00', 'rejeter', 0.93, 'Réclamation rejetée — erreur d''adresse de la part de l''expéditeur.', 'mistral-large-latest', false, '2025-07-08 16:47:00'),
+    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0015', 'rejeter', 0.96, 'Réclamation déposée 14 mois après la livraison. Délai de réclamation dépassé (1 an maximum).', '2025-07-09 09:23:00', 'rejeter', 0.96, 'Réclamation rejetée — délai de prescription dépassé (14 mois).', 'mistral-large-latest', false, '2025-07-09 09:23:00')
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- COURRIER KNOWLEDGE BASE (15 entries, embeddings left NULL)
+-- ============================================================================
+INSERT INTO courrier_knowledge_base (id, title, content, category, tags, embedding, is_active) VALUES
+    (uuid_generate_v4(), 'Tarifs Colissimo France métropolitaine 2025',
+     'Les tarifs Colissimo pour la France métropolitaine en 2025 sont les suivants :
+- Jusqu''à 250g : 4,95 EUR
+- De 250g à 500g : 6,35 EUR
+- De 500g à 1kg : 7,45 EUR
+- De 1kg à 2kg : 8,95 EUR
+- De 2kg à 5kg : 13,75 EUR
+- De 5kg à 10kg : 20,05 EUR
+- De 10kg à 15kg : 26,50 EUR
+- De 15kg à 30kg : 33,50 EUR
+La surtaxe pour livraison le samedi est de 1,50 EUR. Les envois vers la Corse et les DOM-TOM sont soumis à des tarifs spécifiques.', 'tarifs', ARRAY['colissimo', 'tarifs', 'france', 'prix', 'metropolitaine'], NULL, true),
+
+    (uuid_generate_v4(), 'Délais de livraison Colissimo',
+     'Les délais de livraison Colissimo en France métropolitaine sont :
+- Colissimo domicile : 2 jours ouvrables (J+2)
+- Colissimo point retrait : 2 jours ouvrables (J+2)
+- Colissimo Expert (avec signature) : 2 jours ouvrables (J+2)
+- Colissimo Flash (express) : 1 jour ouvrable (J+1)
+Les délais sont indicatifs et non contractuels. Ils sont calculés à partir de la date de dépôt du colis en bureau de poste ou en boîte aux lettres. Des retards peuvent survenir en période de forte activité (Noël, soldes, Black Friday).', 'delais', ARRAY['colissimo', 'delais', 'livraison', 'express', 'j+1', 'j+2'], NULL, true),
+
+    (uuid_generate_v4(), 'Règles d''emballage pour colis fragiles',
+     'Pour l''envoi de colis fragiles via Colissimo, La Poste recommande :
+1. Utiliser un carton double cannelure neuf et rigide
+2. Envelopper chaque article individuellement dans du papier bulle (minimum 2 couches)
+3. Combler les espaces vides avec du papier kraft froissé ou des chips de calage
+4. Placer l''objet au centre du carton, à au moins 5 cm de chaque paroi
+5. Apposer l''étiquette "FRAGILE" sur au moins 2 faces du colis
+6. Poids maximum du colis : 30 kg
+7. Dimensions maximales : L+2(l+h) <= 150 cm, longueur maximale 100 cm
+En cas de casse, un emballage non conforme peut entraîner le rejet de la réclamation.', 'emballage', ARRAY['emballage', 'fragile', 'protection', 'carton', 'normes'], NULL, true),
+
+    (uuid_generate_v4(), 'Procédure de déclaration de perte de colis',
+     'Pour déclarer un colis perdu auprès de La Poste :
+1. Attendre au minimum 10 jours ouvrables après l''envoi (15 jours pour l''international)
+2. Vérifier le suivi en ligne sur laposte.fr ou via l''application mobile
+3. Déposer une réclamation en ligne sur reclamation.laposte.fr ou en bureau de poste
+4. Fournir : numéro de suivi, preuve d''envoi (reçu), description du contenu, valeur déclarée
+5. Délai de traitement : 21 jours maximum
+6. Indemnisation forfaitaire : jusqu''à 23 EUR/kg (max 1000 EUR) pour Colissimo standard
+7. Pour les envois avec assurance Ad Valorem : remboursement jusqu''à la valeur déclarée (max 5000 EUR)
+Le délai de prescription pour les réclamations est de 1 an à compter de la date d''envoi.', 'remboursement', ARRAY['perte', 'colis_perdu', 'declaration', 'reclamation', 'indemnisation'], NULL, true),
+
+    (uuid_generate_v4(), 'Envois internationaux et formalités douanières',
+     'Pour les envois internationaux via Colissimo :
+- Hors UE : déclaration en douane obligatoire (formulaire CN23 pour les colis > 300 EUR)
+- Documents requis : facture commerciale, description détaillée du contenu, valeur unitaire
+- Frais de douane : à la charge du destinataire (droits de douane + TVA locale)
+- Produits interdits : matières dangereuses, denrées périssables, médicaments, contrefaçons
+- Délais indicatifs : 5-7 jours ouvrables (Europe), 7-15 jours (hors Europe)
+- Suivi disponible dans 40 pays partenaires
+- En cas de rétention en douane, le suivi affiche "Dédouanement en cours". Prévoir un délai supplémentaire de 3 à 10 jours.', 'douane', ARRAY['international', 'douane', 'cn23', 'export', 'import', 'hors_ue'], NULL, true),
+
+    (uuid_generate_v4(), 'Assurance Ad Valorem Colissimo',
+     'L''assurance Ad Valorem permet de garantir la valeur réelle du contenu :
+- Souscription au moment du dépôt du colis (en bureau de poste ou en ligne)
+- Couverture : perte, vol, avarie durant le transport
+- Plafond : 5 000 EUR par envoi
+- Tarifs : 2,50 EUR pour une valeur jusqu''à 200 EUR, puis 1 EUR par tranche de 100 EUR supplémentaire
+- Pièces justificatives en cas de sinistre : facture d''achat originale, photos des dommages
+- Délai de déclaration : dans les 3 jours ouvrables suivant la livraison (pour les avaries) ou 10 jours après envoi (pour les pertes)
+- Non cumulable avec l''indemnisation forfaitaire standard', 'remboursement', ARRAY['assurance', 'ad_valorem', 'garantie', 'indemnisation', 'valeur'], NULL, true),
+
+    (uuid_generate_v4(), 'Points relais Colissimo — fonctionnement',
+     'Le réseau de points relais Colissimo compte plus de 17 000 points en France :
+- Types : bureaux de poste, commerçants partenaires, consignes automatiques Pickup
+- Horaires : variables selon le commerçant, souvent élargis (soir et week-end)
+- Durée de mise à disposition : 10 jours ouvrables à compter de la réception
+- Retrait : sur présentation d''une pièce d''identité et du numéro de suivi ou e-mail de notification
+- Procuration : possible avec pièce d''identité du mandataire et lettre de procuration signée
+- Si non retiré dans le délai : retour automatique à l''expéditeur
+- En cas de litige (colis retiré par un tiers) : réclamation à déposer dans les 5 jours', 'services', ARRAY['point_relais', 'retrait', 'pickup', 'commerçant', 'consigne'], NULL, true),
+
+    (uuid_generate_v4(), 'Indemnisation forfaitaire Colissimo',
+     'En cas de perte ou d''avarie d''un Colissimo, l''indemnisation forfaitaire s''applique :
+- Colissimo sans recommandation : 23 EUR/kg, plafonné à 1 000 EUR
+- Colissimo avec recommandation (R1) : forfait de 50 EUR
+- Colissimo avec recommandation (R2) : forfait de 200 EUR
+- Colissimo avec recommandation (R3) : forfait de 500 EUR
+- Retard Colissimo Express/Flash : remboursement des frais d''affranchissement uniquement
+Conditions : la réclamation doit être déposée dans un délai de 1 an. L''indemnisation est versée sous 21 jours après acceptation de la réclamation. Le montant est calculé sur la base de la valeur déclarée ou du poids, selon le plus favorable pour le client.', 'remboursement', ARRAY['indemnisation', 'forfait', 'recommandation', 'remboursement', 'plafond'], NULL, true),
+
+    (uuid_generate_v4(), 'Suivi des colis — comment lire les événements',
+     'Les événements de suivi Colissimo se décomposent en étapes :
+1. Prise en charge : le colis est accepté et scanné au bureau de poste
+2. Tri : le colis passe par le centre de tri régional
+3. En cours d''acheminement : le colis est en transit entre deux centres
+4. Arrivé au centre : le colis est arrivé au centre de distribution local
+5. En cours de livraison : le colis est sur le véhicule du facteur
+6. Livré : le colis a été distribué avec succès
+7. Avis de passage : le destinataire était absent, un avis a été déposé
+8. Instance : le colis est en attente de retrait en bureau de poste
+9. Retour expéditeur : le colis est renvoyé à l''expéditeur
+Les mises à jour peuvent prendre 24 à 48h. En cas d''absence prolongée de scan, contacter le service client.', 'services', ARRAY['suivi', 'tracking', 'evenements', 'statut', 'scan'], NULL, true),
+
+    (uuid_generate_v4(), 'Réclamation pour colis endommagé — procédure',
+     'En cas de réception d''un colis endommagé :
+1. Émettre des réserves au moment de la livraison (noter les dommages sur le terminal du facteur)
+2. Prendre des photos du colis et de son contenu endommagé (dans les 48h)
+3. Conserver l''emballage d''origine et tous les éléments de calage
+4. Déposer une réclamation en ligne ou en bureau de poste dans les 3 jours ouvrables
+5. Fournir : numéro de suivi, photos, description des dommages, facture du contenu
+6. La Poste peut demander une expertise du colis (le conserver pendant 30 jours)
+7. Délai de réponse : 21 jours maximum
+Si les réserves n''ont pas été émises à la livraison, la réclamation reste possible mais la charge de la preuve est plus difficile.', 'remboursement', ARRAY['endommage', 'avarie', 'casse', 'reserves', 'procedure', 'photos'], NULL, true),
+
+    (uuid_generate_v4(), 'Produits interdits dans les envois postaux',
+     'La Poste interdit l''envoi des produits suivants via Colissimo :
+- Matières dangereuses : explosifs, inflammables, corrosifs, radioactifs
+- Batteries au lithium non conformes à la réglementation IATA
+- Armes et munitions
+- Stupéfiants et substances psychotropes
+- Denrées périssables (sauf emballage isotherme homologué)
+- Animaux vivants
+- Argent liquide et moyens de paiement
+- Contrefaçons
+- Tabac (au-delà de 50 unités)
+L''envoi de produits interdits entraîne la confiscation du colis et peut donner lieu à des poursuites. En cas de dommage lié à un contenu interdit, aucune indemnisation n''est due.', 'services', ARRAY['interdit', 'dangereux', 'restrictions', 'reglementation', 'produits'], NULL, true),
+
+    (uuid_generate_v4(), 'Changement d''adresse et réexpédition de courrier',
+     'Le service de réexpédition du courrier de La Poste :
+- Réexpédition définitive : à partir de 27,50 EUR pour 6 mois, 45 EUR pour 12 mois
+- Réexpédition temporaire : à partir de 24,50 EUR pour 1 mois
+- Mise en place : sous 5 jours ouvrables après la demande
+- Concerne : lettres, magazines, petits colis (sauf Colissimo et Chronopost)
+- Les colis Colissimo suivent l''adresse indiquée sur l''étiquette, pas la réexpédition
+- Pour modifier l''adresse d''un Colissimo en cours : utiliser le service "Modifier ma livraison" sur laposte.fr (disponible avant la mise en livraison)
+Important : un changement d''adresse via le service réexpédition ne modifie PAS l''adresse de livraison des colis.', 'services', ARRAY['reexpedition', 'changement_adresse', 'demenagement', 'redirection'], NULL, true),
+
+    (uuid_generate_v4(), 'Colissimo Retour — envoi de retour marchandise',
+     'Le service Colissimo Retour permet de retourner un colis à un e-commerçant :
+- Étiquette de retour : fournie par le e-commerçant (gratuite ou payante selon le marchand)
+- Dépôt : en bureau de poste, en point relais ou en boîte aux lettres (si <3 cm d''épaisseur)
+- Suivi : même suivi que l''envoi initial, avec numéro dédié
+- Délai : 2-3 jours ouvrables en France métropolitaine
+- Poids maximum : 30 kg
+- Le e-commerçant reçoit une notification de dépôt et peut suivre le retour
+- En cas de perte du colis retour, la réclamation doit être déposée par l''expéditeur du retour (le client)
+- Si l''étiquette retour est expirée, contacter le service client du e-commerçant pour une nouvelle.', 'services', ARRAY['retour', 'e-commerce', 'renvoi', 'marchandise', 'etiquette_retour'], NULL, true),
+
+    (uuid_generate_v4(), 'Emballages fournis par La Poste',
+     'La Poste propose des emballages prêts à l''emploi :
+- Boîte Colissimo S (format livre) : 15 x 25 x 10 cm — 1,50 EUR
+- Boîte Colissimo M (format moyen) : 22 x 32 x 15 cm — 2,50 EUR
+- Boîte Colissimo L (grand format) : 30 x 40 x 20 cm — 3,50 EUR
+- Pochette Colissimo : format A4 renforcé — 1,00 EUR
+- Tube Colissimo : pour affiches et documents — 2,00 EUR
+Ces emballages sont disponibles en bureau de poste et sur boutique.laposte.fr. Ils sont conçus pour résister aux manipulations du tri automatique. L''utilisation d''un emballage Colissimo officiel facilite l''acceptation des réclamations en cas de dommage.', 'emballage', ARRAY['emballage', 'boite', 'pochette', 'tube', 'fournitures', 'achat'], NULL, true),
+
+    (uuid_generate_v4(), 'Lettre recommandée avec accusé de réception (LRAR)',
+     'La lettre recommandée avec AR est un service à valeur juridique :
+- Tarifs : à partir de 5,36 EUR (jusqu''à 20g) + 1,15 EUR pour l''AR
+- Niveaux de recommandation : R1 (indemnité 50 EUR), R2 (200 EUR), R3 (500 EUR)
+- Suivi : numéro de suivi permettant de connaître la date de distribution
+- Preuve de dépôt : reçu délivré au guichet avec horodatage
+- Accusé de réception : carte retournée à l''expéditeur avec signature du destinataire et date
+- Valeur juridique : fait foi pour les délais légaux (préavis, résiliation, mise en demeure)
+- Conservation : La Poste conserve la preuve de distribution pendant 1 an
+- En cas de perte : indemnisation automatique selon le niveau de recommandation choisi', 'services', ARRAY['recommande', 'lrar', 'accuse_reception', 'juridique', 'preuve'], NULL, true)
+ON CONFLICT DO NOTHING;

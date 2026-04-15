@@ -86,6 +86,22 @@ Your role is to:
 - Evaluates references, capabilities, risks
 - Keywords: appel d'offres, AO, marche, soumission, BTP, construction, tender
 
+### courrier_reclamation - Postal Complaints Processing Agent
+- Processes postal/parcel complaints (damaged, lost, undelivered, wrong address, theft, delays)
+- Analyzes photos, tracking history, similar past complaints
+- Makes decisions: reimburse, reship, reject, escalate
+- Keywords: reclamation, colis, endommage, perdu, non livre, RECL-
+
+### courrier_info - Postal Information Agent
+- Answers questions about postal services (rates, delays, packaging, customs, refunds)
+- Uses knowledge base via RAG search
+- Keywords: tarif, colissimo, chronopost, affranchissement, emballage, douane, delai livraison
+
+### courrier_suivi - Parcel Tracking Agent
+- Tracks parcels and provides delivery status
+- Shows timeline of tracking events
+- Keywords: suivi, colis, tracking, numero suivi, ou est mon colis, livraison
+
 ## Intent Classification
 
 Analyze the user message and classify the intent:

@@ -26,6 +26,7 @@ from app.llamastack.orchestrator_prompts import (
     ORCHESTRATOR_CONFIG,
     ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
 )
+from app.core import tracing
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
 from .conversation_utils import ConversationHelper
 from .registry import AgentRegistry
@@ -63,6 +64,7 @@ class OrchestratorService:
         await db.refresh(session)
 
         # Build welcome message based on locale
+        logger.info(f"CREATE SESSION locale={locale!r} agent_id={agent_id!r}")
         is_fr = (locale or "fr").startswith("fr")
         lang_key = "fr" if is_fr else "en"
         welcome_cfg = ORCHESTRATOR_CONFIG.get("welcome_messages", {}).get(lang_key, {})
@@ -76,7 +78,8 @@ class OrchestratorService:
                     if is_fr else
                     "Session started with agent **{agent_name}**. How can I help you?",
                 )
-                welcome = tpl.format(agent_name=agent_def.name)
+                localized_name = (agent_def.name_fr if is_fr and agent_def.name_fr else agent_def.name)
+                welcome = tpl.format(agent_name=localized_name)
             else:
                 welcome = welcome_cfg.get(
                     "fallback",
@@ -173,7 +176,7 @@ class OrchestratorService:
                     agent_instructions = custom_prompt or agent_def.instructions
                     tools = agent_def.tools
                     instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
-                    model = settings.llamastack_default_model
+                    model = agent_def.model or settings.llamastack_default_model
 
                     logger.info(f"Calling agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
@@ -223,6 +226,17 @@ class OrchestratorService:
                         suggested_actions = self._generate_post_response_actions(
                             response_text, agent_id, user_lang
                         )
+
+                    # Log to MLflow (non-streaming)
+                    tracing.log_llm_call(
+                        agent_id=agent_id,
+                        model=result.get("model", ""),
+                        input_text=str(message)[:2000],
+                        output_text=result.get("output", "")[:2000],
+                        tool_calls=len(result.get("tool_calls", [])),
+                        usage=result.get("usage"),
+                        stream=False,
+                    )
 
                 except Exception as e:
                     logger.error(f"Agent {agent_id} MCP call failed: {e}", exc_info=True)
@@ -348,7 +362,7 @@ class OrchestratorService:
         agent_instructions = custom_prompt or agent_def.instructions
         tools = agent_def.tools
         instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
-        model = settings.llamastack_streaming_model or settings.llamastack_default_model
+        model = agent_def.model or settings.llamastack_streaming_model or settings.llamastack_default_model
 
         logger.info(f"Streaming agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
@@ -411,6 +425,17 @@ class OrchestratorService:
                 yield {"type": "text_replace", "text": full_text}
 
         suggested_actions = self._generate_post_response_actions(full_text, agent_id, user_lang)
+
+        # Log to MLflow (streaming)
+        tracing.log_llm_call(
+            agent_id=agent_id,
+            model=model if isinstance(model, str) else "",
+            input_text=str(message)[:2000],
+            output_text=full_text[:2000],
+            tool_calls=len(tool_calls),
+            usage=token_usage,
+            stream=True,
+        )
 
         # Store last_response_id for conversation chaining
         if response_id:
@@ -654,6 +679,8 @@ class OrchestratorService:
         "je", "tu", "il", "elle", "nous", "ils", "elles", "et", "ou",
         "mais", "donc", "sinistre", "sinistres", "attente", "traiter",
         "lister", "afficher", "combien", "appel", "offres", "voir",
+        "colis", "courrier", "poste", "reclamation", "reclamations",
+        "tarif", "tarifs", "suivi", "suivre", "livraison",
     }
 
     @staticmethod
@@ -661,7 +688,7 @@ class OrchestratorService:
         """Detect user language from message. Returns 'en' or 'fr'."""
         lang_cfg = ORCHESTRATOR_CONFIG.get("language_detection", {})
         fr_words = set(lang_cfg.get("fr_words", OrchestratorService._DEFAULT_FR_WORDS))
-        min_match = lang_cfg.get("min_match_count", 2)
+        min_match = lang_cfg.get("min_match_count", 1)
         words = set(message.lower().split())
         fr_count = len(words & fr_words)
         return "fr" if fr_count >= min_match else "en"
@@ -756,18 +783,52 @@ class OrchestratorService:
                 {"label": "List pending claims", "action": "chat", "params": {}},
             ],
         },
+        "courrier_reclamation": {
+            "fr": [
+                {"label": "Voir les reclamations", "action": "navigate", "params": {"path": "/postal"}},
+                {"label": "Traiter une reclamation", "action": "chat", "params": {}},
+                {"label": "Lister les reclamations en attente", "action": "chat", "params": {}},
+            ],
+            "en": [
+                {"label": "View complaints", "action": "navigate", "params": {"path": "/postal"}},
+                {"label": "Process a complaint", "action": "chat", "params": {}},
+                {"label": "List pending complaints", "action": "chat", "params": {}},
+            ],
+        },
+        "courrier_info": {
+            "fr": [
+                {"label": "Tarifs Colissimo", "action": "chat", "params": {}},
+                {"label": "Conditions de transport", "action": "chat", "params": {}},
+                {"label": "Guide emballage", "action": "chat", "params": {}},
+            ],
+            "en": [
+                {"label": "Colissimo rates", "action": "chat", "params": {}},
+                {"label": "Shipping conditions", "action": "chat", "params": {}},
+                {"label": "Packaging guide", "action": "chat", "params": {}},
+            ],
+        },
+        "courrier_suivi": {
+            "fr": [
+                {"label": "Suivre un colis", "action": "chat", "params": {}},
+                {"label": "Rechercher par email", "action": "chat", "params": {}},
+            ],
+            "en": [
+                {"label": "Track a parcel", "action": "chat", "params": {}},
+                {"label": "Search by email", "action": "chat", "params": {}},
+            ],
+        },
         "general": {
             "fr": [
                 {"label": "Sinistres (Claims)", "action": "navigate", "params": {"path": "/claims"}},
                 {"label": "Appels d'offres (AO)", "action": "navigate", "params": {"path": "/tenders"}},
+                {"label": "Courrier & Colis", "action": "navigate", "params": {"path": "/postal"}},
                 {"label": "Parler a l'agent Sinistres", "action": "chat", "params": {}},
-                {"label": "Parler a l'agent AO", "action": "chat", "params": {}},
             ],
             "en": [
                 {"label": "Claims", "action": "navigate", "params": {"path": "/claims"}},
                 {"label": "Tenders", "action": "navigate", "params": {"path": "/tenders"}},
+                {"label": "Courrier & Colis", "action": "navigate", "params": {"path": "/postal"}},
                 {"label": "Talk to Claims agent", "action": "chat", "params": {}},
-                {"label": "Talk to Tenders agent", "action": "chat", "params": {}},
             ],
         },
     }
@@ -780,7 +841,7 @@ class OrchestratorService:
     ) -> List[Dict[str, Any]]:
         """Generate contextual suggested actions based on intent, agent and language."""
         cfg_actions = ORCHESTRATOR_CONFIG.get("suggested_actions", {})
-        key = agent_id if agent_id in ("tenders", "claims") else "general"
+        key = agent_id if agent_id in self._DEFAULT_SUGGESTED_ACTIONS else "general"
         defaults = self._DEFAULT_SUGGESTED_ACTIONS[key]
         actions = cfg_actions.get(key, defaults)
         return actions.get(lang, actions.get("fr", defaults.get("fr", [])))
@@ -833,6 +894,54 @@ class OrchestratorService:
                 ],
             },
         },
+        "courrier_reclamation": {
+            "result_keywords": [
+                "rembourser", "reexpedier", "rejeter", "escalader",
+                "remboursement", "reexpedition", "reimbursed", "reshipped",
+            ],
+            "result_actions": {
+                "fr": [
+                    {"label": "Voir la reclamation", "action": "navigate", "params": {"path": "/postal"}},
+                    {"label": "Escalader la reclamation", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "View complaint", "action": "navigate", "params": {"path": "/postal"}},
+                    {"label": "Escalate complaint", "action": "chat", "params": {}},
+                ],
+            },
+            "common": {
+                "fr": [
+                    {"label": "Traiter une autre reclamation", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "Process another complaint", "action": "chat", "params": {}},
+                ],
+            },
+        },
+        "courrier_info": {
+            "common": {
+                "fr": [
+                    {"label": "Poser une autre question", "action": "chat", "params": {}},
+                    {"label": "Voir les reclamations", "action": "navigate", "params": {"path": "/postal"}},
+                ],
+                "en": [
+                    {"label": "Ask another question", "action": "chat", "params": {}},
+                    {"label": "View complaints", "action": "navigate", "params": {"path": "/postal"}},
+                ],
+            },
+        },
+        "courrier_suivi": {
+            "common": {
+                "fr": [
+                    {"label": "Suivre un autre colis", "action": "chat", "params": {}},
+                    {"label": "Deposer une reclamation", "action": "chat", "params": {}},
+                ],
+                "en": [
+                    {"label": "Track another parcel", "action": "chat", "params": {}},
+                    {"label": "File a complaint", "action": "chat", "params": {}},
+                ],
+            },
+        },
     }
 
     def _generate_post_response_actions(
@@ -849,22 +958,28 @@ class OrchestratorService:
         actions: List[Dict[str, Any]] = []
         cfg_post = ORCHESTRATOR_CONFIG.get("post_response_actions", {})
 
-        if agent_id == "tenders":
-            tender_cfg = cfg_post.get("tenders", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"])
-            go_keywords = tender_cfg.get("go_keywords", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["go_keywords"])
-            if any(kw in resp_lower for kw in go_keywords):
-                go_action = tender_cfg.get("go_action", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["go_action"])
-                label = go_action.get(lang, go_action.get("fr", ""))
-                actions.append({"label": label, "action": "chat", "params": {}})
-            common = tender_cfg.get("common", self._DEFAULT_POST_RESPONSE_ACTIONS["tenders"]["common"])
-            actions.extend(common.get(lang, common.get("fr", [])))
-        elif agent_id == "claims":
-            claims_cfg = cfg_post.get("claims", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"])
-            result_keywords = claims_cfg.get("result_keywords", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["result_keywords"])
-            if any(kw in resp_lower for kw in result_keywords):
-                result_actions = claims_cfg.get("result_actions", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["result_actions"])
-                actions.extend(result_actions.get(lang, result_actions.get("fr", [])))
-            common = claims_cfg.get("common", self._DEFAULT_POST_RESPONSE_ACTIONS["claims"]["common"])
+        if agent_id and agent_id in self._DEFAULT_POST_RESPONSE_ACTIONS:
+            agent_cfg = cfg_post.get(agent_id, self._DEFAULT_POST_RESPONSE_ACTIONS[agent_id])
+            defaults = self._DEFAULT_POST_RESPONSE_ACTIONS[agent_id]
+
+            # Handle go_keywords (tenders-style chaining)
+            if "go_keywords" in defaults:
+                go_keywords = agent_cfg.get("go_keywords", defaults["go_keywords"])
+                if any(kw in resp_lower for kw in go_keywords):
+                    go_action = agent_cfg.get("go_action", defaults.get("go_action", {}))
+                    label = go_action.get(lang, go_action.get("fr", ""))
+                    if label:
+                        actions.append({"label": label, "action": "chat", "params": {}})
+
+            # Handle result_keywords (claims/reclamation-style)
+            if "result_keywords" in defaults:
+                result_keywords = agent_cfg.get("result_keywords", defaults["result_keywords"])
+                if any(kw in resp_lower for kw in result_keywords):
+                    result_actions = agent_cfg.get("result_actions", defaults.get("result_actions", {}))
+                    actions.extend(result_actions.get(lang, result_actions.get("fr", [])))
+
+            # Common actions
+            common = agent_cfg.get("common", defaults.get("common", {}))
             actions.extend(common.get(lang, common.get("fr", [])))
         else:
             actions = self._generate_actions_for_intent("general", None, lang)

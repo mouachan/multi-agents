@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { claimsApi } from '../services/api'
 import { tendersApi } from '../services/tenderApi'
+import { postalApi } from '../services/postalApi'
 import { useAgents } from '../hooks/useAgents'
 import AgentCard from '../components/common/AgentCard'
 import { useTranslation } from '../i18n/LanguageContext'
 import type { ClaimStatistics } from '../types'
 import type { TenderStatistics } from '../types/tender'
+import type { ReclamationStatistics } from '../types/reclamation'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -14,6 +16,7 @@ export default function HomePage() {
   const { t } = useTranslation()
   const [claimStats, setClaimStats] = useState<ClaimStatistics | null>(null)
   const [tenderStats, setTenderStats] = useState<TenderStatistics | null>(null)
+  const [reclamationStats, setReclamationStats] = useState<ReclamationStatistics | null>(null)
   const [loading, setLoading] = useState(true)
   const [chatInput, setChatInput] = useState('')
 
@@ -24,12 +27,14 @@ export default function HomePage() {
   const loadStatistics = async () => {
     try {
       setLoading(true)
-      const [claims, tenders] = await Promise.allSettled([
+      const [claims, tenders, reclamations] = await Promise.allSettled([
         claimsApi.getStatistics(),
-        tendersApi.getStatistics()
+        tendersApi.getStatistics(),
+        postalApi.getStatistics()
       ])
       if (claims.status === 'fulfilled') setClaimStats(claims.value)
       if (tenders.status === 'fulfilled') setTenderStats(tenders.value)
+      if (reclamations.status === 'fulfilled') setReclamationStats(reclamations.value)
     } finally {
       setLoading(false)
     }
@@ -56,6 +61,14 @@ export default function HomePage() {
         pending: tenderStats.pending_tenders,
         processing: tenderStats.processing_tenders,
         completed: tenderStats.completed_tenders,
+      }
+    }
+    if (agentId === 'courrier_reclamation' && reclamationStats) {
+      return {
+        total: reclamationStats.total,
+        pending: reclamationStats.by_status?.pending || 0,
+        processing: reclamationStats.by_status?.processing || 0,
+        completed: reclamationStats.by_status?.completed || 0,
       }
     }
     return undefined

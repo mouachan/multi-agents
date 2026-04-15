@@ -27,6 +27,10 @@ class AgentDefinition:
     api_prefix: str = ""
     decision_values: List[str] = field(default_factory=list)
     routing_keywords: List[str] = field(default_factory=list)
+    model: Optional[str] = None
+    frontend_path: Optional[str] = None
+    name_fr: Optional[str] = None
+    description_fr: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -60,9 +64,11 @@ class AgentRegistry:
             {
                 "id": a.id,
                 "name": a.name,
+                "name_fr": a.name_fr,
                 "description": a.description,
+                "description_fr": a.description_fr,
                 "entity_type": a.entity_type,
-                "path": f"/{a.entity_type}s",
+                "path": a.frontend_path or f"/{a.entity_type}s",
                 "api_prefix": a.api_prefix,
                 "color": a.color,
                 "icon": a.icon,

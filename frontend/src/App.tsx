@@ -5,6 +5,8 @@ import ClaimsListPage from './pages/ClaimsListPage'
 import ClaimDetailPage from './pages/ClaimDetailPage'
 import TendersListPage from './pages/TendersListPage'
 import TenderDetailPage from './pages/TenderDetailPage'
+import PostalListPage from './pages/PostalListPage'
+import PostalDetailPage from './pages/PostalDetailPage'
 import HomePage from './pages/HomePage'
 import ChatPage from './pages/ChatPage'
 import AdminPage from './pages/AdminPage'
@@ -22,6 +24,8 @@ function App() {
             <Route path="/claims/:claimId" element={<ClaimDetailPage />} />
             <Route path="/tenders" element={<TendersListPage />} />
             <Route path="/tenders/:tenderId" element={<TenderDetailPage />} />
+            <Route path="/postal" element={<PostalListPage />} />
+            <Route path="/postal/:reclamationId" element={<PostalDetailPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </Layout>

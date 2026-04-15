@@ -14,6 +14,7 @@ interface AgentGraphProps {
 const AGENT_COLORS: Record<string, string> = {
   blue: '#3B82F6',
   amber: '#F59E0B',
+  yellow: '#EAB308',
   green: '#10B981',
   emerald: '#10B981',
   red: '#EF4444',
@@ -44,7 +45,7 @@ export default function AgentGraph({
 }: AgentGraphProps) {
   const showAll = activatedAgentIds === undefined
   const [ready, setReady] = useState(false)
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
   const { getToolShort } = useToolDisplay()
 
   useEffect(() => {
@@ -385,7 +386,7 @@ export default function AgentGraph({
                       transition: `opacity 0.5s ease ${delay + 0.2}s`,
                     }}
                   >
-                    {n.agent.name}
+                    {locale === 'fr' && n.agent.name_fr ? n.agent.name_fr : n.agent.name}
                   </text>
                 </g>
               </g>

@@ -1,0 +1,20 @@
+{{- if .Values.mcp.postal.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postal-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: postal-server
+spec:
+  type: {{ .Values.mcp.postal.service.type }}
+  ports:
+  - port: {{ .Values.mcp.postal.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: postal-server
+{{- end }}

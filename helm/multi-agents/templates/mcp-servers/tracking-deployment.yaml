@@ -1,0 +1,54 @@
+{{- if .Values.mcp.tracking.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  name: tracking-server
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: tracking-server
+    component: mcp-server
+spec:
+  replicas: {{ .Values.mcp.tracking.replicas }}
+  selector:
+    matchLabels:
+      app: tracking-server
+  template:
+    metadata:
+      labels:
+        app: tracking-server
+        component: mcp-server
+    spec:
+      containers:
+      - name: tracking-server
+        image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.mcp.tracking.image.repository }}:{{ .Values.mcp.tracking.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        {{- include "postgres.env" . | nindent 8 }}
+        - name: LOG_LEVEL
+          value: {{ .Values.mcp.tracking.env.LOG_LEVEL | quote }}
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          {{- toYaml .Values.mcp.tracking.resources | nindent 10 }}
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 2
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 10
+{{- end }}

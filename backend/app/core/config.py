@@ -75,7 +75,13 @@ class Settings(BaseSettings):
     rag_server_url: str  # RAG_SERVER_URL (required)
     claims_server_url: str  # CLAIMS_SERVER_URL (required)
     tenders_server_url: str  # TENDERS_SERVER_URL (required)
+    postal_server_url: str = ""  # POSTAL_SERVER_URL
+    tracking_server_url: str = ""  # TRACKING_SERVER_URL
     guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional)
+
+    # MLflow tracing
+    mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI (optional, e.g. http://mlflow:5000)
+    mlflow_experiment_name: str = "multi-agent-orchestrator"  # MLFLOW_EXPERIMENT_NAME
 
     # Guardrails/Shields Configuration
     enable_pii_detection: bool = True  # Enable PII detection and dual-level storage

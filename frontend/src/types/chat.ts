@@ -82,7 +82,9 @@ export interface PromptResponse {
 export interface AgentInfo {
   id: string
   name: string
+  name_fr?: string
   description: string
+  description_fr?: string
   entity_type: string
   path: string
   api_prefix: string

@@ -203,35 +203,55 @@ MEDICAL_SCENARIOS = [
      "doctor": "Dr. Andrew Lee, MD", "npi": "5566778899", "cost": 1400},
 ]
 
-# Names matching seed data (001_seed_data.sql) user assignments per claim type
-AUTO_NAMES = [
-    "Marie Leroy", "Jean Moreau", "Isabelle Durand", "Antoine Rousseau",
-    "Nathalie Thomas", "Catherine Richard", "Valerie Michel", "Sebastien Roux",
-    "Sandrine Lopez", "Cecile Andre", "Audrey Chevalier",
-    "Pierre Dupont", "Sophie Bernard", "Thomas Petit", "Claire Fontaine",
+# ============================================================================
+# Life claim scenarios
+# ============================================================================
+LIFE_SCENARIOS = [
+    {"cause": "Accident de la route - collision frontale sur autoroute A4. Hospitalisation en soins intensifs pendant 3 semaines. Sequelles permanentes avec invalidite partielle evaluee a 40%.",
+     "beneficiary": "Conjoint(e) et enfants", "insured_amount": 150000,
+     "documents": "Rapport de police, certificat medical detaille, rapport d'expertise medicale, justificatif d'hospitalisation"},
+    {"cause": "Maladie grave diagnostiquee - cancer du poumon stade III. Traitement par chimiotherapie et radiotherapie en cours. Arret de travail prolonge avec pronostic reserve.",
+     "beneficiary": "Conjoint(e)", "insured_amount": 200000,
+     "documents": "Certificat medical, compte-rendu anatomopathologique, protocole de soins, justificatifs de traitement"},
+    {"cause": "Accident domestique grave - chute d'une echelle lors de travaux de toiture. Traumatisme cranien severe et fractures multiples. Intervention chirurgicale d'urgence realisee.",
+     "beneficiary": "Enfants designes au contrat", "insured_amount": 100000,
+     "documents": "Rapport des pompiers, certificat medical d'urgence, compte-rendu operatoire, bulletin de situation"},
 ]
 
-MEDICAL_NAMES = [
-    "Pierre Dupont", "Thomas Petit", "Claire Fontaine", "Philippe Garcia",
-    "David Simon", "Laurent Martinez", "Benoit Giraud", "Delphine Blanc",
-    "Marie Leroy", "Jean Moreau", "Sophie Bernard", "Isabelle Durand",
-    "Nicolas Lambert", "Antoine Rousseau", "Julie Martin",
-]
-
-HOME_NAMES = [
-    "Sophie Bernard", "Nicolas Lambert", "Julie Martin", "Francois Robert",
-    "Arnaud Lefebvre", "Emilie Girard", "Christophe Muller", "Guillaume Mercier",
-    "Pierre Dupont", "Marie Leroy", "Jean Moreau", "Isabelle Durand",
-    "Claire Fontaine", "Antoine Rousseau", "Nathalie Thomas",
-]
-
-ADDRESSES = [
-    "12 rue de la Paix, 75002 Paris",
-    "45 avenue Victor Hugo, 69006 Lyon",
-    "8 boulevard Haussmann, 75009 Paris",
-    "23 rue Garibaldi, 69003 Lyon",
-    "156 route de Vannes, 44000 Nantes",
-    "3 place Bellecour, 69002 Lyon",
+# ============================================================================
+# Claims from seed data (001_seed_data.sql) — single source of truth
+# ============================================================================
+CLAIMS = [
+    {"claim_number": "CLM-2024-0001", "name": "Pierre Dupont",     "type": "Medical", "file": "claim_medical_001.pdf", "submitted_at": "2025-11-15 09:30:00", "address": "12 rue de la Paix, 75002 Paris"},
+    {"claim_number": "CLM-2024-0002", "name": "Marie Leroy",       "type": "Auto",    "file": "claim_auto_001.pdf",    "submitted_at": "2025-11-18 14:15:00", "address": "45 avenue Victor Hugo, 69006 Lyon"},
+    {"claim_number": "CLM-2024-0003", "name": "Jean Moreau",       "type": "Auto",    "file": "claim_auto_002.pdf",    "submitted_at": "2025-11-20 10:45:00", "address": "8 boulevard Haussmann, 75009 Paris"},
+    {"claim_number": "CLM-2024-0004", "name": "Sophie Bernard",    "type": "Home",    "file": "claim_home_001.pdf",    "submitted_at": "2025-11-22 16:00:00", "address": "23 rue Garibaldi, 69003 Lyon"},
+    {"claim_number": "CLM-2024-0005", "name": "Thomas Petit",      "type": "Medical", "file": "claim_medical_002.pdf", "submitted_at": "2025-11-25 08:20:00", "address": "156 route de Vannes, 44000 Nantes"},
+    {"claim_number": "CLM-2024-0006", "name": "Isabelle Durand",   "type": "Auto",    "file": "claim_auto_003.pdf",    "submitted_at": "2025-11-27 11:30:00", "address": "3 place Bellecour, 69002 Lyon"},
+    {"claim_number": "CLM-2024-0007", "name": "Nicolas Lambert",   "type": "Home",    "file": "claim_home_002.pdf",    "submitted_at": "2025-11-29 13:45:00", "address": "67 avenue Jean Jaures, 31000 Toulouse"},
+    {"claim_number": "CLM-2024-0008", "name": "Claire Fontaine",   "type": "Medical", "file": "claim_medical_003.pdf", "submitted_at": "2025-12-01 09:10:00", "address": "14 rue de Seze, 69006 Lyon"},
+    {"claim_number": "CLM-2024-0009", "name": "Antoine Rousseau",  "type": "Auto",    "file": "claim_auto_004.pdf",    "submitted_at": "2025-12-03 15:30:00", "address": "29 quai de la Tournelle, 75005 Paris"},
+    {"claim_number": "CLM-2024-0010", "name": "Julie Martin",      "type": "Home",    "file": "claim_home_003.pdf",    "submitted_at": "2025-12-05 10:00:00", "address": "88 rue Nationale, 59000 Lille"},
+    {"claim_number": "CLM-2024-0011", "name": "Philippe Garcia",   "type": "Medical", "file": "claim_medical_004.pdf", "submitted_at": "2025-12-07 08:45:00", "address": "5 rue du Faubourg, 13001 Marseille"},
+    {"claim_number": "CLM-2024-0012", "name": "Nathalie Thomas",   "type": "Auto",    "file": "claim_auto_005.pdf",    "submitted_at": "2025-12-09 14:20:00", "address": "41 avenue de la Republique, 33000 Bordeaux"},
+    {"claim_number": "CLM-2024-0013", "name": "Francois Robert",   "type": "Home",    "file": "claim_home_004.pdf",    "submitted_at": "2025-12-11 11:15:00", "address": "17 rue des Lices, 35000 Rennes"},
+    {"claim_number": "CLM-2024-0014", "name": "Catherine Richard",  "type": "Auto",   "file": "claim_auto_006.pdf",    "submitted_at": "2025-12-13 16:30:00", "address": "62 cours Mirabeau, 13100 Aix-en-Provence"},
+    {"claim_number": "CLM-2024-0015", "name": "David Simon",       "type": "Medical", "file": "claim_medical_005.pdf", "submitted_at": "2025-12-15 09:00:00", "address": "9 place du Capitole, 31000 Toulouse"},
+    {"claim_number": "CLM-2024-0016", "name": "Valerie Michel",    "type": "Auto",    "file": "claim_auto_007.pdf",    "submitted_at": "2025-12-17 13:45:00", "address": "33 rue de la Liberte, 06000 Nice"},
+    {"claim_number": "CLM-2024-0017", "name": "Arnaud Lefebvre",   "type": "Home",    "file": "claim_home_005.pdf",    "submitted_at": "2025-12-19 10:30:00", "address": "71 avenue Foch, 67000 Strasbourg"},
+    {"claim_number": "CLM-2024-0018", "name": "Christine Dubois",  "type": "Life",    "file": "claim_life_001.pdf",    "submitted_at": "2025-12-21 15:00:00", "address": "25 rue de Vesle, 51100 Reims"},
+    {"claim_number": "CLM-2024-0019", "name": "Sebastien Roux",    "type": "Auto",    "file": "claim_auto_008.pdf",    "submitted_at": "2025-12-23 08:15:00", "address": "48 boulevard Gambetta, 34000 Montpellier"},
+    {"claim_number": "CLM-2024-0020", "name": "Emilie Girard",     "type": "Home",    "file": "claim_home_006.pdf",    "submitted_at": "2025-12-25 12:00:00", "address": "16 rue Saint-Jean, 69005 Lyon"},
+    {"claim_number": "CLM-2024-0021", "name": "Laurent Martinez",  "type": "Medical", "file": "claim_medical_006.pdf", "submitted_at": "2025-12-27 14:30:00", "address": "54 avenue de Toulouse, 33000 Bordeaux"},
+    {"claim_number": "CLM-2024-0022", "name": "Sandrine Lopez",    "type": "Auto",    "file": "claim_auto_009.pdf",    "submitted_at": "2025-12-29 09:45:00", "address": "7 rue du Port, 44000 Nantes"},
+    {"claim_number": "CLM-2024-0023", "name": "Christophe Muller", "type": "Home",    "file": "claim_home_007.pdf",    "submitted_at": "2026-01-02 11:00:00", "address": "39 place Kleber, 67000 Strasbourg"},
+    {"claim_number": "CLM-2024-0024", "name": "Helene Fournier",   "type": "Life",    "file": "claim_life_002.pdf",    "submitted_at": "2026-01-04 16:15:00", "address": "82 rue de Paris, 59000 Lille"},
+    {"claim_number": "CLM-2024-0025", "name": "Benoit Giraud",     "type": "Medical", "file": "claim_medical_007.pdf", "submitted_at": "2026-01-06 08:30:00", "address": "11 rue Emile Zola, 38000 Grenoble"},
+    {"claim_number": "CLM-2024-0026", "name": "Cecile Andre",      "type": "Auto",    "file": "claim_auto_010.pdf",    "submitted_at": "2026-01-08 13:00:00", "address": "60 avenue Jean Perrot, 38000 Grenoble"},
+    {"claim_number": "CLM-2024-0027", "name": "Guillaume Mercier", "type": "Home",    "file": "claim_home_008.pdf",    "submitted_at": "2026-01-10 10:45:00", "address": "22 cours Lafayette, 69003 Lyon"},
+    {"claim_number": "CLM-2024-0028", "name": "Delphine Blanc",    "type": "Medical", "file": "claim_medical_008.pdf", "submitted_at": "2026-01-12 15:30:00", "address": "35 rue de la Gare, 21000 Dijon"},
+    {"claim_number": "CLM-2024-0029", "name": "Fabrice Guerin",    "type": "Life",    "file": "claim_life_003.pdf",    "submitted_at": "2026-01-14 09:15:00", "address": "19 place de la Comedie, 34000 Montpellier"},
+    {"claim_number": "CLM-2024-0030", "name": "Audrey Chevalier",  "type": "Auto",    "file": "claim_auto_011.pdf",    "submitted_at": "2026-01-16 14:00:00", "address": "44 rue Paradis, 13006 Marseille"},
 ]
 
 
@@ -512,6 +532,92 @@ def generate_medical_claim_pdf(output_path, claim_number, name, address, date_se
     return amount
 
 
+def generate_life_claim_pdf(output_path, claim_number, name, address, date_incident, scenario_idx):
+    """Generate a realistic life insurance claim PDF."""
+    scenario = LIFE_SCENARIOS[scenario_idx % len(LIFE_SCENARIOS)]
+    policy_num = f"VIE-{random.randint(100000, 999999)}"
+
+    c = canvas.Canvas(output_path, pagesize=letter)
+    width, height = letter
+
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(1*inch, height - 0.8*inch, "LIFE INSURANCE CLAIM FORM")
+    c.setFont("Helvetica", 9)
+    c.drawString(1*inch, height - 1.05*inch, "Springfield Mutual Insurance Company - Life Claims Division")
+    c.line(1*inch, height - 1.15*inch, width - 1*inch, height - 1.15*inch)
+
+    c.setFont("Helvetica", 10)
+    y = height - 1.5*inch
+
+    def write_field(label, value):
+        nonlocal y
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(1*inch, y, f"{label}:")
+        c.setFont("Helvetica", 10)
+        c.drawString(3.2*inch, y, str(value))
+        y -= 0.22*inch
+
+    def write_section(title):
+        nonlocal y
+        y -= 0.15*inch
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(1*inch, y, title)
+        c.line(1*inch, y - 0.05*inch, width - 1*inch, y - 0.05*inch)
+        y -= 0.3*inch
+        c.setFont("Helvetica", 10)
+
+    def write_wrapped(text, max_width=6.5):
+        nonlocal y
+        words = text.split()
+        line = ""
+        for word in words:
+            test = f"{line} {word}".strip()
+            if c.stringWidth(test, "Helvetica", 10) < max_width * inch:
+                line = test
+            else:
+                c.drawString(1*inch, y, line)
+                y -= 0.18*inch
+                line = word
+        if line:
+            c.drawString(1*inch, y, line)
+            y -= 0.18*inch
+
+    write_section("CLAIM INFORMATION")
+    write_field("Claim Number", claim_number)
+    write_field("Date of Incident", date_incident.strftime("%Y-%m-%d"))
+    write_field("Policy Number", policy_num)
+    write_field("Claim Type", "Life Insurance - Sinistre")
+
+    write_section("POLICYHOLDER INFORMATION")
+    write_field("Subscriber Name", name)
+    write_field("Address", address)
+    write_field("Phone", f"(555) {random.randint(100,999)}-{random.randint(1000,9999)}")
+    write_field("Email", f"{name.lower().replace(' ', '.')}@email.com")
+
+    write_section("BENEFICIARY INFORMATION")
+    write_field("Designated Beneficiary", scenario["beneficiary"])
+
+    write_section("CAUSE OF CLAIM")
+    write_wrapped(scenario["cause"])
+
+    write_section("INSURED AMOUNT")
+    write_field("Capital Assure", f"${scenario['insured_amount']:,.2f}")
+    write_field("Coverage Type", random.choice(["Capital Deces", "Invalidite Permanente", "Incapacite Temporaire"]))
+
+    write_section("REQUIRED DOCUMENTS")
+    for doc in scenario["documents"].split(", "):
+        c.drawString(1.2*inch, y, f"- {doc}")
+        y -= 0.2*inch
+
+    y -= 0.3*inch
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(1*inch, y, "Claimant Signature: ________________________")
+    c.drawString(4.5*inch, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+
+    c.save()
+    return scenario["insured_amount"]
+
+
 def generate_construction_sinistre_pdf(output_path):
     """Generate the construction damage claim PDF (CLM-ENT-001)."""
     c = canvas.Canvas(output_path, pagesize=letter)
@@ -621,48 +727,35 @@ def main():
     output_dir = os.path.join(project_root, "documents", "claims")
     os.makedirs(output_dir, exist_ok=True)
 
-    base_date = datetime(2025, 10, 1)
-    count = 0
-
     print(f"Generating claim PDFs to: {output_dir}\n")
 
-    # 20 auto claims
-    print("Auto Insurance Claims (20):")
-    for i in range(1, 21):
-        claim_number = f"CLM-2024-AUTO-{i:03d}"
-        name = AUTO_NAMES[(i - 1) % len(AUTO_NAMES)]
-        address = ADDRESSES[(i - 1) % len(ADDRESSES)]
-        date_incident = base_date + timedelta(days=random.randint(0, 120))
-        pdf_path = os.path.join(output_dir, f"claim_auto_{i:03d}.pdf")
-        generate_auto_claim_pdf(pdf_path, claim_number, name, address, date_incident, i - 1)
-        size = os.path.getsize(pdf_path)
-        print(f"  {claim_number} -> claim_auto_{i:03d}.pdf ({size:,} bytes)")
-        count += 1
+    # Track scenario indices per type for round-robin assignment
+    type_counters = {"Auto": 0, "Home": 0, "Medical": 0, "Life": 0}
+    count = 0
 
-    # 15 home claims
-    print("\nHome Insurance Claims (15):")
-    for i in range(1, 16):
-        claim_number = f"CLM-2024-HOME-{i:03d}"
-        name = HOME_NAMES[(i - 1) % len(HOME_NAMES)]
-        address = ADDRESSES[(i - 1) % len(ADDRESSES)]
-        date_loss = base_date + timedelta(days=random.randint(0, 120))
-        pdf_path = os.path.join(output_dir, f"claim_home_{i:03d}.pdf")
-        generate_home_claim_pdf(pdf_path, claim_number, name, address, date_loss, i - 1)
-        size = os.path.getsize(pdf_path)
-        print(f"  {claim_number} -> claim_home_{i:03d}.pdf ({size:,} bytes)")
-        count += 1
+    for claim in CLAIMS:
+        submitted = datetime.strptime(claim["submitted_at"], "%Y-%m-%d %H:%M:%S")
+        # Incident always 3-15 days BEFORE submission
+        incident_date = submitted - timedelta(days=random.randint(3, 15))
+        pdf_path = os.path.join(output_dir, claim["file"])
+        scenario_idx = type_counters[claim["type"]]
+        type_counters[claim["type"]] += 1
 
-    # 15 medical claims
-    print("\nMedical Insurance Claims (15):")
-    for i in range(1, 16):
-        claim_number = f"CLM-2024-MED-{i:03d}"
-        name = MEDICAL_NAMES[(i - 1) % len(MEDICAL_NAMES)]
-        address = ADDRESSES[(i - 1) % len(ADDRESSES)]
-        date_service = base_date + timedelta(days=random.randint(0, 120))
-        pdf_path = os.path.join(output_dir, f"claim_medical_{i:03d}.pdf")
-        generate_medical_claim_pdf(pdf_path, claim_number, name, address, date_service, i - 1)
+        if claim["type"] == "Auto":
+            generate_auto_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
+                                    claim["address"], incident_date, scenario_idx)
+        elif claim["type"] == "Home":
+            generate_home_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
+                                    claim["address"], incident_date, scenario_idx)
+        elif claim["type"] == "Medical":
+            generate_medical_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
+                                       claim["address"], incident_date, scenario_idx)
+        elif claim["type"] == "Life":
+            generate_life_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
+                                    claim["address"], incident_date, scenario_idx)
+
         size = os.path.getsize(pdf_path)
-        print(f"  {claim_number} -> claim_medical_{i:03d}.pdf ({size:,} bytes)")
+        print(f"  {claim['claim_number']} ({claim['type']:7s}) -> {claim['file']} ({size:,} bytes) - {claim['name']}")
         count += 1
 
     # Construction sinistre (harmonized scenario)
@@ -674,6 +767,9 @@ def main():
     count += 1
 
     print(f"\nGenerated {count} claim PDFs in {output_dir}")
+    print(f"  Auto: {type_counters['Auto']}, Home: {type_counters['Home']}, "
+          f"Medical: {type_counters['Medical']}, Life: {type_counters['Life']}, "
+          f"Construction: 1")
 
 
 if __name__ == "__main__":

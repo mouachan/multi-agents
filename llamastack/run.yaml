@@ -14,21 +14,29 @@ apis:
 
 providers:
   inference:
-  # GPT-OSS 120B via llm-d on OpenShift
-  - provider_id: gpt-oss
+  # LiteMaaS LLM (Llama-4-Scout, DeepSeek, etc.)
+  - provider_id: litemaas
     provider_type: remote::vllm
     config:
-      url: ${env.LLM_URL:=https://openshift-ai-inference.apps.example.com/gpt-oss-120b/gpt-oss-120b/v1}
+      url: ${env.LITEMAAS_URL:=https://your-llm-endpoint.example.com/v1}
       max_tokens: 4096
-      api_token: ${env.LLM_API_KEY:=fake}
+      api_token: ${env.LITEMAAS_API_KEY:=sk-change-me}
       tls_verify: false
-  # Gemma Embedding 300M on OpenShift
-  - provider_id: gemma-embedding
+  # LiteMaaS Vision (Qwen2.5-VL for OCR)
+  - provider_id: litemaas-vision
     provider_type: remote::vllm
     config:
-      url: ${env.EMBEDDING_URL:=https://gemma-embeddinggemma-300m.apps.example.com/v1}
+      url: ${env.LITEMAAS_VISION_URL:=https://your-vision-endpoint.example.com/v1}
+      max_tokens: 2048
+      api_token: ${env.LITEMAAS_VISION_API_KEY:=sk-change-me}
+      tls_verify: false
+  # LiteMaaS Embedding
+  - provider_id: litemaas-embedding
+    provider_type: remote::vllm
+    config:
+      url: ${env.LITEMAAS_EMBEDDING_URL:=https://your-embedding-endpoint.example.com/v1}
       max_tokens: 512
-      api_token: ${env.EMBEDDING_API_KEY:=fake}
+      api_token: ${env.LITEMAAS_EMBEDDING_API_KEY:=sk-change-me}
       tls_verify: false
 
   vector_io:
@@ -37,9 +45,9 @@ providers:
     config:
       host: postgresql
       port: 5432
-      db: claims_db
-      user: claims_user
-      password: claims_pass
+      db: multi_agent_db
+      user: multi_agent_user
+      password: multi_agents_pass
       persistence:
         backend: kv_default
         namespace: vector_io::pgvector
@@ -97,15 +105,6 @@ providers:
     config: {}
 
   files:
-  # Local dev: localfs. Kubernetes: remote::s3 pointing to MinIO
-  # To use S3 locally, add MinIO to docker-compose and use:
-  #   provider_type: remote::s3
-  #   config:
-  #     bucket_name: claims
-  #     region: us-east-1
-  #     endpoint_url: http://minio:9000
-  #     aws_access_key_id: ${env.AWS_ACCESS_KEY_ID}
-  #     aws_secret_access_key: ${env.AWS_SECRET_ACCESS_KEY}
   - provider_id: meta-reference-files
     provider_type: inline::localfs
     config:
@@ -128,17 +127,17 @@ storage:
       type: kv_postgres
       host: ${env.POSTGRES_HOST:=postgresql}
       port: ${env.POSTGRES_PORT:=5432}
-      db: ${env.POSTGRES_DB:=claims_db}
-      user: ${env.POSTGRES_USER:=claims_user}
-      password: ${env.POSTGRES_PASSWORD:=claims_pass}
+      db: ${env.POSTGRES_DB:=multi_agent_db}
+      user: ${env.POSTGRES_USER:=multi_agent_user}
+      password: ${env.POSTGRES_PASSWORD:=multi_agents_pass}
       table_name: llamastack_kvstore
     sql_default:
       type: sql_postgres
       host: ${env.POSTGRES_HOST:=postgresql}
       port: ${env.POSTGRES_PORT:=5432}
-      db: ${env.POSTGRES_DB:=claims_db}
-      user: ${env.POSTGRES_USER:=claims_user}
-      password: ${env.POSTGRES_PASSWORD:=claims_pass}
+      db: ${env.POSTGRES_DB:=multi_agent_db}
+      user: ${env.POSTGRES_USER:=multi_agent_user}
+      password: ${env.POSTGRES_PASSWORD:=multi_agents_pass}
   stores:
     metadata:
       backend: kv_default
@@ -157,18 +156,30 @@ storage:
 
 registered_resources:
   models:
-  # GPT-OSS 120B (MXFP4, TP=4, tool calling)
+  # LLM — Llama 4 Scout 17B (default model for all agents)
   - metadata: {}
-    model_id: gpt-oss-120b
-    provider_id: gpt-oss
-    provider_model_id: gpt-oss-120b
+    model_id: llama-scout-17b
+    provider_id: litemaas
+    provider_model_id: llama-scout-17b
     model_type: llm
-  # Embeddings - Google Gemma 300M (768-dim)
+  # LLM — DeepSeek R1 Distill Qwen 14B (cheaper, for courrier_info/courrier_suivi)
+  - metadata: {}
+    model_id: deepseek-r1-distill-qwen-14b
+    provider_id: litemaas
+    provider_model_id: deepseek-r1-distill-qwen-14b
+    model_type: llm
+  # Vision — Qwen2.5-VL-7B (OCR)
+  - metadata: {}
+    model_id: Qwen2.5-VL-7B-Instruct
+    provider_id: litemaas-vision
+    provider_model_id: Qwen2.5-VL-7B-Instruct
+    model_type: llm
+  # Embeddings — Nomic Embed Text v1.5 (768-dim)
   - metadata:
       embedding_dimension: 768
-    model_id: nomic-embed-text
-    provider_id: gemma-embedding
-    provider_model_id: embeddinggemma-300m
+    model_id: nomic-embed-text-v1-5
+    provider_id: litemaas-embedding
+    provider_model_id: nomic-embed-text-v1-5
     model_type: embedding
 
   shields: []
@@ -194,6 +205,14 @@ registered_resources:
     provider_id: model-context-protocol
     mcp_endpoint:
       uri: http://tenders-server:8080/sse
+  - toolgroup_id: mcp::postal-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://postal-server:8080/sse
+  - toolgroup_id: mcp::tracking-server
+    provider_id: model-context-protocol
+    mcp_endpoint:
+      uri: http://tracking-server:8080/sse
   - toolgroup_id: builtin::rag
     provider_id: rag-runtime
 

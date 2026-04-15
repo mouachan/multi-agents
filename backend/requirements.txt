@@ -52,3 +52,8 @@ python-dateutil>=2.8.2,<3.0.0
 # Optional: Monitoring (uncomment if needed)
 # -----------------------------------------------------------------------------
 # prometheus-fastapi-instrumentator>=6.1.0,<7.0.0PyYAML==6.0.1
+
+# -----------------------------------------------------------------------------
+# Optional: MLflow tracing (only active when MLFLOW_TRACKING_URI is set)
+# -----------------------------------------------------------------------------
+mlflow>=2.10.0
