@@ -1,14 +1,17 @@
 """
-Human-in-the-Loop (HITL) WebSocket API for real-time claim review.
+Human-in-the-Loop (HITL) WebSocket API for real-time entity review.
+
+Domain-agnostic: works for claims, tenders, and any future entity type
+registered in AgentRegistry with HITL metadata.
 
 WebSocket endpoints:
-- /ws/review/{claim_id}  - Join a review room for a specific claim
+- /ws/review/{entity_type}/{entity_id}  - Join a review room for a specific entity
 
 REST endpoints:
-- POST /{claim_id}/action     - Submit a review decision (approve/reject/comment)
-- POST /{claim_id}/ask-agent  - Ask agent a question (conversational HITL)
-- GET  /{claim_id}/messages   - Get review chat history
-- GET  /active                - Get list of active review sessions
+- POST /{entity_type}/{entity_id}/action     - Submit a review decision (approve/reject/comment)
+- POST /{entity_type}/{entity_id}/ask-agent  - Ask agent a question (conversational HITL)
+- GET  /{entity_type}/{entity_id}/messages   - Get review chat history
+- GET  /active                               - Get list of active review sessions
 """
 
 import json
@@ -17,7 +20,6 @@ from datetime import datetime, timezone
 from typing import Dict, Set
 from uuid import UUID
 
-import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -27,7 +29,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.api import schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.models import claim as models
+from app.services.agents.registry import AgentRegistry
 from app.services.agent.reviewer import ReviewService
 from app.services.agent.context_builder import ContextBuilder
 
@@ -41,6 +43,49 @@ context_builder = ContextBuilder()
 
 
 # =============================================================================
+# Helpers
+# =============================================================================
+
+async def resolve_entity(entity_type: str, entity_id: UUID, db: AsyncSession):
+    """Resolve an entity and its agent definition from the registry."""
+    agent_def = AgentRegistry.get_by_entity_type(entity_type)
+    if not agent_def or "hitl_model" not in agent_def.metadata:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {entity_type}")
+    model = agent_def.metadata["hitl_model"]
+    result = await db.execute(select(model).where(model.id == entity_id))
+    entity = result.scalar_one_or_none()
+    if not entity:
+        raise HTTPException(status_code=404, detail=f"{entity_type.capitalize()} not found")
+    return entity, agent_def
+
+
+async def build_entity_context(entity, entity_type, entity_id, agent_def, db):
+    """Build context dict from any entity via column introspection + OCR."""
+    entity_data = {}
+    for col in entity.__table__.columns:
+        val = getattr(entity, col.name, None)
+        if val is not None:
+            entity_data[col.name] = str(val) if not isinstance(val, (str, int, float, bool)) else val
+
+    # Load OCR from related document
+    doc_model = agent_def.metadata["hitl_document_model"]
+    fk = agent_def.metadata["hitl_fk_field"]
+    doc_result = await db.execute(
+        select(doc_model)
+        .where(getattr(doc_model, fk) == entity_id)
+        .order_by(doc_model.created_at.desc())
+        .limit(1)
+    )
+    doc = doc_result.scalar_one_or_none()
+    if doc:
+        entity_data["ocr_data"] = context_builder.extract_ocr_context(
+            {"raw_ocr_text": doc.raw_ocr_text, "structured_data": doc.structured_data}
+        )
+
+    return entity_data
+
+
+# =============================================================================
 # WebSocket Connection Manager
 # =============================================================================
 
@@ -49,36 +94,36 @@ class ConnectionManager:
     Manages WebSocket connections for HITL review sessions.
 
     Features:
-    - Multiple reviewers can join the same claim room
+    - Multiple reviewers can join the same entity room
     - Presence tracking (who's currently reviewing)
     - Broadcast messages to all reviewers in a room
     """
 
     def __init__(self):
-        # claim_id -> Set of WebSocket connections
+        # room_id -> Set of WebSocket connections
         self.active_connections: Dict[str, Set[WebSocket]] = {}
         # websocket -> reviewer info
         self.reviewer_info: Dict[WebSocket, dict] = {}
 
-    async def connect(self, websocket: WebSocket, claim_id: str, reviewer_id: str, reviewer_name: str):
-        """Add a new reviewer to a claim review room."""
+    async def connect(self, websocket: WebSocket, room_id: str, reviewer_id: str, reviewer_name: str):
+        """Add a new reviewer to a review room."""
         await websocket.accept()
 
-        if claim_id not in self.active_connections:
-            self.active_connections[claim_id] = set()
+        if room_id not in self.active_connections:
+            self.active_connections[room_id] = set()
 
-        self.active_connections[claim_id].add(websocket)
+        self.active_connections[room_id].add(websocket)
         self.reviewer_info[websocket] = {
             "reviewer_id": reviewer_id,
             "reviewer_name": reviewer_name,
-            "claim_id": claim_id,
+            "room_id": room_id,
             "joined_at": datetime.now(timezone.utc).isoformat()
         }
 
-        logger.info(f"Reviewer {reviewer_name} joined claim {claim_id} review room")
+        logger.info(f"Reviewer {reviewer_name} joined review room {room_id}")
 
         # Notify other reviewers
-        await self.broadcast(claim_id, {
+        await self.broadcast(room_id, {
             "type": "reviewer_joined",
             "reviewer_id": reviewer_id,
             "reviewer_name": reviewer_name,
@@ -86,34 +131,33 @@ class ConnectionManager:
         }, exclude=websocket)
 
     def disconnect(self, websocket: WebSocket):
-        """Remove a reviewer from their claim review room."""
+        """Remove a reviewer from their review room."""
         if websocket not in self.reviewer_info:
             return
 
         info = self.reviewer_info[websocket]
-        claim_id = info["claim_id"]
+        room_id = info["room_id"]
         reviewer_name = info["reviewer_name"]
 
-        if claim_id in self.active_connections:
-            self.active_connections[claim_id].discard(websocket)
+        if room_id in self.active_connections:
+            self.active_connections[room_id].discard(websocket)
 
             # Clean up empty rooms
-            if len(self.active_connections[claim_id]) == 0:
-                del self.active_connections[claim_id]
+            if len(self.active_connections[room_id]) == 0:
+                del self.active_connections[room_id]
 
         del self.reviewer_info[websocket]
-        logger.info(f"Reviewer {reviewer_name} left claim {claim_id} review room")
+        logger.info(f"Reviewer {reviewer_name} left review room {room_id}")
 
-    async def broadcast(self, claim_id: str, message: dict, exclude: WebSocket = None):
-        """Send a message to all reviewers in a claim room."""
-        if claim_id not in self.active_connections:
+    async def broadcast(self, room_id: str, message: dict, exclude: WebSocket = None):
+        """Send a message to all reviewers in a room."""
+        if room_id not in self.active_connections:
             return
 
         message_json = json.dumps(message)
 
-        # Send to all connections in this claim's room
         dead_connections = set()
-        for connection in self.active_connections[claim_id]:
+        for connection in self.active_connections[room_id]:
             if connection == exclude:
                 continue
 
@@ -123,7 +167,6 @@ class ConnectionManager:
                 logger.error(f"Failed to send message to reviewer: {e}")
                 dead_connections.add(connection)
 
-        # Clean up dead connections
         for connection in dead_connections:
             self.disconnect(connection)
 
@@ -135,13 +178,13 @@ class ConnectionManager:
             logger.error(f"Failed to send personal message: {e}")
             self.disconnect(websocket)
 
-    def get_reviewers(self, claim_id: str) -> list:
-        """Get list of active reviewers for a claim."""
-        if claim_id not in self.active_connections:
+    def get_reviewers(self, room_id: str) -> list:
+        """Get list of active reviewers for a room."""
+        if room_id not in self.active_connections:
             return []
 
         reviewers = []
-        for ws in self.active_connections[claim_id]:
+        for ws in self.active_connections[room_id]:
             if ws in self.reviewer_info:
                 info = self.reviewer_info[ws]
                 reviewers.append({
@@ -180,15 +223,16 @@ class ReviewMessage(BaseModel):
 # WebSocket Endpoint
 # =============================================================================
 
-@router.websocket("/ws/review/{claim_id}")
+@router.websocket("/ws/review/{entity_type}/{entity_id}")
 async def websocket_review_endpoint(
     websocket: WebSocket,
-    claim_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
     reviewer_id: str = "agent_001",
     reviewer_name: str = "Agent Smith"
 ):
     """
-    WebSocket endpoint for real-time claim review.
+    WebSocket endpoint for real-time entity review.
 
     Query params:
     - reviewer_id: Unique identifier for the reviewer
@@ -199,24 +243,25 @@ async def websocket_review_endpoint(
     - reviewer_left: A reviewer left the room
     - chat_message: Someone sent a chat message
     - action_taken: Someone approved/rejected/commented
-    - claim_updated: Claim status was updated
+    - entity_updated: Entity status was updated
 
     Message types sent by client:
     - chat: Send a chat message
     - action: Submit a review action
     """
-    claim_id_str = str(claim_id)
+    room_id = f"{entity_type}:{entity_id}"
 
-    await manager.connect(websocket, claim_id_str, reviewer_id, reviewer_name)
+    await manager.connect(websocket, room_id, reviewer_id, reviewer_name)
 
     try:
         # Send initial state
-        reviewers = manager.get_reviewers(claim_id_str)
+        reviewers = manager.get_reviewers(room_id)
         await manager.send_personal(websocket, {
             "type": "connected",
-            "claim_id": claim_id_str,
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
             "active_reviewers": reviewers,
-            "message": f"Connected to review room for claim {claim_id}"
+            "message": f"Connected to review room for {entity_type} {entity_id}"
         })
 
         # Listen for messages
@@ -228,8 +273,7 @@ async def websocket_review_endpoint(
                 message_type = message.get("type")
 
                 if message_type == "chat":
-                    # Broadcast chat message to all reviewers
-                    await manager.broadcast(claim_id_str, {
+                    await manager.broadcast(room_id, {
                         "type": "chat_message",
                         "reviewer_id": reviewer_id,
                         "reviewer_name": reviewer_name,
@@ -238,11 +282,10 @@ async def websocket_review_endpoint(
                     })
 
                 elif message_type == "action":
-                    # Broadcast action to all reviewers
                     action = message.get("action")
                     comment = message.get("comment", "")
 
-                    await manager.broadcast(claim_id_str, {
+                    await manager.broadcast(room_id, {
                         "type": "action_taken",
                         "reviewer_id": reviewer_id,
                         "reviewer_name": reviewer_name,
@@ -251,7 +294,6 @@ async def websocket_review_endpoint(
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }, exclude=websocket)
 
-                    # Acknowledge to sender
                     await manager.send_personal(websocket, {
                         "type": "action_acknowledged",
                         "action": action,
@@ -259,7 +301,6 @@ async def websocket_review_endpoint(
                     })
 
                 elif message_type == "ping":
-                    # Keepalive
                     await manager.send_personal(websocket, {
                         "type": "pong",
                         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -278,8 +319,7 @@ async def websocket_review_endpoint(
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-        # Notify other reviewers
-        await manager.broadcast(claim_id_str, {
+        await manager.broadcast(room_id, {
             "type": "reviewer_left",
             "reviewer_id": reviewer_id,
             "reviewer_name": reviewer_name,
@@ -295,9 +335,10 @@ async def websocket_review_endpoint(
 # REST Endpoints
 # =============================================================================
 
-@router.post("/{claim_id}/action")
+@router.post("/{entity_type}/{entity_id}/action")
 async def submit_review_action(
-    claim_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
     action: ReviewAction,
     db: AsyncSession = Depends(get_db)
 ):
@@ -308,44 +349,41 @@ async def submit_review_action(
     It also broadcasts the action via WebSocket to active reviewers.
     """
     try:
-        # Get claim
-        result = await db.execute(
-            select(models.Claim).where(models.Claim.id == claim_id)
-        )
-        claim = result.scalar_one_or_none()
-
-        if not claim:
-            raise HTTPException(status_code=404, detail="Claim not found")
+        entity, agent_def = await resolve_entity(entity_type, entity_id, db)
 
         # Process action using review service
-        updated_claim, updated_decision = await review_service.process_action(
+        updated_entity, updated_decision = await review_service.process_action(
             db=db,
             action=action.action,
-            entity_type="claim",
-            entity_id=str(claim_id),
+            entity_type=entity_type,
+            entity_id=str(entity_id),
             reviewer_id=action.reviewer_id,
             reviewer_name=action.reviewer_name,
             comment=action.comment
         )
 
+        room_id = f"{entity_type}:{entity_id}"
+
         # Broadcast action via WebSocket
-        await manager.broadcast(str(claim_id), {
-            "type": "claim_updated",
+        await manager.broadcast(room_id, {
+            "type": "entity_updated",
+            "entity_type": entity_type,
             "action": action.action,
             "reviewer_id": action.reviewer_id,
             "reviewer_name": action.reviewer_name,
             "comment": action.comment,
-            "new_status": updated_claim.status.value if hasattr(updated_claim.status, 'value') else updated_claim.status,
+            "new_status": updated_entity.status.value if hasattr(updated_entity.status, 'value') else updated_entity.status,
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
-        logger.info(f"Review action '{action.action}' by {action.reviewer_name} on claim {claim_id}")
+        logger.info(f"Review action '{action.action}' by {action.reviewer_name} on {entity_type} {entity_id}")
 
         return {
             "success": True,
-            "claim_id": str(claim_id),
+            "entity_id": str(entity_id),
+            "entity_type": entity_type,
             "action": action.action,
-            "new_status": updated_claim.status.value if hasattr(updated_claim.status, 'value') else updated_claim.status
+            "new_status": updated_entity.status.value if hasattr(updated_entity.status, 'value') else updated_entity.status
         }
 
     except HTTPException:
@@ -355,38 +393,32 @@ async def submit_review_action(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{claim_id}/messages")
+@router.get("/{entity_type}/{entity_id}/messages")
 async def get_review_messages(
-    claim_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get chat/action history for a claim review session.
+    Get chat/action history for an entity review session.
 
     Returns messages from agent_logs that are review-related.
     """
-    result = await db.execute(
-        select(models.Claim).where(models.Claim.id == claim_id)
-    )
-    claim = result.scalar_one_or_none()
-
-    if not claim:
-        raise HTTPException(status_code=404, detail="Claim not found")
+    entity, agent_def = await resolve_entity(entity_type, entity_id, db)
 
     # Extract review messages from agent_logs
     messages = []
-    if claim.agent_logs:
+    if entity.agent_logs:
         i = 0
-        while i < len(claim.agent_logs):
-            log = claim.agent_logs[i]
+        while i < len(entity.agent_logs):
+            log = entity.agent_logs[i]
 
             # Group reviewer_question + agent_answer into qa_exchange
             if log.get("type") == "reviewer_question":
-                # Look for the next agent_answer
                 answer_log = None
-                if i + 1 < len(claim.agent_logs) and claim.agent_logs[i + 1].get("type") == "agent_answer":
-                    answer_log = claim.agent_logs[i + 1]
-                    i += 1  # Skip the answer log since we're grouping it
+                if i + 1 < len(entity.agent_logs) and entity.agent_logs[i + 1].get("type") == "agent_answer":
+                    answer_log = entity.agent_logs[i + 1]
+                    i += 1
 
                 messages.append({
                     "type": "qa_exchange",
@@ -408,7 +440,8 @@ async def get_review_messages(
             i += 1
 
     return {
-        "claim_id": str(claim_id),
+        "entity_id": str(entity_id),
+        "entity_type": entity_type,
         "messages": messages,
         "total": len(messages)
     }
@@ -419,15 +452,21 @@ async def get_active_reviews():
     """
     Get list of active review sessions.
 
-    Returns claims that currently have reviewers connected.
+    Returns entities that currently have reviewers connected.
     """
     active_sessions = []
 
-    for claim_id, connections in manager.active_connections.items():
+    for room_id, connections in manager.active_connections.items():
         if len(connections) > 0:
-            reviewers = manager.get_reviewers(claim_id)
+            reviewers = manager.get_reviewers(room_id)
+            # Parse room_id "entity_type:entity_id"
+            parts = room_id.split(":", 1)
+            entity_type = parts[0] if len(parts) == 2 else "unknown"
+            entity_id = parts[1] if len(parts) == 2 else room_id
             active_sessions.append({
-                "claim_id": claim_id,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "room_id": room_id,
                 "reviewer_count": len(reviewers),
                 "reviewers": reviewers
             })
@@ -439,118 +478,67 @@ async def get_active_reviews():
 
 
 # =============================================================================
-# Utility function for triggering HITL from claims processing
+# Utility function for triggering HITL from processing pipelines
 # =============================================================================
 
-async def notify_manual_review_required(claim_id: UUID, reason: str):
+async def notify_manual_review_required(entity_type: str, entity_id: UUID, reason: str):
     """
-    Notify all connected reviewers that a claim requires manual review.
+    Notify all connected reviewers that an entity requires manual review.
 
-    Call this from the claims processing endpoint when decision = "manual_review"
+    Call this from processing endpoints when decision = "manual_review" / "a_approfondir".
     """
-    await manager.broadcast(str(claim_id), {
+    room_id = f"{entity_type}:{entity_id}"
+    await manager.broadcast(room_id, {
         "type": "manual_review_required",
-        "claim_id": str(claim_id),
+        "entity_type": entity_type,
+        "entity_id": str(entity_id),
         "reason": reason,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
-    logger.info(f"Notified reviewers: Manual review required for claim {claim_id}")
+    logger.info(f"Notified reviewers: Manual review required for {entity_type} {entity_id}")
 
 
 # =============================================================================
-# POST /{claim_id}/ask-agent - Conversational HITL with Agent
+# POST /{entity_type}/{entity_id}/ask-agent - Conversational HITL with Agent
 # =============================================================================
 
-@router.post("/{claim_id}/ask-agent", response_model=schemas.AskAgentResponse)
+@router.post("/{entity_type}/{entity_id}/ask-agent", response_model=schemas.AskAgentResponse)
 async def ask_agent(
-    claim_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
     request: schemas.AskAgentRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Ask the LlamaStack agent a question about a claim in manual review.
+    Ask the LlamaStack agent a question about an entity in manual review.
 
     This enables conversational HITL where reviewers can ask for clarifications
     before making a decision. Each Q&A is logged in agent_logs for audit trail.
 
-    Only available for claims in 'manual_review' or 'pending_info' status.
+    Only available for entities in 'manual_review' or 'pending_info' status.
     """
     try:
-        # Get claim
-        result = await db.execute(
-            select(models.Claim).where(models.Claim.id == claim_id)
-        )
-        claim = result.scalar_one_or_none()
+        entity, agent_def = await resolve_entity(entity_type, entity_id, db)
 
-        if not claim:
-            raise HTTPException(status_code=404, detail="Claim not found")
-
-        # Verify claim is in manual review
-        if claim.status not in ["manual_review", "pending_info"]:
+        # Verify entity is in manual review
+        status_val = entity.status.value if hasattr(entity.status, 'value') else entity.status
+        if status_val not in ["manual_review", "pending_info"]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot ask agent - claim status is '{claim.status}'. Must be 'manual_review' or 'pending_info'."
+                detail=f"Cannot ask agent - {entity_type} status is '{status_val}'. Must be 'manual_review' or 'pending_info'."
             )
 
-        logger.info(f"Reviewer {request.reviewer_name} asking agent about claim {claim_id}: {request.question}")
+        logger.info(f"Reviewer {request.reviewer_name} asking agent about {entity_type} {entity_id}: {request.question}")
 
-        # Build context using ContextBuilder
-        # 1. Get OCR data
-        doc_result = await db.execute(
-            select(models.ClaimDocument)
-            .where(models.ClaimDocument.claim_id == claim_id)
-            .order_by(models.ClaimDocument.created_at.desc())
-            .limit(1)
-        )
-        claim_doc = doc_result.scalar_one_or_none()
-
-        ocr_context = ""
-        if claim_doc:
-            ocr_context = context_builder.extract_ocr_context({
-                "raw_ocr_text": claim_doc.raw_ocr_text,
-                "structured_data": claim_doc.structured_data
-            })
-
-        # 2. Get user and contract info
-        user_result = await db.execute(
-            select(models.User).where(models.User.user_id == claim.user_id)
-        )
-        user = user_result.scalar_one_or_none()
-
-        user_info = ""
-        if user:
-            user_info = f"User: {user.full_name or 'N/A'}, UserID: {user.user_id}, Email: {user.email or 'N/A'}"
-
-            contracts_result = await db.execute(
-                select(models.UserContract)
-                .where(models.UserContract.user_id == claim.user_id)
-                .where(models.UserContract.is_active == True)
-            )
-            contracts = contracts_result.scalars().all()
-
-            if contracts:
-                contract_details = []
-                for contract in contracts:
-                    contract_details.append(
-                        f"Contract {contract.contract_number}: {contract.contract_type or 'N/A'}, "
-                        f"Coverage: ${contract.coverage_amount or 0}"
-                    )
-                user_info += "\nContracts: " + "; ".join(contract_details[:3])
-        else:
-            user_info = f"UserID: {claim.user_id}"
+        # Build generic context via introspection
+        entity_data = await build_entity_context(entity, entity_type, entity_id, agent_def, db)
 
         # Build review context
         context = context_builder.build_review_context(
-            entity_type="claim",
-            entity_id=str(claim_id),
-            entity_data={
-                "claim_number": claim.claim_number,
-                "claim_type": claim.claim_type or "N/A",
-                "status": claim.status.value if hasattr(claim.status, 'value') else claim.status,
-                "user_info": user_info,
-                "ocr_data": ocr_context if ocr_context else "N/A"
-            }
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            entity_data=entity_data
         )
 
         # Add reviewer question to context
@@ -561,7 +549,7 @@ async def ask_agent(
             question=full_question,
             agent_config={
                 "model": settings.llamastack_default_model,
-                "instructions": "You are a helpful claims processing assistant. Answer questions about insurance claims accurately and concisely.",
+                "instructions": agent_def.instructions,
                 "enable_session_persistence": False,
                 "sampling_params": {
                     "strategy": {"type": "greedy"},
@@ -574,10 +562,10 @@ async def ask_agent(
 
         # Save Q&A to agent_logs
         timestamp = datetime.now(timezone.utc)
-        if not claim.agent_logs:
-            claim.agent_logs = []
+        if not entity.agent_logs:
+            entity.agent_logs = []
 
-        claim.agent_logs.extend([
+        entity.agent_logs.extend([
             {
                 "type": "reviewer_question",
                 "timestamp": timestamp.isoformat(),
@@ -591,15 +579,18 @@ async def ask_agent(
                 "message": answer
             }
         ])
-        flag_modified(claim, "agent_logs")
+        flag_modified(entity, "agent_logs")
         await db.commit()
 
-        logger.info(f"Saved Q&A to agent_logs for claim {claim_id}")
+        logger.info(f"Saved Q&A to agent_logs for {entity_type} {entity_id}")
+
+        room_id = f"{entity_type}:{entity_id}"
 
         # Broadcast Q&A via WebSocket
-        await manager.broadcast(str(claim_id), {
+        await manager.broadcast(room_id, {
             "type": "qa_exchange",
-            "claim_id": str(claim_id),
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
             "question": request.question,
             "answer": answer,
             "reviewer_id": request.reviewer_id,
@@ -609,7 +600,8 @@ async def ask_agent(
 
         return schemas.AskAgentResponse(
             success=True,
-            claim_id=str(claim_id),
+            entity_id=str(entity_id),
+            entity_type=entity_type,
             question=request.question,
             answer=answer,
             timestamp=timestamp

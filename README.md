@@ -708,9 +708,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v2.0
+### Current Version: v2.1
 
-**What's new in v2.0**:
+**What's new in v2.1** (backend v2.1, frontend v2.3):
+- **HITL domain-agnostic**: Human-in-the-Loop review now works for both claims AND tenders (was claims-only). Uses the existing `AgentRegistry` with HITL metadata — zero new files
+- **Tender processing fix**: All 5 MCP tools (`get_tender`, `ocr_document`, `retrieve_similar_references`, `retrieve_historical_tenders`, `retrieve_capabilities`) are now called correctly in a single batch. Fixed prompt format that caused the LLM to hallucinate tool calls as text instead of making real MCP calls
+- **`ReviewChatPanel` generic**: Frontend review panel accepts `entityType`/`entityId` props, works for any domain
+- **ConfigMap prompt fix**: Corrected `get_tender` parameter name (`tender_id` instead of `tender_number`) in the `ao-prompts` ConfigMap
+
+**What was in v2.0**:
 - Switched default LLM to `llama-scout-17b` (Llama-4-Scout-17B)
 - Multi-provider LlamaStack config: LLM, vision, and embedding can each point to different endpoints
 - Fixed RAG server health check — no longer calls embedding API on every K8s probe (was burning LiteLLM budget)
@@ -726,7 +732,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 **Working**:
 - End-to-end claim processing via multi-agent chat (4 parallel tool calls)
-- End-to-end tender / Appels d'Offres processing via multi-agent chat
+- End-to-end tender / Appels d'Offres processing via multi-agent chat (5 parallel tool calls)
 - SSE streaming responses (real-time tool calls + text deltas)
 - Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
@@ -735,7 +741,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
-- HITL review workflow (claims & tenders)
+- HITL review workflow — domain-agnostic for claims & tenders (ask agent, approve, reject, request info)
 - Multi-agent orchestrator with intent-based routing
 - Chat sessions with persistent message history
 - Tool call observability (collapsible traces with output/error per tool)
@@ -743,6 +749,18 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Bilingual support FR/EN
 - Local development with docker-compose / podman-compose
 - Helm deployment on OpenShift (RHOAI 3.3 compatible)
+
+### Image Versions
+
+| Component | Image | Version |
+|-----------|-------|---------|
+| Backend | `quay.io/mouachan/multi-agents/backend` | **v2.1** |
+| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v2.3** |
+| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | v1.0 |
+| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | v1.0 |
+| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | v1.0 |
+| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | v1.1 |
+| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | v1.0 |
 
 **In Progress**:
 - OpenShift OAuth authentication

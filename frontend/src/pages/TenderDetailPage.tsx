@@ -56,7 +56,8 @@ export default function TenderDetailPage() {
       {tender.status === 'manual_review' && (
         <div className="bg-white shadow rounded-lg p-6">
           <ReviewChatPanel
-            claimId={tender.id}
+            entityId={tender.id}
+            entityType="tender"
             reviewerId={`reviewer_${Date.now()}`}
             reviewerName="Review Agent"
             onActionSubmitted={(action) => {

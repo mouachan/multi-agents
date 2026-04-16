@@ -31,6 +31,8 @@ def register_agents():
     from app.services.agents.registry import AgentRegistry, AgentDefinition
     from app.services.claim_service import ClaimService, CLAIM_TOOLS
     from app.services.tender_service import TenderService, TENDER_TOOLS
+    from app.models.claim import Claim, ClaimDocument
+    from app.models.tender import Tender, TenderDocument
     from app.llamastack.prompts import (
         CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
@@ -58,6 +60,11 @@ def register_agents():
             "assurance", "dommage", "remboursement",
             "indemnisation", "police d'assurance", "contrat d'assurance",
         ],
+        metadata={
+            "hitl_model": Claim,
+            "hitl_document_model": ClaimDocument,
+            "hitl_fk_field": "claim_id",
+        },
     ))
 
     AgentRegistry.register(AgentDefinition(
@@ -80,6 +87,11 @@ def register_agents():
             "btp", "construction", "go/no-go", "go no go",
             "offre", "offres",
         ],
+        metadata={
+            "hitl_model": Tender,
+            "hitl_document_model": TenderDocument,
+            "hitl_fk_field": "tender_id",
+        },
     ))
 
     logger.info(f"Registered {len(AgentRegistry.list_agents())} agents")

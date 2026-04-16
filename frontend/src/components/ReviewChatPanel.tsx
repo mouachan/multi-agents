@@ -6,6 +6,7 @@
  * - Chat with other reviewers
  * - Submit review actions (approve/reject/comment)
  * - See presence of other active reviewers
+ * - Domain-agnostic: works for claims, tenders, and any entity type
  */
 
 import { useEffect, useState, useRef } from 'react'
@@ -30,16 +31,16 @@ interface Reviewer {
 }
 
 interface ReviewChatPanelProps {
-  claimId: string
-  entityType?: 'claim' | 'tender'
+  entityId: string
+  entityType: 'claim' | 'tender'
   reviewerId?: string
   reviewerName?: string
   onActionSubmitted?: (action: string) => void
 }
 
 export default function ReviewChatPanel({
-  claimId,
-  entityType: _entityType = 'claim',
+  entityId,
+  entityType,
   reviewerId = 'reviewer_' + Math.random().toString(36).substr(2, 9),
   reviewerName = 'Anonymous Reviewer',
   onActionSubmitted
@@ -57,7 +58,7 @@ export default function ReviewChatPanel({
     // Use window.location to construct WebSocket URL
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const wsHost = window.location.host
-    return `${wsProtocol}://${wsHost}/api/v1/review/ws/review/${claimId}?reviewer_id=${reviewerId}&reviewer_name=${encodeURIComponent(reviewerName)}`
+    return `${wsProtocol}://${wsHost}/api/v1/review/ws/review/${entityType}/${entityId}?reviewer_id=${reviewerId}&reviewer_name=${encodeURIComponent(reviewerName)}`
   }
 
   useEffect(() => {
@@ -133,7 +134,7 @@ export default function ReviewChatPanel({
       clearInterval(pingInterval)
       websocket.close()
     }
-  }, [claimId, reviewerId, reviewerName])
+  }, [entityId, entityType, reviewerId, reviewerName])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -152,7 +153,7 @@ export default function ReviewChatPanel({
   }
 
   const askAgent = async () => {
-    if (!claimId || !commentInput.trim()) {
+    if (!entityId || !commentInput.trim()) {
       alert('Please enter a question for the agent')
       return
     }
@@ -167,7 +168,7 @@ export default function ReviewChatPanel({
         timestamp: new Date().toISOString()
       }])
 
-      const response = await fetch(`/api/v1/review/${claimId}/ask-agent`, {
+      const response = await fetch(`/api/v1/review/${entityType}/${entityId}/ask-agent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -203,7 +204,7 @@ export default function ReviewChatPanel({
   }
 
   const submitAction = async (action: string) => {
-    if (!claimId) return
+    if (!entityId) return
 
     const comment = commentInput.trim()
 
@@ -218,7 +219,7 @@ export default function ReviewChatPanel({
 
     // Also send via REST API to update database
     try {
-      await fetch(`/api/v1/review/${claimId}/action`, {
+      await fetch(`/api/v1/review/${entityType}/${entityId}/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -270,12 +271,12 @@ export default function ReviewChatPanel({
       )
     }
 
-    if (msg.type === 'claim_updated') {
+    if (msg.type === 'entity_updated' || msg.type === 'claim_updated') {
       return (
         <div key={index} className="mb-3 p-2 bg-green-50 rounded border-l-4 border-green-500">
           <div className="text-xs text-gray-500">{formatTimestamp(msg.timestamp)}</div>
           <div className="mt-1 font-semibold text-green-700">
-            Claim updated: {msg.new_status}
+            {entityType.charAt(0).toUpperCase() + entityType.slice(1)} updated: {msg.new_status}
           </div>
           <div className="text-sm text-gray-600">
             {msg.reviewer_name} performed action: {msg.action}

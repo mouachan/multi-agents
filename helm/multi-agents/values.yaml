@@ -184,7 +184,7 @@ mcp:
 
     image:
       repository: rag-server
-      tag: v1.0
+      tag: v1.1
 
     service:
       type: ClusterIP
@@ -261,7 +261,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v1.0
+    tag: v2.1
 
   # Service
   service:
@@ -312,7 +312,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v1.0
+    tag: v2.3
 
   # Service
   service:

@@ -321,7 +321,7 @@ async def process_claim(
         recommendation = result["decision"].get("recommendation", "manual_review")
         if recommendation == "manual_review":
             reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
-            await notify_manual_review_required(claim_id, reasoning)
+            await notify_manual_review_required("claim", claim_id, reasoning)
 
         return schemas.ProcessClaimResponse(
             claim_id=claim_id,

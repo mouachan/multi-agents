@@ -49,7 +49,7 @@ backend:
   enabled: true
   image:
     repository: backend
-    tag: v1.0
+    tag: v2.1
   pvc:
     accessMode: ReadWriteOnce
     size: 5Gi
@@ -62,7 +62,7 @@ frontend:
   enabled: true
   image:
     repository: frontend
-    tag: v2.1
+    tag: v2.3
 
 # =============================================================================
 # MCP Servers
@@ -88,7 +88,7 @@ mcp:
     enabled: true
     image:
       repository: rag-server
-      tag: v1.0
+      tag: v1.1
   claims:
     enabled: true
     image:

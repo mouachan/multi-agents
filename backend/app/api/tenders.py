@@ -30,6 +30,7 @@ from app.models import tender as models
 from app.llamastack.ao_prompts import AO_PROCESSING_AGENT_INSTRUCTIONS
 from app.services.tender_service import TenderService
 from app.services.document_storage import get_document
+from app.api.hitl import notify_manual_review_required
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ async def process_tender(
             )
 
         # Build tool list for Responses API
-        tools = []
+        tools = ["get_tender"]
         if not process_request.skip_ocr:
             tools.append("ocr_document")
         if process_request.enable_rag:
@@ -217,6 +218,11 @@ async def process_tender(
         )
 
         recommendation = result["decision"].get("recommendation", "a_approfondir")
+
+        # Notify reviewers if manual review required
+        if recommendation == "a_approfondir":
+            reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
+            await notify_manual_review_required("tender", tender_id, reasoning)
 
         return schemas.ProcessTenderResponse(
             tender_id=tender_id,
