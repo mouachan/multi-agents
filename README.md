@@ -457,31 +457,63 @@ podman compose up --build
 
 ### Deploy
 
-```bash
-# Copy and edit values with your LiteMaaS endpoints and credentials
-cp helm/multi-agents/values-pauline.yaml helm/multi-agents/values-mydeployment.yaml
-# Edit helm/multi-agents/values-mydeployment.yaml
+All sensitive values and cluster-specific settings are passed via `--set` flags (never committed to git).
 
+```bash
 helm install multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-mydeployment.yaml \
-  -n multi-agent \
-  --create-namespace
+  -n <NAMESPACE> --create-namespace --timeout 10m \
+  --set global.namespace=<NAMESPACE> \
+  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
+  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
+  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
+  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
+  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
+  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
+  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
+  --set secrets.postgresPassword="<DB_PASSWORD>" \
+  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
 ```
+
+**Parameters:**
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `global.namespace` | Target namespace (must match `-n` flag) | `multi-agent` |
+| `global.clusterDomain` | OpenShift apps domain | `apps.cluster-xxx.sandbox.opentlc.com` |
+| `llamastack.litemaas.url` | LLM inference endpoint | `https://litellm-prod.apps.maas.example.com/v1` |
+| `llamastack.litemaas.embeddingUrl` | Embedding endpoint | Same or different from LLM URL |
+| `llamastack.litemaas.visionUrl` | Vision model endpoint (OCR) | `https://litellm-vision.apps.example.com/v1` |
+| `secrets.litemaas*ApiKey` | API keys for each MaaS endpoint | `sk-...` |
+| `secrets.postgres*Password` | Database passwords | Any strong password |
 
 ### Multi-namespace deployment
 
-You can deploy multiple independent instances on the same cluster by using different namespaces and value files:
+Deploy multiple independent instances on the same cluster by changing the namespace:
 
 ```bash
 # Instance 1
 helm install multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-multi-agents.yaml \
-  -n multi-agent --create-namespace
+  -n multi-agent --create-namespace --timeout 10m \
+  --set global.namespace=multi-agent \
+  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
+  --set llamastack.litemaas.url="..." \
+  --set llamastack.litemaas.embeddingUrl="..." \
+  --set llamastack.litemaas.visionUrl="..." \
+  --set secrets.litemaasApiKey="..." \
+  --set secrets.litemaasEmbeddingApiKey="..." \
+  --set secrets.litemaasVisionApiKey="..." \
+  --set secrets.postgresPassword="..." \
+  --set secrets.postgresAdminPassword="..." \
+  --set secrets.llamastackPassword="..."
 
-# Instance 2 (different namespace, different LiteMaaS tokens)
-helm install p-multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-pauline.yaml \
-  -n p-multi-agent --create-namespace
+# Instance 2 (different namespace, can use different API keys)
+helm install multi-agents helm/multi-agents \
+  -n test-multi-agent --create-namespace --timeout 10m \
+  --set global.namespace=test-multi-agent \
+  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
+  --set llamastack.litemaas.url="..." \
+  ...
 ```
 
 Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
@@ -551,11 +583,15 @@ llamastack:
   litemaas:
     url: "https://your-litemaas-llm-endpoint/v1"
     embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
+    visionUrl: "https://your-litemaas-vision-endpoint/v1"
     defaultModel: "litemaas/llama-scout-17b"
     embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+    visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
   embedding:
     dimension: 768
     providerModelId: "nomic-embed-text-v1-5"  # Must match LiteLLM proxy model name exactly
+  vision:
+    providerModelId: "Qwen2.5-VL-7B-Instruct"
 ```
 
 ### Agent Prompts

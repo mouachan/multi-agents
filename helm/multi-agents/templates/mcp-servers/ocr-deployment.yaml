@@ -40,6 +40,8 @@ spec:
               value: {{ .Values.mcp.ocr.env.LOG_LEVEL | quote }}
             - name: LLAMASTACK_ENDPOINT
               value: {{ quote (include "llamastack.endpoint" .) }}
+            - name: VISION_MODEL
+              value: {{ .Values.llamastack.litemaas.visionModel | quote }}
             - name: HOST
               value: 0.0.0.0
             - name: PORT
