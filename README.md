@@ -533,11 +533,35 @@ The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of 
 
 **Important**: The embedding `provider_model_id` must match the model name registered on the LiteLLM proxy exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This is configurable via `llamastack.embedding.providerModelId` in values.
 
+### Quick start (after cloning)
+
+```bash
+git clone https://github.com/mouachan/multi-agents.git
+cd multi-agents
+
+helm install multi-agents helm/multi-agents \
+  -n <NAMESPACE> --create-namespace --timeout 10m \
+  --set global.namespace=<NAMESPACE> \
+  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
+  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
+  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
+  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
+  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
+  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
+  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
+  --set secrets.postgresPassword="<DB_PASSWORD>" \
+  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
+
+# Wait ~5 min for all pods to be ready, then access:
+echo "Frontend: https://frontend-<NAMESPACE>.<CLUSTER_DOMAIN>"
+```
+
 ### Verify
 
 ```bash
-oc get pods -n multi-agent
-oc get routes -n multi-agent
+oc get pods -n <NAMESPACE>
+oc get routes -n <NAMESPACE>
 
 # Check data initialization completed
 oc logs -l job-name -n multi-agent
