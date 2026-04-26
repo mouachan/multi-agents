@@ -98,8 +98,8 @@ postgresql:
 
   # Image
   image:
-    repository: postgresql
-    tag: latest
+    repository: docker.io/pgvector/pgvector
+    tag: pg15
 
 # =============================================================================
 # LlamaStack
@@ -119,8 +119,10 @@ llamastack:
   litemaas:
     url: "REPLACE_WITH_LITEMAAS_URL"
     embeddingUrl: "REPLACE_WITH_LITEMAAS_EMBEDDING_URL"
-    defaultModel: "litemaas/Llama-4-Scout-17B-16E-W4A16"
-    embeddingModel: "litemaas-embedding/nomic-embed-text-v1.5"
+    visionUrl: "REPLACE_WITH_LITEMAAS_VISION_URL"
+    defaultModel: "litemaas/llama-scout-17b"
+    embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+    visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
 
   # Model configuration (legacy, kept for reference)
   model:
@@ -129,6 +131,11 @@ llamastack:
   # Embedding model
   embedding:
     dimension: 768
+    providerModelId: "nomic-embed-text-v1-5"
+
+  # Vision model
+  vision:
+    providerModelId: "Qwen2.5-VL-7B-Instruct"
 
   # Database configuration (LlamaStack uses separate database)
   database:
@@ -184,7 +191,7 @@ mcp:
 
     image:
       repository: rag-server
-      tag: v1.0
+      tag: v1.1
 
     service:
       type: ClusterIP
@@ -261,7 +268,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v1.0
+    tag: v2.1
 
   # Service
   service:
@@ -289,7 +296,7 @@ backend:
     LOG_LEVEL: "INFO"
 
   # Admin & Database Reset
-  seedDataUrl: "https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql"
+  seedDataUrl: "https://raw.githubusercontent.com/mouachan/multi-agents/main/database/seed_data/001_seed_data.sql"
 
   # Resources
   resources:
@@ -312,7 +319,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v1.0
+    tag: v2.3
 
   # Service
   service:
@@ -359,6 +366,7 @@ secrets:
   # LiteMaaS API keys
   litemaasApiKey: "REPLACE_WITH_KEY"
   litemaasEmbeddingApiKey: "REPLACE_WITH_KEY"
+  litemaasVisionApiKey: "REPLACE_WITH_KEY"
 
   # Create secrets automatically
   create: true
@@ -367,7 +375,7 @@ secrets:
 # MinIO (S3-compatible object storage)
 # =============================================================================
 minio:
-  enabled: false  # Disabled by default
+  enabled: true
 
   # Image configuration
   image:
@@ -376,7 +384,7 @@ minio:
 
   # Root credentials
   rootUser: "admin"
-  rootPassword: "ClaimsDemo2026!"
+  rootPassword: "REPLACE_WITH_MINIO_PASSWORD"
 
   # Service configuration
   service:
@@ -426,7 +434,8 @@ dataInit:
   image:
     repository: data-init
     tag: v1.0
-  documentsArchiveUrl: ""
+  documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
+  forceReinit: "false"
   backoffLimit: 3
   ttlSecondsAfterFinished: 3600
   resources:
@@ -486,7 +495,7 @@ guardrails:
 
   # Chat generation service (LlamaStack)
   chatGeneration:
-    hostname: claims-llamastack-service.multi-agents.svc.cluster.local
+    hostname: llamastack-rhoai-service  # Resolved within same namespace
     port: 8321
 
   # Detector configurations for ConfigMap
@@ -500,7 +509,7 @@ guardrails:
 
     # Llama Guard 3 1B detector InferenceService
     llamaGuard:
-      enabled: true
+      enabled: false  # Requires GPU, enable only if GPU available
       minReplicas: 1
       maxReplicas: 1
       storageUri: "oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0"

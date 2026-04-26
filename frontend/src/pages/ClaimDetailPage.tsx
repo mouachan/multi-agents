@@ -80,7 +80,8 @@ export default function ClaimDetailPage() {
       {claim.status === 'manual_review' && (
         <div className="bg-white shadow rounded-lg p-6">
           <ReviewChatPanel
-            claimId={claim.id}
+            entityId={claim.id}
+            entityType="claim"
             reviewerId={`reviewer_${Date.now()}`}
             reviewerName="Review Agent"
             onActionSubmitted={(action) => {

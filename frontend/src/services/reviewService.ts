@@ -17,20 +17,21 @@ export class ReviewService {
   /**
    * Submit a review action (approve/reject/comment)
    */
-  async submitAction(claimId: string, action: ReviewAction): Promise<void> {
-    await reviewApi.submitAction(claimId, action)
+  async submitAction(entityType: string, entityId: string, action: ReviewAction): Promise<void> {
+    await reviewApi.submitAction(entityType, entityId, action)
   }
 
   /**
    * Ask the agent a question
    */
   async askAgent(
-    claimId: string,
+    entityType: string,
+    entityId: string,
     question: string,
     reviewerId: string,
     reviewerName: string
   ): Promise<string> {
-    const response = await reviewApi.askAgent(claimId, question, reviewerId, reviewerName)
+    const response = await reviewApi.askAgent(entityType, entityId, question, reviewerId, reviewerName)
     return response.answer
   }
 

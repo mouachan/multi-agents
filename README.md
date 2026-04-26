@@ -348,6 +348,81 @@ After init completes, you'll have:
 
 The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside Docker images.
 
+### Force Re-initialization (FORCE_REINIT)
+
+If you need to re-ingest PDFs (e.g., after regenerating documents or updating seed data), set `FORCE_REINIT=true`. This resets the database state without requiring a full DB wipe:
+
+```bash
+# Local (docker/podman compose)
+FORCE_REINIT=true podman compose up data-init
+
+# OpenShift (via Helm)
+helm upgrade multi-agents helm/multi-agents \
+  --set dataInit.forceReinit=true \
+  -n multi-agent
+
+# OpenShift (standalone job)
+oc delete job data-init-force-reinit -n multi-agent 2>/dev/null
+cat <<'EOF' | oc apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-init-force-reinit
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: data-init
+          image: quay.io/mouachan/multi-agents/data-init:v1.0
+          imagePullPolicy: Always
+          env:
+            - name: FORCE_REINIT
+              value: "true"
+            - name: DOCUMENTS_ARCHIVE_URL
+              value: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
+            - name: LLAMASTACK_ENDPOINT
+              value: "http://<llamastack-service>:8321"
+            - name: OCR_SERVER_URL
+              value: "http://ocr-server:8080"
+            - name: CLAIMS_SERVER_URL
+              value: "http://claims-server:8080"
+            - name: TENDERS_SERVER_URL
+              value: "http://tenders-server:8080"
+            - name: POSTGRES_HOST
+              value: "postgresql"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_DATABASE
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_PASSWORD
+EOF
+```
+
+**What FORCE_REINIT does:**
+1. Resets `claims.document_path` to original filenames (rebuilt from `claim_type`)
+2. Resets `tenders.document_path` to original filenames (rebuilt from `tender_number`)
+3. Sets `status = 'pending'`, clears `processed_at` and `total_processing_time_ms`
+4. Deletes all `claim_documents`, `claim_decisions`, `processing_logs`
+5. Deletes all `tender_documents`, `tender_decisions`
+6. Then continues with the normal init flow (download, upload, OCR, decisions)
+
+> **Note**: After re-init, remember to set `forceReinit` back to `"false"` to avoid re-processing on every upgrade.
+
 ### Access
 
 - **Frontend**: http://localhost:3000
@@ -382,31 +457,63 @@ podman compose up --build
 
 ### Deploy
 
-```bash
-# Copy and edit values with your LiteMaaS endpoints and credentials
-cp helm/multi-agents/values-pauline.yaml helm/multi-agents/values-mydeployment.yaml
-# Edit helm/multi-agents/values-mydeployment.yaml
+All sensitive values and cluster-specific settings are passed via `--set` flags (never committed to git).
 
+```bash
 helm install multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-mydeployment.yaml \
-  -n multi-agent \
-  --create-namespace
+  -n <NAMESPACE> --create-namespace --timeout 10m \
+  --set global.namespace=<NAMESPACE> \
+  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
+  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
+  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
+  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
+  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
+  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
+  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
+  --set secrets.postgresPassword="<DB_PASSWORD>" \
+  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
 ```
+
+**Parameters:**
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `global.namespace` | Target namespace (must match `-n` flag) | `multi-agent` |
+| `global.clusterDomain` | OpenShift apps domain | `apps.cluster-xxx.sandbox.opentlc.com` |
+| `llamastack.litemaas.url` | LLM inference endpoint | `https://litellm-prod.apps.maas.example.com/v1` |
+| `llamastack.litemaas.embeddingUrl` | Embedding endpoint | Same or different from LLM URL |
+| `llamastack.litemaas.visionUrl` | Vision model endpoint (OCR) | `https://litellm-vision.apps.example.com/v1` |
+| `secrets.litemaas*ApiKey` | API keys for each MaaS endpoint | `sk-...` |
+| `secrets.postgres*Password` | Database passwords | Any strong password |
 
 ### Multi-namespace deployment
 
-You can deploy multiple independent instances on the same cluster by using different namespaces and value files:
+Deploy multiple independent instances on the same cluster by changing the namespace:
 
 ```bash
 # Instance 1
 helm install multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-multi-agents.yaml \
-  -n multi-agent --create-namespace
+  -n multi-agent --create-namespace --timeout 10m \
+  --set global.namespace=multi-agent \
+  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
+  --set llamastack.litemaas.url="..." \
+  --set llamastack.litemaas.embeddingUrl="..." \
+  --set llamastack.litemaas.visionUrl="..." \
+  --set secrets.litemaasApiKey="..." \
+  --set secrets.litemaasEmbeddingApiKey="..." \
+  --set secrets.litemaasVisionApiKey="..." \
+  --set secrets.postgresPassword="..." \
+  --set secrets.postgresAdminPassword="..." \
+  --set secrets.llamastackPassword="..."
 
-# Instance 2 (different namespace, different LiteMaaS tokens)
-helm install p-multi-agents helm/multi-agents \
-  -f helm/multi-agents/values-pauline.yaml \
-  -n p-multi-agent --create-namespace
+# Instance 2 (different namespace, can use different API keys)
+helm install multi-agents helm/multi-agents \
+  -n test-multi-agent --create-namespace --timeout 10m \
+  --set global.namespace=test-multi-agent \
+  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
+  --set llamastack.litemaas.url="..." \
+  ...
 ```
 
 Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
@@ -426,11 +533,35 @@ The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of 
 
 **Important**: The embedding `provider_model_id` must match the model name registered on the LiteLLM proxy exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This is configurable via `llamastack.embedding.providerModelId` in values.
 
+### Quick start (after cloning)
+
+```bash
+git clone https://github.com/mouachan/multi-agents.git
+cd multi-agents
+
+helm install multi-agents helm/multi-agents \
+  -n <NAMESPACE> --create-namespace --timeout 10m \
+  --set global.namespace=<NAMESPACE> \
+  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
+  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
+  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
+  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
+  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
+  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
+  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
+  --set secrets.postgresPassword="<DB_PASSWORD>" \
+  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
+
+# Wait ~5 min for all pods to be ready, then access:
+echo "Frontend: https://frontend-<NAMESPACE>.<CLUSTER_DOMAIN>"
+```
+
 ### Verify
 
 ```bash
-oc get pods -n multi-agent
-oc get routes -n multi-agent
+oc get pods -n <NAMESPACE>
+oc get routes -n <NAMESPACE>
 
 # Check data initialization completed
 oc logs -l job-name -n multi-agent
@@ -476,11 +607,15 @@ llamastack:
   litemaas:
     url: "https://your-litemaas-llm-endpoint/v1"
     embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
+    visionUrl: "https://your-litemaas-vision-endpoint/v1"
     defaultModel: "litemaas/llama-scout-17b"
     embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+    visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
   embedding:
     dimension: 768
     providerModelId: "nomic-embed-text-v1-5"  # Must match LiteLLM proxy model name exactly
+  vision:
+    providerModelId: "Qwen2.5-VL-7B-Instruct"
 ```
 
 ### Agent Prompts
@@ -633,9 +768,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v2.0
+### Current Version: v2.1
 
-**What's new in v2.0**:
+**What's new in v2.1** (backend v2.1, frontend v2.3):
+- **HITL domain-agnostic**: Human-in-the-Loop review now works for both claims AND tenders (was claims-only). Uses the existing `AgentRegistry` with HITL metadata — zero new files
+- **Tender processing fix**: All 5 MCP tools (`get_tender`, `ocr_document`, `retrieve_similar_references`, `retrieve_historical_tenders`, `retrieve_capabilities`) are now called correctly in a single batch. Fixed prompt format that caused the LLM to hallucinate tool calls as text instead of making real MCP calls
+- **`ReviewChatPanel` generic**: Frontend review panel accepts `entityType`/`entityId` props, works for any domain
+- **ConfigMap prompt fix**: Corrected `get_tender` parameter name (`tender_id` instead of `tender_number`) in the `ao-prompts` ConfigMap
+
+**What was in v2.0**:
 - Switched default LLM to `llama-scout-17b` (Llama-4-Scout-17B)
 - Multi-provider LlamaStack config: LLM, vision, and embedding can each point to different endpoints
 - Fixed RAG server health check — no longer calls embedding API on every K8s probe (was burning LiteLLM budget)
@@ -651,7 +792,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 **Working**:
 - End-to-end claim processing via multi-agent chat (4 parallel tool calls)
-- End-to-end tender / Appels d'Offres processing via multi-agent chat
+- End-to-end tender / Appels d'Offres processing via multi-agent chat (5 parallel tool calls)
 - SSE streaming responses (real-time tool calls + text deltas)
 - Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
@@ -660,7 +801,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
-- HITL review workflow (claims & tenders)
+- HITL review workflow — domain-agnostic for claims & tenders (ask agent, approve, reject, request info)
 - Multi-agent orchestrator with intent-based routing
 - Chat sessions with persistent message history
 - Tool call observability (collapsible traces with output/error per tool)
@@ -668,6 +809,18 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Bilingual support FR/EN
 - Local development with docker-compose / podman-compose
 - Helm deployment on OpenShift (RHOAI 3.3 compatible)
+
+### Image Versions
+
+| Component | Image | Version |
+|-----------|-------|---------|
+| Backend | `quay.io/mouachan/multi-agents/backend` | **v2.1** |
+| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v2.3** |
+| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | v1.0 |
+| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | v1.0 |
+| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | v1.0 |
+| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | v1.1 |
+| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | v1.0 |
 
 **In Progress**:
 - OpenShift OAuth authentication

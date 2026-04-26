@@ -32,6 +32,8 @@ def register_agents():
     from app.services.claim_service import ClaimService, CLAIM_TOOLS
     from app.services.tender_service import TenderService, TENDER_TOOLS
     from app.services.reclamation_service import ReclamationService, RECLAMATION_TOOLS
+    from app.models.claim import Claim, ClaimDocument
+    from app.models.tender import Tender, TenderDocument
     from app.llamastack.prompts import (
         CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
@@ -69,6 +71,11 @@ def register_agents():
             "assurance", "dommage", "remboursement",
             "indemnisation", "police d'assurance", "contrat d'assurance",
         ],
+        metadata={
+            "hitl_model": Claim,
+            "hitl_document_model": ClaimDocument,
+            "hitl_fk_field": "claim_id",
+        },
     ))
 
     AgentRegistry.register(AgentDefinition(
@@ -93,6 +100,11 @@ def register_agents():
             "btp", "construction", "go/no-go", "go no go",
             "offre", "offres",
         ],
+        metadata={
+            "hitl_model": Tender,
+            "hitl_document_model": TenderDocument,
+            "hitl_fk_field": "tender_id",
+        },
     ))
 
     # Courrier & Colis — 3 sub-agents with per-agent model override

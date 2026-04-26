@@ -244,7 +244,8 @@ class AskAgentRequest(BaseModel):
 
 class AskAgentResponse(BaseModel):
     success: bool
-    claim_id: str
+    entity_id: str
+    entity_type: str
     question: str
     answer: str
     timestamp: datetime = Field(default_factory=utc_now)

@@ -43,6 +43,13 @@ data:
           max_tokens: 512
           api_token: ${env.LITEMAAS_EMBEDDING_API_KEY}
           tls_verify: false
+      - provider_id: litemaas-vision
+        provider_type: remote::vllm
+        config:
+          base_url: {{ .Values.llamastack.litemaas.visionUrl | quote }}
+          max_tokens: 4096
+          api_token: ${env.LITEMAAS_VISION_API_KEY}
+          tls_verify: false
 
       vector_io:
       - provider_id: ${env.ENABLE_PGVECTOR:+pgvector}
@@ -182,26 +189,21 @@ data:
     registered_resources:
       models:
       - metadata: {}
-        model_id: litemaas/Mistral-Small-24B-W8A8
+        model_id: {{ .Values.llamastack.litemaas.defaultModel }}
         provider_id: litemaas
-        provider_model_id: Mistral-Small-24B-W8A8
-        model_type: llm
-      - metadata: {}
-        model_id: litemaas/Llama-4-Scout-17B-16E-W4A16
-        provider_id: litemaas
-        provider_model_id: Llama-4-Scout-17B-16E-W4A16
-        model_type: llm
-      - metadata: {}
-        model_id: litemaas/Qwen2.5-VL-7B-Instruct
-        provider_id: litemaas
-        provider_model_id: Qwen2.5-VL-7B-Instruct
+        provider_model_id: {{ .Values.llamastack.litemaas.defaultModel | trimPrefix "litemaas/" }}
         model_type: llm
       - metadata:
           embedding_dimension: {{ .Values.llamastack.embedding.dimension | default 768 }}
         model_id: {{ .Values.llamastack.litemaas.embeddingModel }}
         provider_id: litemaas-embedding
-        provider_model_id: {{ .Values.llamastack.embedding.providerModelId | default "nomic-embed-text-v1.5" }}
+        provider_model_id: {{ .Values.llamastack.embedding.providerModelId | default "nomic-embed-text-v1-5" }}
         model_type: embedding
+      - metadata: {}
+        model_id: {{ .Values.llamastack.litemaas.visionModel }}
+        provider_id: litemaas-vision
+        provider_model_id: {{ .Values.llamastack.vision.providerModelId | default "Qwen2.5-VL-7B-Instruct" }}
+        model_type: llm
 
       shields:
 {{- if .Values.guardrails.enabled }}

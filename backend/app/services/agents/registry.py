@@ -53,6 +53,11 @@ class AgentRegistry:
         return cls._agents.get(agent_id)
 
     @classmethod
+    def get_by_entity_type(cls, entity_type: str) -> Optional[AgentDefinition]:
+        """Get agent definition by entity_type (e.g. 'claim', 'tender')."""
+        return next((a for a in cls._agents.values() if a.entity_type == entity_type), None)
+
+    @classmethod
     def list_agents(cls) -> List[AgentDefinition]:
         """List all registered agents."""
         return list(cls._agents.values())

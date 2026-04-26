@@ -70,21 +70,23 @@ export const claimsApi = {
 export const reviewApi = {
   // Submit review action
   submitAction: async (
-    claimId: string,
+    entityType: string,
+    entityId: string,
     action: { action: string; comment: string; reviewerId: string; reviewerName: string }
   ) => {
-    const response = await apiClient.post(`/review/${claimId}/action`, action)
+    const response = await apiClient.post(`/review/${entityType}/${entityId}/action`, action)
     return response.data
   },
 
   // Ask agent a question
   askAgent: async (
-    claimId: string,
+    entityType: string,
+    entityId: string,
     question: string,
     reviewerId: string,
     reviewerName: string
   ) => {
-    const response = await apiClient.post(`/review/${claimId}/ask-agent`, {
+    const response = await apiClient.post(`/review/${entityType}/${entityId}/ask-agent`, {
       question,
       reviewer_id: reviewerId,
       reviewer_name: reviewerName,
@@ -93,8 +95,8 @@ export const reviewApi = {
   },
 
   // Get review messages
-  getMessages: async (claimId: string) => {
-    const response = await apiClient.get(`/review/${claimId}/messages`)
+  getMessages: async (entityType: string, entityId: string) => {
+    const response = await apiClient.get(`/review/${entityType}/${entityId}/messages`)
     return response.data
   },
 }

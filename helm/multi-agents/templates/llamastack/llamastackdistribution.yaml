@@ -37,6 +37,15 @@ spec:
               name: litemaas-secret
               key: LITEMAAS_EMBEDDING_API_KEY
 
+        # LiteMaaS Vision configuration
+        - name: LITEMAAS_VISION_URL
+          value: {{ .Values.llamastack.litemaas.visionUrl | quote }}
+        - name: LITEMAAS_VISION_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: litemaas-secret
+              key: LITEMAAS_VISION_API_KEY
+
         # PostgreSQL and PGVector configuration
         - name: POSTGRES_HOST
           value: postgresql.{{ include "multi-agents.namespace" . }}.svc.cluster.local
