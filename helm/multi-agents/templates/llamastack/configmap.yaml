@@ -251,6 +251,18 @@ data:
         provider_id: model-context-protocol
         mcp_endpoint:
           uri: http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
+{{- if .Values.mcp.postal.enabled }}
+      - toolgroup_id: mcp::postal-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://postal-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
+{{- end }}
+{{- if .Values.mcp.tracking.enabled }}
+      - toolgroup_id: mcp::tracking-server
+        provider_id: model-context-protocol
+        mcp_endpoint:
+          uri: http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
+{{- end }}
       - toolgroup_id: builtin::rag
         provider_id: rag-runtime
 

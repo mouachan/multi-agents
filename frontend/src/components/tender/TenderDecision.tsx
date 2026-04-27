@@ -7,7 +7,7 @@ interface TenderDecisionProps {
 }
 
 export default function TenderDecision({ tender, decision }: TenderDecisionProps) {
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
 
   const getDecisionColor = (dec: string | undefined) => {
     switch (dec) {
@@ -168,7 +168,11 @@ export default function TenderDecision({ tender, decision }: TenderDecisionProps
       <div className="mt-6">
         <p className="text-sm text-gray-600 mb-2">{t('tenderDecision.reasoning')}</p>
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-gray-900 whitespace-pre-wrap">{decision.initial_reasoning || decision.reasoning || 'N/A'}</p>
+          <p className="text-gray-900 whitespace-pre-wrap">
+            {locale === 'en' && decision.metadata?.reasoning_en
+              ? decision.metadata.reasoning_en
+              : (decision.initial_reasoning || decision.reasoning || 'N/A')}
+          </p>
         </div>
       </div>
 

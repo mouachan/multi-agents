@@ -47,6 +47,7 @@ export interface ReclamationDecision {
   llm_model?: string
   requires_manual_review: boolean
   decided_at: string
+  metadata?: Record<string, any>
 }
 
 export interface TrackingEvent {
@@ -58,6 +59,7 @@ export interface TrackingEvent {
   detail?: string
   code_postal?: string
   is_final: boolean
+  metadata?: Record<string, any>
 }
 
 export interface ProcessingStepLog {

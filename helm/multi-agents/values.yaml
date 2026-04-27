@@ -162,7 +162,7 @@ mcp:
 
     image:
       repository: ocr-server
-      tag: v1.0
+      tag: v3
 
     service:
       type: ClusterIP
@@ -191,7 +191,7 @@ mcp:
 
     image:
       repository: rag-server
-      tag: v1.1
+      tag: v3
 
     service:
       type: ClusterIP
@@ -216,7 +216,7 @@ mcp:
 
     image:
       repository: claims-server
-      tag: v1.0
+      tag: v3
 
     service:
       type: ClusterIP
@@ -240,7 +240,7 @@ mcp:
 
     image:
       repository: tenders-server
-      tag: v1.0
+      tag: v3
 
     service:
       type: ClusterIP
@@ -249,6 +249,46 @@ mcp:
     env:
       LOG_LEVEL: "INFO"
 
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+  # Postal Server (Courrier & Colis)
+  postal:
+    enabled: true
+    replicas: 1
+    image:
+      repository: postal-server
+      tag: v3
+    service:
+      type: ClusterIP
+      port: 8080
+    env:
+      LOG_LEVEL: "INFO"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+  # Tracking Server
+  tracking:
+    enabled: true
+    replicas: 1
+    image:
+      repository: tracking-server
+      tag: v3
+    service:
+      type: ClusterIP
+      port: 8080
+    env:
+      LOG_LEVEL: "INFO"
     resources:
       requests:
         cpu: 500m
@@ -268,7 +308,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v2.1
+    tag: v3
 
   # Service
   service:
@@ -319,7 +359,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v2.3
+    tag: v3
 
   # Service
   service:
@@ -433,7 +473,7 @@ dataInit:
   enabled: true
   image:
     repository: data-init
-    tag: v1.0
+    tag: v3
   documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
   forceReinit: "false"
   backoffLimit: 3

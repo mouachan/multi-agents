@@ -69,6 +69,9 @@ spec:
             - mountPath: /app/prompts-orchestrator
               name: orchestrator-prompts
               readOnly: true
+            - mountPath: /app/prompts-courrier
+              name: courrier-prompts
+              readOnly: true
       volumes:
         - name: prompts
           configMap:
@@ -79,4 +82,7 @@ spec:
         - name: orchestrator-prompts
           configMap:
             name: orchestrator-prompts
+        - name: courrier-prompts
+          configMap:
+            name: courrier-prompts
 {{- end }}

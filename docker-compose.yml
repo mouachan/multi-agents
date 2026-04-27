@@ -38,11 +38,13 @@ services:
       RUN_CONFIG_PATH: /config/run.yaml
     ports:
       - "8321:8321"
+    user: "0"
     volumes:
       - ./llamastack/run.yaml:/config/run.yaml:ro
       - llamastack_data:/data
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
       interval: 15s
@@ -84,12 +86,15 @@ services:
       S3_BUCKET_CLAIMS: claims
       S3_BUCKET_TENDERS: tenders
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
     ports:
       - "8000:8000"
     depends_on:
       - postgresql
       - llamastack
       - minio
+      - mlflow
     volumes:
       - ./backend/app:/opt/app-root/src/app
       - ./documents:/documents
@@ -313,12 +318,37 @@ services:
     depends_on:
       - backend
 
+  # MLflow Tracking Server (SQLite backend, aligned with RHOAI Developer Preview)
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    container_name: multi-agents-mlflow
+    ports:
+      - "5001:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - multi-agents-network
+
 volumes:
   postgres_data:
     driver: local
   llamastack_data:
     driver: local
   minio_data:
+    driver: local
+  mlflow_data:
     driver: local
 
 networks:

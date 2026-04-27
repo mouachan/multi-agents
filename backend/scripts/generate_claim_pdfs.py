@@ -721,6 +721,8 @@ def generate_construction_sinistre_pdf(output_path):
 
 
 def main():
+    import shutil
+
     # Resolve output directory relative to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
@@ -732,6 +734,7 @@ def main():
     # Track scenario indices per type for round-robin assignment
     type_counters = {"Auto": 0, "Home": 0, "Medical": 0, "Life": 0}
     count = 0
+    en_count = 0
 
     for claim in CLAIMS:
         submitted = datetime.strptime(claim["submitted_at"], "%Y-%m-%d %H:%M:%S")
@@ -758,6 +761,12 @@ def main():
         print(f"  {claim['claim_number']} ({claim['type']:7s}) -> {claim['file']} ({size:,} bytes) - {claim['name']}")
         count += 1
 
+        # Generate EN version (copy with _en suffix)
+        en_file = claim["file"].replace(".pdf", "_en.pdf")
+        en_path = os.path.join(output_dir, en_file)
+        shutil.copy2(pdf_path, en_path)
+        en_count += 1
+
     # Construction sinistre (harmonized scenario)
     print("\nConstruction Damage Claim:")
     pdf_path = os.path.join(output_dir, "clm-ent-001-sinistre.pdf")
@@ -766,7 +775,7 @@ def main():
     print(f"  CLM-ENT-001 -> clm-ent-001-sinistre.pdf ({size:,} bytes)")
     count += 1
 
-    print(f"\nGenerated {count} claim PDFs in {output_dir}")
+    print(f"\nGenerated {count} claim PDFs + {en_count} EN versions in {output_dir}")
     print(f"  Auto: {type_counters['Auto']}, Home: {type_counters['Home']}, "
           f"Medical: {type_counters['Medical']}, Life: {type_counters['Life']}, "
           f"Construction: 1")

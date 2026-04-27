@@ -171,6 +171,11 @@ class ReclamationService(BaseAgentService):
 
         model_name = self.clean_model_name(settings.llamastack_default_model)
 
+        # Build decision metadata (bilingual reasoning, etc.)
+        decision_metadata = {}
+        if decision_data.get("reasoning_en"):
+            decision_metadata["reasoning_en"] = decision_data["reasoning_en"]
+
         decision = models.ReclamationDecision(
             reclamation_id=reclamation_id,
             initial_decision=decision_type,
@@ -182,6 +187,7 @@ class ReclamationService(BaseAgentService):
             reasoning=decision_data.get("reasoning", ""),
             llm_model=model_name,
             requires_manual_review=(recommendation == "escalader"),
+            decision_metadata=decision_metadata,
         )
 
         db.add(decision)

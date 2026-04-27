@@ -132,24 +132,31 @@ class ResponseParser:
         text_lower = response_text.lower()
 
         # Extract recommendation (French + English)
-        if any(word in text_lower for word in ['approve', 'approved', 'accept', '"go"', ': go', 'recommendation: go']):
+        if any(word in text_lower for word in ['rembourser', 'remboursement']):
+            decision_data['recommendation'] = 'rembourser'
+        elif any(word in text_lower for word in ['reexpedier', 'réexpédier', 'reexpedition', 'réexpédition']):
+            decision_data['recommendation'] = 'reexpedier'
+        elif any(word in text_lower for word in ['rejeter', 'rejet', 'reject', 'deny', 'denied', '"no_go"', 'no-go', 'no go']):
+            decision_data['recommendation'] = 'rejeter'
+        elif any(word in text_lower for word in ['escalader', 'escalade']):
+            decision_data['recommendation'] = 'escalader'
+        elif any(word in text_lower for word in ['approve', 'approved', 'accept', '"go"', ': go', 'recommendation: go']):
             decision_data['recommendation'] = 'approve'
-        elif any(word in text_lower for word in ['deny', 'denied', 'reject', '"no_go"', 'no-go', 'no go']):
-            decision_data['recommendation'] = 'deny'
         elif any(word in text_lower for word in ['a_approfondir', 'à approfondir', 'approfondir']):
             decision_data['recommendation'] = 'a_approfondir'
         elif any(word in text_lower for word in ['review', 'uncertain', 'manual']):
             decision_data['recommendation'] = 'manual_review'
 
-        # Extract confidence
-        confidence_match = re.search(r'confidence[:\s]+(\d+(?:\.\d+)?)\s*%?', text_lower)
+        # Extract confidence (French + English)
+        confidence_match = re.search(r'(?:confidence|confiance)[:\s*]+\*{0,2}(\d+(?:\.\d+)?)\s*%?\*{0,2}', text_lower)
         if confidence_match:
             conf_value = float(confidence_match.group(1))
             decision_data['confidence'] = conf_value / 100 if conf_value > 1 else conf_value
 
-        # Extract reasoning
+        # Extract reasoning (French + English)
         reasoning_patterns = [
             r'reasoning[:\s]+(.+?)(?:\n\n|\n#|$)',
+            r'raisonnement[:\s]+(.+?)(?:\n\n|\n#|$)',
             r'rationale[:\s]+(.+?)(?:\n\n|\n#|$)',
             r'explanation[:\s]+(.+?)(?:\n\n|\n#|$)'
         ]

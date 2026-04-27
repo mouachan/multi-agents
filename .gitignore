@@ -119,5 +119,6 @@ Thumbs.db
 openshift/README-OPENSHIFT-AI.md
 helm/values-secrets-*.yaml
 helm/values-local.yaml
+helm/values-demo-agentic.yaml
 docker-compose.local.yml
 TODO-LUNDI.md

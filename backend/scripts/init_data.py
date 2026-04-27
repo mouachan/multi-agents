@@ -234,6 +234,25 @@ def reset_for_reinit():
         cur.execute("DELETE FROM tender_decisions")
         logger.info(f"  Deleted {cur.rowcount} tender_decisions")
 
+        # --- Reclamations ---
+        # Reset document_path for reclamations (restore original paths)
+        cur.execute("""
+            UPDATE reclamations SET
+                document_path = 'reclamations/reclamation_' ||
+                    reclamation_type || '_' ||
+                    LPAD(
+                        (ROW_NUMBER() OVER (
+                            PARTITION BY reclamation_type ORDER BY reclamation_number
+                        ))::text, 3, '0'
+                    ) || '.pdf'
+            WHERE document_path LIKE 'file-%%'
+        """)
+        logger.info(f"  Reset {cur.rowcount} reclamation document_paths")
+
+        # Delete reclamation-related data (but NOT decisions/logs from seed)
+        cur.execute("DELETE FROM reclamation_documents")
+        logger.info(f"  Deleted {cur.rowcount} reclamation_documents")
+
         logger.info("FORCE_REINIT: Database reset complete")
 
     finally:
@@ -252,10 +271,10 @@ def download_documents(archive_url: str, dest_dir: str = DOCUMENTS_DIR):
             logger.info("Using locally mounted /documents directory")
             # Copy to dest_dir for consistency
             os.makedirs(dest_dir, exist_ok=True)
-            subprocess.run(
-                ["cp", "-r", "/documents/claims", "/documents/tenders", dest_dir],
-                check=True,
-            )
+            for subdir in ["claims", "tenders", "reclamations"]:
+                src = os.path.join("/documents", subdir)
+                if os.path.isdir(src):
+                    subprocess.run(["cp", "-r", src, dest_dir], check=True)
             return
         raise RuntimeError(
             "No DOCUMENTS_ARCHIVE_URL set and no /documents mount found"
@@ -283,8 +302,8 @@ def download_documents(archive_url: str, dest_dir: str = DOCUMENTS_DIR):
     if not os.path.isdir(repo_dir):
         raise RuntimeError(f"No documents/ directory found in archive at {repo_dir}")
 
-    # Copy claims/ and tenders/ to dest_dir
-    for subdir in ["claims", "tenders"]:
+    # Copy claims/, tenders/, and reclamations/ to dest_dir
+    for subdir in ["claims", "tenders", "reclamations"]:
         src = os.path.join(repo_dir, subdir)
         dst = os.path.join(dest_dir, subdir)
         if os.path.isdir(src):
@@ -362,8 +381,29 @@ async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
             except Exception as e:
                 logger.error(f"Failed to upload {filepath}: {e}")
 
+    # Upload reclamations
+    reclamations_dir = os.path.join(documents_dir, "reclamations")
+    reclamation_count = 0
+    if os.path.isdir(reclamations_dir):
+        for filepath in sorted(glob.glob(os.path.join(reclamations_dir, "*.pdf"))):
+            filename = os.path.basename(filepath)
+            doc_path = f"reclamations/{filename}"
+            try:
+                file_id = await upload_pdf_to_llamastack(filepath)
+                cur.execute(
+                    "UPDATE reclamations SET document_path = %s WHERE document_path = %s",
+                    (file_id, doc_path),
+                )
+                reclamation_count += 1
+                logger.info(f"Reclamation {doc_path} -> {file_id}")
+            except Exception as e:
+                logger.error(f"Failed to upload {filepath}: {e}")
+
     conn.close()
-    logger.info(f"Uploaded {claim_count} claim PDFs and {tender_count} tender PDFs to LlamaStack")
+    logger.info(
+        f"Uploaded {claim_count} claim PDFs, {tender_count} tender PDFs, "
+        f"and {reclamation_count} reclamation PDFs to LlamaStack"
+    )
 
 
 # ============================================================================
@@ -498,14 +538,32 @@ async def process_tenders(decisions: list[dict]):
 
 
 async def process_reclamations(decisions: list[dict]):
-    """Process 10 reclamations: save decision."""
+    """Process 10 reclamations: OCR + save decision."""
     logger.info(f"Processing {len(decisions)} reclamations...")
 
     for i, decision in enumerate(decisions):
         reclamation_number = decision["reclamation_number"]
         logger.info(f"[{i + 1}/{len(decisions)}] Processing reclamation {reclamation_number}...")
 
-        # Save decision (no OCR step for reclamations)
+        # Step 1: OCR
+        try:
+            logger.info(f"  OCR {reclamation_number}...")
+            start = time.time()
+            ocr_result = await call_mcp_tool(
+                OCR_SERVER_URL,
+                "ocr_document",
+                {"document_id": reclamation_number},
+                timeout=120.0,
+            )
+            elapsed = time.time() - start
+            success = ocr_result.get("success", False)
+            logger.info(f"  OCR {reclamation_number}: success={success} ({elapsed:.1f}s)")
+            if not success:
+                logger.warning(f"  OCR failed for {reclamation_number}: {ocr_result.get('error')}")
+        except Exception as e:
+            logger.error(f"  OCR error for {reclamation_number}: {e}")
+
+        # Step 2: Save decision
         try:
             logger.info(f"  Decision {reclamation_number}: {decision['recommendation']}...")
             result = await call_mcp_tool(
@@ -564,6 +622,10 @@ def log_summary():
         tender_ocr = cur.fetchone()[0]
         logger.info(f"=== OCR texts: claims={claim_ocr}, tenders={tender_ocr} ===")
 
+        cur.execute("SELECT COUNT(*) FROM reclamations WHERE document_path LIKE 'file-%%'")
+        recl_uploaded = cur.fetchone()[0]
+        logger.info(f"=== Reclamation docs uploaded: {recl_uploaded} ===")
+
     finally:
         conn.close()
 
@@ -612,8 +674,8 @@ async def main():
     logger.info("Step 7: Processing 10 tenders (OCR + decision)...")
     await process_tenders(TENDER_DECISIONS)
 
-    # Step 8: Process 10 reclamations (decision only)
-    logger.info("Step 8: Processing 10 reclamations (decision)...")
+    # Step 8: Process 10 reclamations (OCR + decision)
+    logger.info("Step 8: Processing 10 reclamations (OCR + decision)...")
     await process_reclamations(RECLAMATION_DECISIONS)
 
     # Step 9: Summary

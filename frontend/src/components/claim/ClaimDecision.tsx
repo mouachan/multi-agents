@@ -7,6 +7,7 @@
  */
 
 import type { Claim, ClaimDecision as Decision } from '../../types'
+import { useTranslation } from '../../i18n/LanguageContext'
 
 interface ClaimDecisionProps {
   claim: Claim
@@ -14,6 +15,7 @@ interface ClaimDecisionProps {
 }
 
 export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
+  const { t, locale } = useTranslation()
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A'
     return new Date(dateString).toLocaleString()
@@ -23,14 +25,14 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">Claim Decision</h3>
+      <h3 className="text-xl font-bold text-gray-900 mb-4">{t('claimDecision.title')}</h3>
 
       {isManualReview ? (
         /* Manual Review: Show both System and Reviewer sections */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* System Decision */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-gray-500 mb-2">System Decision (Initial)</p>
+            <p className="text-sm font-medium text-gray-500 mb-2">{t('claimDecision.systemDecisionInitial')}</p>
             <p
               className={`text-3xl font-bold ${
                 decision.initial_decision === 'approve'
@@ -44,7 +46,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
             </p>
             {decision.initial_confidence !== undefined && decision.initial_confidence !== null && (
               <p className="text-sm text-gray-600 mt-2">
-                Confidence: <span className="font-medium">{(decision.initial_confidence * 100).toFixed(1)}%</span>
+                {t('claimDecision.confidence')}: <span className="font-medium">{(decision.initial_confidence * 100).toFixed(1)}%</span>
               </p>
             )}
             {decision.initial_decided_at && (
@@ -62,7 +64,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 : 'border-orange-300 bg-orange-50'
             }`}
           >
-            <p className="text-sm font-medium text-gray-700 mb-2">Final Decision (Reviewer)</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">{t('claimDecision.finalDecision')}</p>
             {decision.final_decision ? (
               <>
                 <p
@@ -78,7 +80,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 </p>
                 {decision.final_decision_by_name && (
                   <p className="text-sm text-gray-700 mt-2">
-                    By: <span className="font-medium">{decision.final_decision_by_name}</span>
+                    {t('claimDecision.by')}: <span className="font-medium">{decision.final_decision_by_name}</span>
                   </p>
                 )}
                 {decision.final_decision_at && (
@@ -89,7 +91,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 )}
               </>
             ) : (
-              <p className="text-lg text-orange-600 font-medium">Awaiting manual review...</p>
+              <p className="text-lg text-orange-600 font-medium">{t('claimDecision.awaitingReview')}</p>
             )}
           </div>
         </div>
@@ -105,7 +107,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                 : 'border-gray-300 bg-gray-50'
             }`}
           >
-            <p className="text-sm font-medium text-gray-500 mb-2">System Decision</p>
+            <p className="text-sm font-medium text-gray-500 mb-2">{t('claimDecision.systemDecision')}</p>
             <p
               className={`text-4xl font-bold ${
                 decision.initial_decision === 'approve'
@@ -119,17 +121,17 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
             </p>
             {decision.initial_confidence !== undefined && decision.initial_confidence !== null && (
               <p className="text-sm text-gray-600 mt-2">
-                Confidence: <span className="font-medium">{(decision.initial_confidence * 100).toFixed(1)}%</span>
+                {t('claimDecision.confidence')}: <span className="font-medium">{(decision.initial_confidence * 100).toFixed(1)}%</span>
               </p>
             )}
             {decision.initial_decided_at && (
-              <p className="text-xs text-gray-500 mt-1">Decided at: {formatDate(decision.initial_decided_at)}</p>
+              <p className="text-xs text-gray-500 mt-1">{t('claimDecision.decidedAt')}: {formatDate(decision.initial_decided_at)}</p>
             )}
 
             {/* Show final decision if reviewer overrode */}
             {decision.final_decision && (
               <div className="mt-4 pt-4 border-t border-gray-300">
-                <p className="text-xs text-gray-600 mb-1">Reviewer Override</p>
+                <p className="text-xs text-gray-600 mb-1">{t('claimDecision.reviewerOverride')}</p>
                 <p
                   className={`text-2xl font-bold ${
                     decision.final_decision === 'approve'
@@ -142,7 +144,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
                   {decision.final_decision.toUpperCase()}
                 </p>
                 {decision.final_decision_by_name && (
-                  <p className="text-sm text-gray-700 mt-1">By: {decision.final_decision_by_name}</p>
+                  <p className="text-sm text-gray-700 mt-1">{t('claimDecision.by')}: {decision.final_decision_by_name}</p>
                 )}
                 {decision.final_decision_notes && (
                   <p className="text-sm text-gray-700 mt-1 italic">"{decision.final_decision_notes}"</p>
@@ -156,7 +158,7 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
       {/* Estimated Coverage */}
       {decision.relevant_policies?.estimated_coverage && (
         <div className="mb-6">
-          <p className="text-sm text-gray-600">Estimated Coverage</p>
+          <p className="text-sm text-gray-600">{t('claimDecision.estimatedCoverage')}</p>
           <p className="text-2xl font-bold mt-1 text-blue-600">
             ${Number(decision.relevant_policies.estimated_coverage).toLocaleString()}
           </p>
@@ -165,21 +167,25 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
 
       {/* System Reasoning */}
       <div className="mt-6">
-        <p className="text-sm text-gray-600 mb-2">System Reasoning</p>
+        <p className="text-sm text-gray-600 mb-2">{t('claimDecision.systemReasoning')}</p>
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-gray-900 whitespace-pre-wrap">{decision.initial_reasoning || decision.reasoning || 'N/A'}</p>
+          <p className="text-gray-900 whitespace-pre-wrap">
+            {locale === 'en' && decision.metadata?.reasoning_en
+              ? decision.metadata.reasoning_en
+              : (decision.initial_reasoning || decision.reasoning || 'N/A')}
+          </p>
         </div>
       </div>
 
       {decision.requires_manual_review && isManualReview && (
         <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-          <p className="text-orange-800 font-medium">This claim requires manual review</p>
+          <p className="text-orange-800 font-medium">{t('claimDecision.requiresManualReview')}</p>
         </div>
       )}
 
       {decision.llm_model && (
         <div className="mt-4">
-          <p className="text-sm text-gray-600">LLM Model: {decision.llm_model}</p>
+          <p className="text-sm text-gray-600">{t('claimDecision.llmModel')}: {decision.llm_model}</p>
         </div>
       )}
     </div>

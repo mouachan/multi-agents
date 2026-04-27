@@ -118,7 +118,7 @@ export default function PostalDetailPage() {
     )
   }
 
-  const pdfUrl = `/api/v1/postal/documents/${reclamation.id}/view`
+  const pdfUrl = `/api/v1/postal/${reclamation.id}/document/view?lang=${locale}`
   const canProcess = postalService.canProcess(reclamation)
 
   return (
@@ -174,7 +174,11 @@ export default function PostalDetailPage() {
         {reclamation.description && (
           <div className="mx-6 mt-4 p-4 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg">
             <p className="text-xs text-yellow-700 font-semibold uppercase tracking-wide mb-1">{t('postal.description')}</p>
-            <p className="text-sm text-gray-900">{reclamation.description}</p>
+            <p className="text-sm text-gray-900">
+              {locale === 'en' && reclamation.metadata?.description_en
+                ? reclamation.metadata.description_en
+                : reclamation.description}
+            </p>
           </div>
         )}
 
@@ -237,7 +241,7 @@ export default function PostalDetailPage() {
 
       {/* Tracking Timeline */}
       {tracking.length > 0 && (
-        <TrackingTimeline events={tracking} t={t} formatDate={formatDate} />
+        <TrackingTimeline events={tracking} t={t} formatDate={formatDate} locale={locale} />
       )}
 
       {/* Processing Steps */}
@@ -282,7 +286,11 @@ export default function PostalDetailPage() {
             <div className="mt-6">
               <p className="text-sm text-gray-600 mb-2">{t('postalDecision.reasoning')}</p>
               <div className="p-4 bg-gray-50 rounded-lg">
-                <p className="text-gray-900 whitespace-pre-wrap">{decision.initial_reasoning || decision.reasoning || 'N/A'}</p>
+                <p className="text-gray-900 whitespace-pre-wrap">
+                  {locale === 'en' && decision.metadata?.reasoning_en
+                    ? decision.metadata.reasoning_en
+                    : (decision.initial_reasoning || decision.reasoning || 'N/A')}
+                </p>
               </div>
             </div>
           )}
@@ -305,7 +313,7 @@ export default function PostalDetailPage() {
 }
 
 // ---- Tracking Timeline Component ----
-function TrackingTimeline({ events, t, formatDate }: { events: TrackingEvent[]; t: (key: string) => string; formatDate: (d: string | null | undefined) => string }) {
+function TrackingTimeline({ events, t, formatDate, locale }: { events: TrackingEvent[]; t: (key: string) => string; formatDate: (d: string | null | undefined) => string; locale: string }) {
   const sortedEvents = [...events].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
 
   return (
@@ -331,7 +339,11 @@ function TrackingTimeline({ events, t, formatDate }: { events: TrackingEvent[]; 
                   {event.code_postal && <span>{event.code_postal}</span>}
                 </div>
                 {event.detail && (
-                  <p className="text-xs text-gray-500 mt-1">{event.detail}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {locale === 'en' && event.metadata?.detail_en
+                      ? event.metadata.detail_en
+                      : event.detail}
+                  </p>
                 )}
                 {event.is_final && (
                   <span className="inline-block mt-1 text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full font-medium">

@@ -180,6 +180,40 @@ INSERT INTO claims (user_id, claim_number, claim_type, document_path, status, su
 ('USR030', 'CLM-2024-0030', 'Auto', 'claims/claim_auto_011.pdf', 'pending', '2026-01-16 14:00:00');
 
 -- ============================================================================
+-- BILINGUAL METADATA FOR CLAIMS
+-- ============================================================================
+UPDATE claims SET metadata = '{"description": "Examen physique annuel avec bilan sanguin complet, ECG realise en raison d''antecedents familiaux.", "description_en": "Annual physical examination with comprehensive blood work panel, EKG performed due to family history.", "document_path_en": "claims/claim_medical_001_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0001';
+UPDATE claims SET metadata = '{"description": "Collision par l''arriere a l''intersection de Route 66 et Main St. L''autre conducteur a grille un feu rouge.", "description_en": "Rear-end collision at intersection of Route 66 and Main St. The other driver ran a red light.", "document_path_en": "claims/claim_auto_001_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0002';
+UPDATE claims SET metadata = '{"description": "Collision laterale sur l''autoroute I-55 lors d''un changement de voie.", "description_en": "Side-swipe collision on highway I-55 during lane change. Other vehicle merged without checking blind spot.", "document_path_en": "claims/claim_auto_002_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0003';
+UPDATE claims SET metadata = '{"description": "Tuyau eclate dans la cuisine sous l''evier. Tuyauterie datant de 1985.", "description_en": "Burst pipe in kitchen under the sink. Pipe corroded due to age (original 1985 plumbing). Water flowed for approximately 4 hours before discovery.", "document_path_en": "claims/claim_home_001_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0004';
+UPDATE claims SET metadata = '{"description": "Visite aux urgences pour douleur thoracique aigue. Angioscanner, dosage troponine.", "description_en": "Emergency room visit for acute chest pain. CT angiogram, troponin levels x3, cardiac monitoring 6 hours.", "document_path_en": "claims/claim_medical_002_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0005';
+UPDATE claims SET metadata = '{"description": "Collision par l''arriere sur le parking de Walmart en reculant.", "description_en": "Rear-end collision in Walmart parking lot while backing out of space. Low speed impact.", "document_path_en": "claims/claim_auto_003_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0006';
+UPDATE claims SET metadata = '{"description": "Orage violent avec vents de 110 km/h causant des dommages aux bardeaux de toiture.", "description_en": "Severe thunderstorm with 70mph winds caused roof shingle damage and subsequent leak.", "document_path_en": "claims/claim_home_002_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0007';
+UPDATE claims SET metadata = '{"description": "Chirurgie de reconstruction du LCA par arthroscopie avec autogreffe.", "description_en": "Arthroscopic ACL reconstruction surgery with hamstring autograft. Pre-op MRI, anesthesia, 2-night hospital stay.", "document_path_en": "claims/claim_medical_003_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0008';
+UPDATE claims SET metadata = '{"description": "Delit de fuite pendant que le vehicule etait stationne dans la rue Elm durant la nuit.", "description_en": "Hit-and-run incident while vehicle was parked on Elm Street overnight. Discovered damage in the morning.", "document_path_en": "claims/claim_auto_004_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0009';
+UPDATE claims SET metadata = '{"description": "Incendie electrique dans le garage (circuit surcharge). Degats de fumee au rez-de-chaussee.", "description_en": "Electrical fire originated in garage outlet (overloaded circuit). Fire contained to garage but smoke damage throughout first floor.", "document_path_en": "claims/claim_home_003_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0010';
+UPDATE claims SET metadata = '{"description": "IRM diagnostique du rachis lombaire avec et sans injection de produit de contraste.", "description_en": "Diagnostic MRI of lumbar spine with and without contrast. Radiologist interpretation and report.", "document_path_en": "claims/claim_medical_004_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0011';
+UPDATE claims SET metadata = '{"description": "Accrochage au feu rouge sur 5th et Main. Le vehicule devant s''est arrete brusquement.", "description_en": "Fender bender at stoplight on 5th and Main. Vehicle ahead stopped suddenly for pedestrian.", "document_path_en": "claims/claim_auto_005_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0012';
+UPDATE claims SET metadata = '{"description": "Grand chene tombe sur la maison lors d''une tempete de verglas.", "description_en": "Large oak tree fell on house during ice storm. Tree was approximately 60 feet tall and landed across the roof ridge.", "document_path_en": "claims/claim_home_004_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0013';
+UPDATE claims SET metadata = '{"description": "Carambolage sur la Highway 66 a cause d''un brouillard soudain.", "description_en": "Multi-vehicle pileup on Highway 66 due to sudden fog. Chain reaction involving 4 vehicles.", "document_path_en": "claims/claim_auto_006_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0014';
+UPDATE claims SET metadata = '{"description": "Kinesitherapie - 12 seances post-reconstruction du LCA.", "description_en": "Physical therapy - 12 sessions post ACL reconstruction. Includes ROM exercises, strengthening, gait training.", "document_path_en": "claims/claim_medical_005_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0015';
+UPDATE claims SET metadata = '{"description": "Collision avec un cerf traversant une route de campagne au crepuscule.", "description_en": "Collision with deer crossing rural road at dusk. Animal appeared suddenly from wooded area.", "document_path_en": "claims/claim_auto_007_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0016';
+UPDATE claims SET metadata = '{"description": "Inondation du sous-sol suite a une panne de pompe de relevage lors de fortes pluies.", "description_en": "Basement flooding from sump pump failure during heavy rainfall. Pump motor burned out, backup battery also dead.", "document_path_en": "claims/claim_home_005_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0017';
+UPDATE claims SET metadata = '{"description": "Accident de la route - collision frontale sur autoroute A4. Hospitalisation en soins intensifs.", "description_en": "Road accident - head-on collision on the A4 highway. Hospitalized in intensive care for 3 weeks. Permanent after-effects with partial disability assessed at 40%.", "document_path_en": "claims/claim_life_001_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0018';
+UPDATE claims SET metadata = '{"description": "Marche arriere contre un poteau en beton dans un parking couvert.", "description_en": "Backed into concrete pole in shopping center parking garage. Limited visibility due to pillar obstruction.", "document_path_en": "claims/claim_auto_008_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0019';
+UPDATE claims SET metadata = '{"description": "Vandalisme - pierres lancees a travers la baie vitree du salon. Rapport de police depose.", "description_en": "Vandalism - rocks thrown through living room bay window. Incident occurred during nighttime. Police report filed.", "document_path_en": "claims/claim_home_006_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0020';
+UPDATE claims SET metadata = '{"description": "Remplacement de couronne dentaire - couronne ceramique-metal sur molaire n30.", "description_en": "Dental crown replacement - porcelain-fused-to-metal crown on molar #30. Includes impression, temporary crown, and final placement.", "document_path_en": "claims/claim_medical_006_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0021';
+UPDATE claims SET metadata = '{"description": "Collision en T a une intersection sans signalisation.", "description_en": "T-bone collision at uncontrolled intersection. Other driver failed to yield right of way.", "document_path_en": "claims/claim_auto_009_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0022';
+UPDATE claims SET metadata = '{"description": "Rupture du flexible d''alimentation du lave-vaisselle. Fuite d''eau pendant 8 heures.", "description_en": "Dishwasher supply line failed (braided stainless steel connector burst). Water leaked for estimated 8 hours overnight.", "document_path_en": "claims/claim_home_007_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0023';
+UPDATE claims SET metadata = '{"description": "Maladie grave diagnostiquee - cancer du poumon stade III. Chimiotherapie en cours.", "description_en": "Severe illness diagnosed - stage III lung cancer. Chemotherapy and radiation treatment ongoing. Extended work leave.", "document_path_en": "claims/claim_life_002_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0024';
+UPDATE claims SET metadata = '{"description": "Bilan allergologique complet (environnemental et alimentaire) - 60 tests cutanes.", "description_en": "Comprehensive allergy testing panel (environmental and food) - 60 allergen skin prick test plus specific IgE blood panel.", "document_path_en": "claims/claim_medical_007_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0025';
+UPDATE claims SET metadata = '{"description": "Perte de controle sur route verglacee et glissade contre la glissiere de securite.", "description_en": "Lost control on icy road and slid into guardrail. Black ice conditions, temperature was 28F.", "document_path_en": "claims/claim_auto_010_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0026';
+UPDATE claims SET metadata = '{"description": "Foudre tombee sur la cheminee lors d''un violent orage. Surtension electrique.", "description_en": "Lightning strike hit chimney during severe thunderstorm. Electrical surge destroyed electronics and caused small fire in attic.", "document_path_en": "claims/claim_home_008_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0027';
+UPDATE claims SET metadata = '{"description": "Coloscopie de depistage avec ablation de polypes. Sedation moderee.", "description_en": "Screening colonoscopy with polyp removal (2 sessile polyps removed via snare polypectomy). Moderate sedation.", "document_path_en": "claims/claim_medical_008_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0028';
+UPDATE claims SET metadata = '{"description": "Accident domestique grave - chute d''une echelle lors de travaux de toiture.", "description_en": "Serious domestic accident - fell from a ladder during roofing work. Severe head trauma and multiple fractures. Emergency surgery performed.", "document_path_en": "claims/claim_life_003_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0029';
+UPDATE claims SET metadata = '{"description": "Collision par l''arriere alors que le vehicule etait arrete a un passage a niveau.", "description_en": "Rear-ended while stopped at railroad crossing. Following vehicle distracted by phone.", "document_path_en": "claims/claim_auto_011_en.pdf"}'::jsonb WHERE claim_number = 'CLM-2024-0030';
+
+-- ============================================================================
 -- KNOWLEDGE BASE ARTICLES
 -- ============================================================================
 INSERT INTO knowledge_base (title, content, category, tags, is_active, effective_date) VALUES
@@ -1176,6 +1210,41 @@ INSERT INTO tenders (
     '[]'
 ) ON CONFLICT (tender_number) DO NOTHING;
 
+-- ============================================================================
+-- BILINGUAL METADATA FOR TENDERS
+-- ============================================================================
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of 80 collective housing units including 30% social housing as part of the ANRU program in the Parc Sud district of Nanterre.", "document_path_en": "tenders/ao_2026_0042_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0042';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Rehabilitation of floors 3 to 8 of the Sequoia Tower (6 floor plates of 800 sqm each). Complete stripping, replacement of raised floors and suspended ceilings.", "document_path_en": "tenders/ao_2026_0043_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0043';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Design and build of a type B multi-sport gymnasium with 500-seat grandstand, dance hall, dojo and community rooms.", "document_path_en": "tenders/ao_2026_0044_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0044';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Demolition and reconstruction of structure no. 47 (prestressed concrete slab bridge, 3 spans, 85 m length) at the A86/A4 interchange.", "document_path_en": "tenders/ao_2026_0045_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0045';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Roads and utilities development for phase 3 of the Armagnac sector (8.5 ha): main and service roads, separate stormwater drainage.", "document_path_en": "tenders/ao_2026_0046_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0046';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a new deep-water cruise ship berth of 400 linear meters with fill platform on bored piles.", "document_path_en": "tenders/ao_2026_0047_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0047';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a 12-classroom primary school with cafeteria and covered playground. Cyclone-resistant and earthquake-resistant structure.", "document_path_en": "tenders/ao_2026_0048_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0048';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Reinforcement of the base slab and containment vessel of reactor no. 2 at the Blayais nuclear power plant.", "document_path_en": "tenders/ao_2026_0049_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0049';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of 95 collective housing units in 2 buildings R+7 and R+5 with ground-floor retail and R-2 underground parking.", "document_path_en": "tenders/ao_2026_0050_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0050';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of an 8,000 sqm IT hyperscale data center with 32 MW electrical capacity.", "document_path_en": "tenders/ao_2026_0051_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0051';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a 600-student secondary school with canteen, gymnasium and outdoor areas.", "document_path_en": "tenders/ao_2026_0052_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0052';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Redevelopment of the Place de la Comedie with pedestrianization and utility network overhaul.", "document_path_en": "tenders/ao_2026_0053_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0053';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "5,000 sqm extension with cold rooms and production area.", "document_path_en": "tenders/ao_2026_0054_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0054';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "120 m pedestrian and cycling bridge in mixed steel-concrete structure.", "document_path_en": "tenders/ao_2026_0055_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0055';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "4-year framework agreement for the maintenance and repair of civil engineering structures in Ile-de-France.", "document_path_en": "tenders/ao_2026_0056_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0056';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a 120-bed nursing home (EHPAD) in R+3 with therapeutic gardens.", "document_path_en": "tenders/ao_2026_0057_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0057';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Olympic swimming pool with 50 m competition pool, leisure pool and wellness area.", "document_path_en": "tenders/ao_2026_0058_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0058';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of 3.5 km of tramway platform with 4 stations and 2 civil engineering structures.", "document_path_en": "tenders/ao_2026_0059_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0059';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Rehabilitation of the Vauban barracks to create a cultural and community center.", "document_path_en": "tenders/ao_2026_0060_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0060';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "180-unit residential tower R+25 with R-3 underground parking. Reinforced concrete structure.", "document_path_en": "tenders/ao_2026_0061_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0061';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of an 80,000 population-equivalent wastewater treatment plant with biological treatment.", "document_path_en": "tenders/ao_2026_0062_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0062';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "250-unit student residence of studios and one-bedroom apartments in R+6 with communal spaces.", "document_path_en": "tenders/ao_2026_0063_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0063';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "4.2 km bypass road in 2x1 lane configuration with roundabout and underpass.", "document_path_en": "tenders/ao_2026_0064_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0064';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a 200-room luxury 5-star hotel in R+8 with spa and panoramic restaurant.", "document_path_en": "tenders/ao_2026_0065_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0065';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "800-space multi-storey car park in R+6 with prestressed concrete structure and green facade.", "document_path_en": "tenders/ao_2026_0066_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0066';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "15-classroom school complex with school cafeteria and type C gymnasium.", "document_path_en": "tenders/ao_2026_0067_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0067';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Aquatic center with 25 m competition pool, leisure pool and wellness area.", "document_path_en": "tenders/ao_2026_0068_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0068';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "4-year framework agreement for the energy renovation of 25 high schools.", "document_path_en": "tenders/ao_2026_0069_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0069';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Cable-stayed bridge with 250 m main span and 80 m high pylon.", "document_path_en": "tenders/ao_2026_0070_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0070';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "45,000 sqm logistics center with mezzanine and loading docks.", "document_path_en": "tenders/ao_2026_0071_en.pdf"}'::jsonb WHERE tender_number = 'AO-2026-0071';
+UPDATE tenders SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"description_en": "Construction of a municipal sports complex.", "document_path_en": "tenders/ao-2025-idf-003-dce_en.pdf"}'::jsonb WHERE tender_number = 'AO-2025-IDF-003';
+
 -- Tender document with OCR
 INSERT INTO tender_documents (
     id, tender_id, document_type, file_path, file_size_bytes, mime_type,
@@ -1259,6 +1328,9 @@ INSERT INTO tender_decisions (
     false
 ) ON CONFLICT DO NOTHING;
 
+-- Bilingual metadata for tender decision
+UPDATE tender_decisions SET metadata = '{"reasoning_en": "GO recommendation for the Cergy-Pontoise municipal sports complex tender. Entreprise Construction IDF has strong references in sports facilities (3 similar projects over 5 years), all required certifications (Qualibat 2111, ISO 14001), and internal resources are available. The 4.2M EUR amount is within our usual range. The historical success rate on this type of public contract in Ile-de-France is 42%. Points of attention: tight 18-month deadline and strong competition expected (Bouygues, Eiffage)."}'::jsonb
+WHERE tender_id = (SELECT id FROM tenders WHERE tender_number = 'AO-2025-IDF-003');
 
 -- ============================================================================
 -- PART 2: CLAIM - CLM-ENT-001 (6 months after AO Go)
@@ -1391,6 +1463,10 @@ INSERT INTO claim_decisions (
     true
 ) ON CONFLICT DO NOTHING;
 
+-- Bilingual metadata for claim decision
+UPDATE claim_decisions SET metadata = '{"reasoning_en": "MANUAL_REVIEW recommendation for claim CLM-ENT-001 (slab collapse, Cergy-Pontoise construction site). The estimated amount of 850,000 EUR is high and exceeds the automatic validation threshold. Contract CTR-ENT-RC-2024 covers material damage and collapses (TRC coverage). However, liability is complex: need to determine if the collapse was due to a design defect (engineering firm liability), an execution defect (contractor liability), or a material defect (supplier liability). Bureau Veritas inspection is ongoing. Favorable points: appropriate safety measures, no injuries, timely declaration."}'::jsonb
+WHERE claim_id = (SELECT id FROM claims WHERE claim_number = 'CLM-ENT-001');
+
 -- PII guardrails detections for the claim
 INSERT INTO guardrails_detections (id, claim_id, detection_type, severity, action_taken, detected_at, metadata) VALUES
     (uuid_generate_v4(), 'f6a7b8c9-d0e1-2345-fabc-456789012345', 'EMAIL', 'medium', 'redacted', '2025-07-22 14:32:00+00',
@@ -1415,57 +1491,57 @@ DELETE FROM courrier_knowledge_base;
 -- ============================================================================
 
 -- 1-10: status = 'completed' (with processed_at set)
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0001', '6C198745632FR', 'RECL-2025-0001', 'colis_endommage', 'Jean-Pierre Dupont', 'jp.dupont@gmail.com', '06 12 34 56 78', 'Colis reçu avec le carton complètement écrasé. Le contenu (service à thé en porcelaine) est brisé en plusieurs morceaux.', 89.90, 'completed', '2025-06-10 09:15:00', '2025-06-10 09:18:42', 222000, '{"source": "web", "browser": "Chrome"}', '2025-06-10 09:15:00', '2025-06-10 09:18:42'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0002', '6C234567891FR', 'RECL-2025-0002', 'colis_perdu', 'Marie-Claire Lefebvre', 'mc.lefebvre@orange.fr', '07 23 45 67 89', 'Colis expédié le 2 juin, toujours pas reçu. Le suivi indique un dernier scan au centre de tri de Roissy le 4 juin.', 245.00, 'completed', '2025-06-12 14:30:00', '2025-06-12 14:35:12', 312000, '{"source": "phone", "operator_id": "OP-042"}', '2025-06-12 14:30:00', '2025-06-12 14:35:12'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0003', '6C345678912FR', 'RECL-2025-0003', 'non_livre', 'François Martin', 'f.martin@free.fr', '06 34 56 78 90', 'Le livreur a laissé un avis de passage alors que j''étais présent à mon domicile toute la journée. Aucune tentative de sonnette.', 32.50, 'completed', '2025-06-15 10:45:00', '2025-06-15 10:48:30', 210000, '{"source": "web"}', '2025-06-15 10:45:00', '2025-06-15 10:48:30'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0004', '6C456789123FR', 'RECL-2025-0004', 'retard_livraison', 'Sophie Bernard', 'sophie.bernard@laposte.net', '06 45 67 89 01', 'Colis commandé en Colissimo J+2 le 8 juin, toujours pas livré au 18 juin. Délai largement dépassé pour un anniversaire.', 67.00, 'completed', '2025-06-18 16:20:00', '2025-06-18 16:24:55', 295000, '{"source": "web", "priority": "high"}', '2025-06-18 16:20:00', '2025-06-18 16:24:55'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0005', '6C567891234FR', 'RECL-2025-0005', 'vol_point_relais', 'Ahmed Benali', 'a.benali@hotmail.fr', '07 56 78 90 12', 'Mon colis a été marqué comme livré au point relais Tabac Presse du Marais, mais le commerçant affirme ne jamais l''avoir reçu.', 189.99, 'completed', '2025-06-20 11:00:00', '2025-06-20 11:05:20', 320000, '{"source": "web", "point_relais_id": "PR-75004-12"}', '2025-06-20 11:00:00', '2025-06-20 11:05:20'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0006', '6C678912345FR', 'RECL-2025-0006', 'colis_endommage', 'Isabelle Moreau', 'i.moreau@sfr.fr', '06 67 89 01 23', 'Emballage extérieur intact mais l''intérieur du colis sentait fortement l''humidité. Livres complètement gondolés et inutilisables.', 54.80, 'completed', '2025-06-22 08:30:00', '2025-06-22 08:33:15', 195000, '{"source": "app_mobile"}', '2025-06-22 08:30:00', '2025-06-22 08:33:15'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0007', '6C789123456FR', 'RECL-2025-0007', 'mauvaise_adresse', 'Pierre Dubois', 'p.dubois@gmail.com', '06 78 90 12 34', 'Colis livré au 12 rue des Lilas au lieu du 12 rue des Tilleuls. Le voisin qui l''a reçu refuse de me le remettre.', 125.00, 'completed', '2025-06-25 13:45:00', '2025-06-25 13:49:10', 250000, '{"source": "web"}', '2025-06-25 13:45:00', '2025-06-25 13:49:10'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0008', '6C891234567FR', 'RECL-2025-0008', 'colis_perdu', 'Nathalie Girard', 'n.girard@yahoo.fr', '07 89 01 23 45', 'Colis expédié depuis la Belgique. Le suivi s''arrête à la douane de Lille depuis 3 semaines. Aucune information disponible.', 340.00, 'completed', '2025-06-28 15:10:00', '2025-06-28 15:15:45', 345000, '{"source": "phone", "international": true}', '2025-06-28 15:10:00', '2025-06-28 15:15:45'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0009', '6C912345678FR', 'RECL-2025-0009', 'non_livre', 'Laurent Petit', 'l.petit@outlook.fr', '06 90 12 34 56', 'Troisième tentative de livraison échouée. Je suis en télétravail et personne ne sonne. La caméra de surveillance ne montre aucun passage.', 78.50, 'completed', '2025-07-01 09:00:00', '2025-07-01 09:04:20', 260000, '{"source": "web", "attempts": 3}', '2025-07-01 09:00:00', '2025-07-01 09:04:20'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0010', '6C123456789FR', 'RECL-2025-0010', 'retard_livraison', 'Camille Roux', 'c.roux@gmail.com', '07 01 23 45 67', 'Colissimo express 24h envoyé le lundi, toujours en attente le vendredi. Contenu périssable (chocolats artisanaux), probablement fichu.', 95.00, 'completed', '2025-07-03 17:30:00', '2025-07-03 17:34:50', 320000, '{"source": "web", "perishable": true}', '2025-07-03 17:30:00', '2025-07-03 17:34:50')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', '6C198745632FR', 'RECL-2025-0001', 'colis_endommage', 'Jean-Pierre Dupont', 'jp.dupont@gmail.com', '06 12 34 56 78', 'Colis recu avec le carton completement ecrase. Le contenu (service a the en porcelaine) est brise en plusieurs morceaux.', 89.90, 'reclamations/reclamation_colis_endommage_001.pdf', 'completed', '2025-06-10 09:15:00', '2025-06-10 09:18:42', 222000, '{"source": "web", "browser": "Chrome", "description_en": "Package received with the box completely crushed. The contents (porcelain tea set) are broken into multiple pieces.", "document_path_en": "reclamations/reclamation_colis_endommage_001_en.pdf"}', '2025-06-10 09:15:00', '2025-06-10 09:18:42'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02', '6C234567891FR', 'RECL-2025-0002', 'colis_perdu', 'Marie-Claire Lefebvre', 'mc.lefebvre@orange.fr', '07 23 45 67 89', 'Colis expedie le 2 juin, toujours pas recu. Le suivi indique un dernier scan au centre de tri de Roissy le 4 juin.', 245.00, 'reclamations/reclamation_colis_perdu_001.pdf', 'completed', '2025-06-12 14:30:00', '2025-06-12 14:35:12', 312000, '{"source": "phone", "operator_id": "OP-042", "description_en": "Package shipped on June 2nd, still not received. Tracking shows a last scan at Roissy sorting center on June 4th.", "document_path_en": "reclamations/reclamation_colis_perdu_001_en.pdf"}', '2025-06-12 14:30:00', '2025-06-12 14:35:12'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03', '6C345678912FR', 'RECL-2025-0003', 'non_livre', 'Francois Martin', 'f.martin@free.fr', '06 34 56 78 90', 'Le livreur a laisse un avis de passage alors que j''etais present a mon domicile toute la journee. Aucune tentative de sonnette.', 32.50, 'reclamations/reclamation_non_livre_001.pdf', 'completed', '2025-06-15 10:45:00', '2025-06-15 10:48:30', 210000, '{"source": "web", "description_en": "The delivery person left a notice of passage while I was home all day. No doorbell attempt was made.", "document_path_en": "reclamations/reclamation_non_livre_001_en.pdf"}', '2025-06-15 10:45:00', '2025-06-15 10:48:30'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04', '6C456789123FR', 'RECL-2025-0004', 'retard_livraison', 'Sophie Bernard', 'sophie.bernard@laposte.net', '06 45 67 89 01', 'Colis commande en Colissimo J+2 le 8 juin, toujours pas livre au 18 juin. Delai largement depasse pour un anniversaire.', 67.00, 'reclamations/reclamation_retard_livraison_001.pdf', 'completed', '2025-06-18 16:20:00', '2025-06-18 16:24:55', 295000, '{"source": "web", "priority": "high", "description_en": "Package ordered via Colissimo J+2 on June 8th, still not delivered by June 18th. Deadline far exceeded for a birthday.", "document_path_en": "reclamations/reclamation_retard_livraison_001_en.pdf"}', '2025-06-18 16:20:00', '2025-06-18 16:24:55'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05', '6C567891234FR', 'RECL-2025-0005', 'vol_point_relais', 'Ahmed Benali', 'a.benali@hotmail.fr', '07 56 78 90 12', 'Mon colis a ete marque comme livre au point relais Tabac Presse du Marais, mais le commercant affirme ne jamais l''avoir recu.', 189.99, 'reclamations/reclamation_vol_point_relais_001.pdf', 'completed', '2025-06-20 11:00:00', '2025-06-20 11:05:20', 320000, '{"source": "web", "point_relais_id": "PR-75004-12", "description_en": "My package was marked as delivered to Tabac Presse du Marais pickup point, but the shopkeeper claims to have never received it.", "document_path_en": "reclamations/reclamation_vol_point_relais_001_en.pdf"}', '2025-06-20 11:00:00', '2025-06-20 11:05:20'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e06', '6C678912345FR', 'RECL-2025-0006', 'colis_endommage', 'Isabelle Moreau', 'i.moreau@sfr.fr', '06 67 89 01 23', 'Emballage exterieur intact mais l''interieur du colis sentait fortement l''humidite. Livres completement gondoles et inutilisables.', 54.80, 'reclamations/reclamation_colis_endommage_002.pdf', 'completed', '2025-06-22 08:30:00', '2025-06-22 08:33:15', 195000, '{"source": "app_mobile", "description_en": "Outer packaging intact but the inside of the package had a strong moisture smell. Books completely warped and unusable.", "document_path_en": "reclamations/reclamation_colis_endommage_002_en.pdf"}', '2025-06-22 08:30:00', '2025-06-22 08:33:15'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e07', '6C789123456FR', 'RECL-2025-0007', 'mauvaise_adresse', 'Pierre Dubois', 'p.dubois@gmail.com', '06 78 90 12 34', 'Colis livre au 12 rue des Lilas au lieu du 12 rue des Tilleuls. Le voisin qui l''a recu refuse de me le remettre.', 125.00, 'reclamations/reclamation_mauvaise_adresse_001.pdf', 'completed', '2025-06-25 13:45:00', '2025-06-25 13:49:10', 250000, '{"source": "web", "description_en": "Package delivered to 12 rue des Lilas instead of 12 rue des Tilleuls. The neighbor who received it refuses to give it to me.", "document_path_en": "reclamations/reclamation_mauvaise_adresse_001_en.pdf"}', '2025-06-25 13:45:00', '2025-06-25 13:49:10'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e08', '6C891234567FR', 'RECL-2025-0008', 'colis_perdu', 'Nathalie Girard', 'n.girard@yahoo.fr', '07 89 01 23 45', 'Colis expedie depuis la Belgique. Le suivi s''arrete a la douane de Lille depuis 3 semaines. Aucune information disponible.', 340.00, 'reclamations/reclamation_colis_perdu_002.pdf', 'completed', '2025-06-28 15:10:00', '2025-06-28 15:15:45', 345000, '{"source": "phone", "international": true, "description_en": "Package shipped from Belgium. Tracking stops at Lille customs for 3 weeks. No information available.", "document_path_en": "reclamations/reclamation_colis_perdu_002_en.pdf"}', '2025-06-28 15:10:00', '2025-06-28 15:15:45'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e09', '6C912345678FR', 'RECL-2025-0009', 'non_livre', 'Laurent Petit', 'l.petit@outlook.fr', '06 90 12 34 56', 'Troisieme tentative de livraison echouee. Je suis en teletravail et personne ne sonne. La camera de surveillance ne montre aucun passage.', 78.50, 'reclamations/reclamation_non_livre_002.pdf', 'completed', '2025-07-01 09:00:00', '2025-07-01 09:04:20', 260000, '{"source": "web", "attempts": 3, "description_en": "Third failed delivery attempt. I work from home and nobody rings. Security camera shows no postal carrier visit.", "document_path_en": "reclamations/reclamation_non_livre_002_en.pdf"}', '2025-07-01 09:00:00', '2025-07-01 09:04:20'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e10', '6C123456789FR', 'RECL-2025-0010', 'retard_livraison', 'Camille Roux', 'c.roux@gmail.com', '07 01 23 45 67', 'Colissimo express 24h envoye le lundi, toujours en attente le vendredi. Contenu perissable (chocolats artisanaux), probablement fichu.', 95.00, 'reclamations/reclamation_retard_livraison_002.pdf', 'completed', '2025-07-03 17:30:00', '2025-07-03 17:34:50', 320000, '{"source": "web", "perishable": true, "description_en": "Colissimo express 24h shipped Monday, still pending Friday. Perishable content (artisanal chocolates), likely ruined.", "document_path_en": "reclamations/reclamation_retard_livraison_002_en.pdf"}', '2025-07-03 17:30:00', '2025-07-03 17:34:50')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- 11-15: status = 'rejected'
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0011', '6C111222333FR', 'RECL-2025-0011', 'colis_endommage', 'Gérard Fontaine', 'g.fontaine@wanadoo.fr', '06 11 22 33 44', 'Légère éraflure sur le carton d''emballage extérieur. Le contenu (vêtements) est intact et en parfait état.', 29.90, 'rejected', '2025-07-05 10:00:00', '2025-07-05 10:03:10', 190000, '{"source": "web"}', '2025-07-05 10:00:00', '2025-07-05 10:03:10'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0012', '6C222333444FR', 'RECL-2025-0012', 'retard_livraison', 'Monique Duval', 'm.duval@free.fr', '07 22 33 44 55', 'Colis livré avec 1 jour de retard sur la date estimée. Pas de préjudice particulier, mais c''est le principe.', 15.00, 'rejected', '2025-07-06 14:15:00', '2025-07-06 14:17:30', 150000, '{"source": "web"}', '2025-07-06 14:15:00', '2025-07-06 14:17:30'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0013', '6C333444555FR', 'RECL-2025-0013', 'colis_perdu', 'Éric Leroy', 'e.leroy@gmail.com', '06 33 44 55 66', 'Je n''ai pas reçu mon colis. EDIT : en fait il était chez le gardien, je ne l''avais pas vu. Désolé.', 45.00, 'rejected', '2025-07-07 11:30:00', '2025-07-07 11:32:50', 170000, '{"source": "web", "self_resolved": true}', '2025-07-07 11:30:00', '2025-07-07 11:32:50'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0014', '6C444555666FR', 'RECL-2025-0014', 'non_livre', 'Valérie Simon', 'v.simon@orange.fr', '07 44 55 66 77', 'Colis non livré. En vérifiant, je me suis rendu compte que j''avais donné une mauvaise adresse lors de la commande.', 22.00, 'rejected', '2025-07-08 16:45:00', '2025-07-08 16:47:20', 155000, '{"source": "phone"}', '2025-07-08 16:45:00', '2025-07-08 16:47:20'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0015', '6C555666777FR', 'RECL-2025-0015', 'colis_endommage', 'Thierry Lambert', 't.lambert@laposte.net', '06 55 66 77 88', 'Réclamation pour colis endommagé datant de 14 mois. Je viens seulement de m''en apercevoir en ouvrant le carton.', 180.00, 'rejected', '2025-07-09 09:20:00', '2025-07-09 09:23:40', 220000, '{"source": "web", "claim_age_months": 14}', '2025-07-09 09:20:00', '2025-07-09 09:23:40')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, processed_at, total_processing_time_ms, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e11', '6C111222333FR', 'RECL-2025-0011', 'colis_endommage', 'Gerard Fontaine', 'g.fontaine@wanadoo.fr', '06 11 22 33 44', 'Legere eraflure sur le carton d''emballage exterieur. Le contenu (vetements) est intact et en parfait etat.', 29.90, 'reclamations/reclamation_colis_endommage_003.pdf', 'rejected', '2025-07-05 10:00:00', '2025-07-05 10:03:10', 190000, '{"source": "web", "description_en": "Slight scuff on the outer packaging box. The contents (clothing) are intact and in perfect condition.", "document_path_en": "reclamations/reclamation_colis_endommage_003_en.pdf"}', '2025-07-05 10:00:00', '2025-07-05 10:03:10'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e12', '6C222333444FR', 'RECL-2025-0012', 'retard_livraison', 'Monique Duval', 'm.duval@free.fr', '07 22 33 44 55', 'Colis livre avec 1 jour de retard sur la date estimee. Pas de prejudice particulier, mais c''est le principe.', 15.00, 'reclamations/reclamation_retard_livraison_003.pdf', 'rejected', '2025-07-06 14:15:00', '2025-07-06 14:17:30', 150000, '{"source": "web", "description_en": "Package delivered 1 day late compared to the estimated date. No particular harm done, but it is the principle.", "document_path_en": "reclamations/reclamation_retard_livraison_003_en.pdf"}', '2025-07-06 14:15:00', '2025-07-06 14:17:30'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e13', '6C333444555FR', 'RECL-2025-0013', 'colis_perdu', 'Eric Leroy', 'e.leroy@gmail.com', '06 33 44 55 66', 'Je n''ai pas recu mon colis. EDIT: en fait il etait chez le gardien, je ne l''avais pas vu. Desole.', 45.00, 'reclamations/reclamation_colis_perdu_003.pdf', 'rejected', '2025-07-07 11:30:00', '2025-07-07 11:32:50', 170000, '{"source": "web", "self_resolved": true, "description_en": "I did not receive my package. EDIT: actually it was with the building concierge, I had not noticed. Sorry.", "document_path_en": "reclamations/reclamation_colis_perdu_003_en.pdf"}', '2025-07-07 11:30:00', '2025-07-07 11:32:50'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e14', '6C444555666FR', 'RECL-2025-0014', 'non_livre', 'Valerie Simon', 'v.simon@orange.fr', '07 44 55 66 77', 'Colis non livre. En verifiant, je me suis rendu compte que j''avais donne une mauvaise adresse lors de la commande.', 22.00, 'reclamations/reclamation_non_livre_003.pdf', 'rejected', '2025-07-08 16:45:00', '2025-07-08 16:47:20', 155000, '{"source": "phone", "description_en": "Package not delivered. Upon checking, I realized I had given the wrong address when placing the order.", "document_path_en": "reclamations/reclamation_non_livre_003_en.pdf"}', '2025-07-08 16:45:00', '2025-07-08 16:47:20'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e15', '6C555666777FR', 'RECL-2025-0015', 'colis_endommage', 'Thierry Lambert', 't.lambert@laposte.net', '06 55 66 77 88', 'Reclamation pour colis endommage datant de 14 mois. Je viens seulement de m''en apercevoir en ouvrant le carton.', 180.00, 'reclamations/reclamation_colis_endommage_004.pdf', 'rejected', '2025-07-09 09:20:00', '2025-07-09 09:23:40', 220000, '{"source": "web", "claim_age_months": 14, "description_en": "Claim for damaged package dating back 14 months. I only just noticed when opening the box.", "document_path_en": "reclamations/reclamation_colis_endommage_004_en.pdf"}', '2025-07-09 09:20:00', '2025-07-09 09:23:40')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- 16-20: status = 'pending'
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0016', '6C666777888FR', 'RECL-2025-0016', 'colis_endommage', 'Claire Rousseau', 'c.rousseau@gmail.com', '06 66 77 88 99', 'Reçu un colis dont le contenu (appareil photo) est cassé. L''objectif est fêlé et le boîtier rayé profondément.', 499.00, 'pending', '2025-07-10 08:00:00', '{"source": "web"}', '2025-07-10 08:00:00', '2025-07-10 08:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0017', '6C777888999FR', 'RECL-2025-0017', 'colis_perdu', 'David Mercier', 'd.mercier@hotmail.fr', '07 77 88 99 00', 'Envoi recommandé avec AR contenant des documents administratifs importants. Perdu depuis le 5 juillet.', 50.00, 'pending', '2025-07-10 10:30:00', '{"source": "bureau_poste", "recommande": true}', '2025-07-10 10:30:00', '2025-07-10 10:30:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0018', '6C888999000FR', 'RECL-2025-0018', 'vol_point_relais', 'Émilie Fournier', 'e.fournier@sfr.fr', '06 88 99 00 11', 'Colis déposé en point relais (Relais Colis Boulangerie Martin). Quand je suis allée le chercher, on m''a dit qu''il avait déjà été retiré par quelqu''un d''autre.', 156.50, 'pending', '2025-07-11 12:00:00', '{"source": "web", "point_relais_id": "PR-69003-08"}', '2025-07-11 12:00:00', '2025-07-11 12:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0019', '6C999000111FR', 'RECL-2025-0019', 'mauvaise_adresse', 'Nicolas Bonnet', 'n.bonnet@outlook.fr', '07 99 00 11 22', 'Mon colis a été livré à mon ancienne adresse malgré un changement d''adresse effectué il y a 2 mois auprès de La Poste.', 88.00, 'pending', '2025-07-11 14:45:00', '{"source": "app_mobile", "address_change_date": "2025-05-11"}', '2025-07-11 14:45:00', '2025-07-11 14:45:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0020', '6C000111222FR', 'RECL-2025-0020', 'retard_livraison', 'Audrey Blanc', 'a.blanc@gmail.com', '06 00 11 22 33', 'Commande passée il y a 10 jours en Colissimo 48h. Le suivi est bloqué sur "en cours de traitement" depuis le départ.', 42.00, 'pending', '2025-07-12 09:15:00', '{"source": "web"}', '2025-07-12 09:15:00', '2025-07-12 09:15:00')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e16', '6C666777888FR', 'RECL-2025-0016', 'colis_endommage', 'Claire Rousseau', 'c.rousseau@gmail.com', '06 66 77 88 99', 'Recu un colis dont le contenu (appareil photo) est casse. L''objectif est fele et le boitier raye profondement.', 499.00, 'reclamations/reclamation_colis_endommage_005.pdf', 'pending', '2025-07-10 08:00:00', '{"source": "web", "description_en": "Received a package with broken contents (camera). The lens is cracked and the body deeply scratched.", "document_path_en": "reclamations/reclamation_colis_endommage_005_en.pdf"}', '2025-07-10 08:00:00', '2025-07-10 08:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e17', '6C777888999FR', 'RECL-2025-0017', 'colis_perdu', 'David Mercier', 'd.mercier@hotmail.fr', '07 77 88 99 00', 'Envoi recommande avec AR contenant des documents administratifs importants. Perdu depuis le 5 juillet.', 50.00, 'reclamations/reclamation_colis_perdu_004.pdf', 'pending', '2025-07-10 10:30:00', '{"source": "bureau_poste", "recommande": true, "description_en": "Registered letter with AR containing important administrative documents. Lost since July 5th.", "document_path_en": "reclamations/reclamation_colis_perdu_004_en.pdf"}', '2025-07-10 10:30:00', '2025-07-10 10:30:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e18', '6C888999000FR', 'RECL-2025-0018', 'vol_point_relais', 'Emilie Fournier', 'e.fournier@sfr.fr', '06 88 99 00 11', 'Colis depose en point relais (Relais Colis Boulangerie Martin). Quand je suis allee le chercher, on m''a dit qu''il avait deja ete retire par quelqu''un d''autre.', 156.50, 'reclamations/reclamation_vol_point_relais_002.pdf', 'pending', '2025-07-11 12:00:00', '{"source": "web", "point_relais_id": "PR-69003-08", "description_en": "Package deposited at pickup point. When I went to collect it, I was told it had already been picked up by someone else.", "document_path_en": "reclamations/reclamation_vol_point_relais_002_en.pdf"}', '2025-07-11 12:00:00', '2025-07-11 12:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e19', '6C999000111FR', 'RECL-2025-0019', 'mauvaise_adresse', 'Nicolas Bonnet', 'n.bonnet@outlook.fr', '07 99 00 11 22', 'Mon colis a ete livre a mon ancienne adresse malgre un changement d''adresse effectue il y a 2 mois aupres de La Poste.', 88.00, 'reclamations/reclamation_mauvaise_adresse_002.pdf', 'pending', '2025-07-11 14:45:00', '{"source": "app_mobile", "address_change_date": "2025-05-11", "description_en": "My package was delivered to my old address despite an address change made 2 months ago with La Poste.", "document_path_en": "reclamations/reclamation_mauvaise_adresse_002_en.pdf"}', '2025-07-11 14:45:00', '2025-07-11 14:45:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e20', '6C000111222FR', 'RECL-2025-0020', 'retard_livraison', 'Audrey Blanc', 'a.blanc@gmail.com', '06 00 11 22 33', 'Commande passee il y a 10 jours en Colissimo 48h. Le suivi est bloque sur "en cours de traitement" depuis le depart.', 42.00, 'reclamations/reclamation_retard_livraison_004.pdf', 'pending', '2025-07-12 09:15:00', '{"source": "web", "description_en": "Order placed 10 days ago via Colissimo 48h. Tracking is stuck on processing since departure.", "document_path_en": "reclamations/reclamation_retard_livraison_004_en.pdf"}', '2025-07-12 09:15:00', '2025-07-12 09:15:00')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- 21-25: status = 'processing'
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0021', '6C101112131FR', 'RECL-2025-0021', 'colis_endommage', 'Philippe Garnier', 'p.garnier@free.fr', '06 10 11 12 13', 'Colis contenant une guitare classique. Le manche est cassé net. Emballage visiblement maltraité (traces de choc).', 350.00, 'processing', '2025-07-12 11:00:00', '{"source": "web", "fragile_sticker": true}', '2025-07-12 11:00:00', '2025-07-12 11:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0022', '6C121314151FR', 'RECL-2025-0022', 'non_livre', 'Sandrine Chevalier', 's.chevalier@yahoo.fr', '07 12 13 14 15', 'Colis marqué comme livré le 9 juillet, mais je n''ai rien reçu. Pas d''avis de passage, rien dans la boîte aux lettres.', 76.00, 'processing', '2025-07-12 13:30:00', '{"source": "web"}', '2025-07-12 13:30:00', '2025-07-12 13:30:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0023', '6C131415161FR', 'RECL-2025-0023', 'colis_perdu', 'Julien Morel', 'j.morel@laposte.net', '06 13 14 15 16', 'Colis international (Japon -> France) bloqué en douane depuis plus d''un mois. Aucune mise à jour du suivi.', 420.00, 'processing', '2025-07-12 15:00:00', '{"source": "phone", "international": true, "origin": "JP"}', '2025-07-12 15:00:00', '2025-07-12 15:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0024', '6C141516171FR', 'RECL-2025-0024', 'retard_livraison', 'Véronique Blanc', 've.blanc@orange.fr', '07 14 15 16 17', 'Colis Chronopost (sous-traité par La Poste) en retard de 5 jours. Contenu : médicaments vétérinaires urgents pour mon chien.', 210.00, 'processing', '2025-07-12 16:30:00', '{"source": "phone", "urgent_medical": true}', '2025-07-12 16:30:00', '2025-07-12 16:30:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0025', '6C151617181FR', 'RECL-2025-0025', 'vol_point_relais', 'Rémi Faure', 'r.faure@gmail.com', '06 15 16 17 18', 'Colis récupéré par une personne non autorisée au point relais. Le commerçant dit avoir vérifié la pièce d''identité mais le nom ne correspond pas.', 299.00, 'processing', '2025-07-13 08:00:00', '{"source": "web", "point_relais_id": "PR-31000-05", "identity_check_claimed": true}', '2025-07-13 08:00:00', '2025-07-13 08:00:00')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e21', '6C101112131FR', 'RECL-2025-0021', 'colis_endommage', 'Philippe Garnier', 'p.garnier@free.fr', '06 10 11 12 13', 'Colis contenant une guitare classique. Le manche est casse net. Emballage visiblement maltraite (traces de choc).', 350.00, 'reclamations/reclamation_colis_endommage_006.pdf', 'processing', '2025-07-12 11:00:00', '{"source": "web", "fragile_sticker": true, "description_en": "Package containing a classical guitar. The neck is cleanly broken. Packaging visibly mishandled (impact marks).", "document_path_en": "reclamations/reclamation_colis_endommage_006_en.pdf"}', '2025-07-12 11:00:00', '2025-07-12 11:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e22', '6C121314151FR', 'RECL-2025-0022', 'non_livre', 'Sandrine Chevalier', 's.chevalier@yahoo.fr', '07 12 13 14 15', 'Colis marque comme livre le 9 juillet, mais je n''ai rien recu. Pas d''avis de passage, rien dans la boite aux lettres.', 76.00, 'reclamations/reclamation_non_livre_004.pdf', 'processing', '2025-07-12 13:30:00', '{"source": "web", "description_en": "Package marked as delivered on July 9th, but I received nothing. No delivery notice, nothing in the mailbox.", "document_path_en": "reclamations/reclamation_non_livre_004_en.pdf"}', '2025-07-12 13:30:00', '2025-07-12 13:30:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e23', '6C131415161FR', 'RECL-2025-0023', 'colis_perdu', 'Julien Morel', 'j.morel@laposte.net', '06 13 14 15 16', 'Colis international (Japon -> France) bloque en douane depuis plus d''un mois. Aucune mise a jour du suivi.', 420.00, 'reclamations/reclamation_colis_perdu_005.pdf', 'processing', '2025-07-12 15:00:00', '{"source": "phone", "international": true, "origin": "JP", "description_en": "International package (Japan to France) stuck in customs for over a month. No tracking update.", "document_path_en": "reclamations/reclamation_colis_perdu_005_en.pdf"}', '2025-07-12 15:00:00', '2025-07-12 15:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e24', '6C141516171FR', 'RECL-2025-0024', 'retard_livraison', 'Veronique Blanc', 've.blanc@orange.fr', '07 14 15 16 17', 'Colis Chronopost (sous-traite par La Poste) en retard de 5 jours. Contenu: medicaments veterinaires urgents pour mon chien.', 210.00, 'reclamations/reclamation_retard_livraison_005.pdf', 'processing', '2025-07-12 16:30:00', '{"source": "phone", "urgent_medical": true, "description_en": "Chronopost package (subcontracted by La Poste) 5 days late. Contents: urgent veterinary medication for my sick dog.", "document_path_en": "reclamations/reclamation_retard_livraison_005_en.pdf"}', '2025-07-12 16:30:00', '2025-07-12 16:30:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e25', '6C151617181FR', 'RECL-2025-0025', 'vol_point_relais', 'Remi Faure', 'r.faure@gmail.com', '06 15 16 17 18', 'Colis recupere par une personne non autorisee au point relais. Le commercant dit avoir verifie la piece d''identite mais le nom ne correspond pas.', 299.00, 'reclamations/reclamation_vol_point_relais_003.pdf', 'processing', '2025-07-13 08:00:00', '{"source": "web", "point_relais_id": "PR-31000-05", "identity_check_claimed": true, "description_en": "Package collected by an unauthorized person at the pickup point. The shopkeeper claims to have checked the ID but the name does not match.", "document_path_en": "reclamations/reclamation_vol_point_relais_003_en.pdf"}', '2025-07-13 08:00:00', '2025-07-13 08:00:00')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- 26-28: status = 'manual_review'
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0026', '6C161718191FR', 'RECL-2025-0026', 'colis_endommage', 'Hélène Picard', 'h.picard@sfr.fr', '07 16 17 18 19', 'Colis contenant du matériel informatique (carte graphique RTX 4090). Le produit ne fonctionne plus après livraison. Emballage d''origine insuffisant ou colis maltraité ?', 500.00, 'manual_review', '2025-07-13 09:30:00', '{"source": "web", "high_value": true, "ambiguous_cause": true}', '2025-07-13 09:30:00', '2025-07-13 09:30:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0027', '6C171819202FR', 'RECL-2025-0027', 'colis_perdu', 'Yannick Lemaire', 'y.lemaire@hotmail.fr', '06 17 18 19 20', 'Envoi de bijoux de valeur (bague en or). Le suivi montre une livraison mais je n''ai rien reçu. Troisième réclamation similaire en 6 mois.', 480.00, 'manual_review', '2025-07-13 11:00:00', '{"source": "web", "repeat_claimant": true, "previous_claims": 2}', '2025-07-13 11:00:00', '2025-07-13 11:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0028', '6C181920213FR', 'RECL-2025-0028', 'mauvaise_adresse', 'Stéphanie Vincent', 's.vincent@gmail.com', '07 18 19 20 21', 'Le colis a été livré à un homonyme habitant dans la même rue. Le destinataire refuse de restituer le colis. Situation complexe.', 175.00, 'manual_review', '2025-07-13 14:00:00', '{"source": "bureau_poste", "homonyme_confirmed": true}', '2025-07-13 14:00:00', '2025-07-13 14:00:00')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e26', '6C161718191FR', 'RECL-2025-0026', 'colis_endommage', 'Helene Picard', 'h.picard@sfr.fr', '07 16 17 18 19', 'Colis contenant du materiel informatique (carte graphique RTX 4090). Le produit ne fonctionne plus apres livraison. Emballage d''origine insuffisant ou colis maltraite?', 500.00, 'reclamations/reclamation_colis_endommage_007.pdf', 'manual_review', '2025-07-13 09:30:00', '{"source": "web", "high_value": true, "ambiguous_cause": true, "description_en": "Package containing computer hardware (RTX 4090 graphics card). Product no longer works after delivery. Original packaging insufficient or package mishandled?", "document_path_en": "reclamations/reclamation_colis_endommage_007_en.pdf"}', '2025-07-13 09:30:00', '2025-07-13 09:30:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e27', '6C171819202FR', 'RECL-2025-0027', 'colis_perdu', 'Yannick Lemaire', 'y.lemaire@hotmail.fr', '06 17 18 19 20', 'Envoi de bijoux de valeur (bague en or). Le suivi montre une livraison mais je n''ai rien recu. Troisieme reclamation similaire en 6 mois.', 480.00, 'reclamations/reclamation_colis_perdu_006.pdf', 'manual_review', '2025-07-13 11:00:00', '{"source": "web", "repeat_claimant": true, "previous_claims": 2, "description_en": "Shipment of valuable jewelry (gold ring). Tracking shows delivery but I received nothing. Third similar claim in 6 months.", "document_path_en": "reclamations/reclamation_colis_perdu_006_en.pdf"}', '2025-07-13 11:00:00', '2025-07-13 11:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e28', '6C181920213FR', 'RECL-2025-0028', 'mauvaise_adresse', 'Stephanie Vincent', 's.vincent@gmail.com', '07 18 19 20 21', 'Le colis a ete livre a un homonyme habitant dans la meme rue. Le destinataire refuse de restituer le colis. Situation complexe.', 175.00, 'reclamations/reclamation_mauvaise_adresse_003.pdf', 'manual_review', '2025-07-13 14:00:00', '{"source": "bureau_poste", "homonyme_confirmed": true, "description_en": "The package was delivered to a person with the same name living on the same street. The recipient refuses to return the package. Complex situation.", "document_path_en": "reclamations/reclamation_mauvaise_adresse_003_en.pdf"}', '2025-07-13 14:00:00', '2025-07-13 14:00:00')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- 29-30: status = 'escalated'
-INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, status, submitted_at, metadata, created_at, updated_at) VALUES
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0029', '6C192021224FR', 'RECL-2025-0029', 'vol_point_relais', 'Marc-Antoine Dupuis', 'ma.dupuis@orange.fr', '06 19 20 21 22', 'Vol organisé au point relais : 3 colis de clients différents disparus le même jour. Le commerçant est soupçonné. Plainte déposée.', 450.00, 'escalated', '2025-07-13 16:00:00', '{"source": "phone", "police_report": "PV-2025-07890", "multiple_victims": true}', '2025-07-13 16:00:00', '2025-07-13 16:00:00'),
-    ('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0030', '6C202122235FR', 'RECL-2025-0030', 'colis_perdu', 'Christine Delorme', 'c.delorme@free.fr', '07 20 21 22 23', 'Colis contenant un tableau de valeur (oeuvre d''art originale). Disparu depuis 3 semaines. Assurance ad valorem souscrite. Litige avec l''assureur sur le montant.', 500.00, 'escalated', '2025-07-14 08:00:00', '{"source": "courrier_recommande", "insured": true, "insurance_dispute": true, "art_piece": true}', '2025-07-14 08:00:00', '2025-07-14 08:00:00')
+INSERT INTO reclamations (id, numero_suivi, reclamation_number, reclamation_type, client_nom, client_email, client_telephone, description, valeur_declaree, document_path, status, submitted_at, metadata, created_at, updated_at) VALUES
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e29', '6C192021224FR', 'RECL-2025-0029', 'vol_point_relais', 'Marc-Antoine Dupuis', 'ma.dupuis@orange.fr', '06 19 20 21 22', 'Vol organise au point relais: 3 colis de clients differents disparus le meme jour. Le commercant est soupconne. Plainte deposee.', 450.00, 'reclamations/reclamation_vol_point_relais_004.pdf', 'escalated', '2025-07-13 16:00:00', '{"source": "phone", "police_report": "PV-2025-07890", "multiple_victims": true, "description_en": "Organized theft at pickup point: 3 packages from different customers disappeared on the same day. Shopkeeper suspected. Police report filed.", "document_path_en": "reclamations/reclamation_vol_point_relais_004_en.pdf"}', '2025-07-13 16:00:00', '2025-07-13 16:00:00'),
+    ('d1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e30', '6C202122235FR', 'RECL-2025-0030', 'colis_perdu', 'Christine Delorme', 'c.delorme@free.fr', '07 20 21 22 23', 'Colis contenant un tableau de valeur (oeuvre d''art originale). Disparu depuis 3 semaines. Assurance ad valorem souscrite. Litige avec l''assureur sur le montant.', 500.00, 'reclamations/reclamation_colis_perdu_007.pdf', 'escalated', '2025-07-14 08:00:00', '{"source": "courrier_recommande", "insured": true, "insurance_dispute": true, "art_piece": true, "description_en": "Package containing a valuable painting (original artwork). Missing for 3 weeks. Ad valorem insurance taken out. Dispute with insurer over the amount.", "document_path_en": "reclamations/reclamation_colis_perdu_007_en.pdf"}', '2025-07-14 08:00:00', '2025-07-14 08:00:00')
 ON CONFLICT (reclamation_number) DO NOTHING;
 
 -- ============================================================================
@@ -1633,32 +1709,2134 @@ INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location,
     (uuid_generate_v4(), '6C555666777FR', 'livre', '2024-05-12 10:00:00', 'Toulon Centre', 'Distribué', '83000', true, '{}')
 ON CONFLICT DO NOTHING;
 
+-- Tracking for RECL-2025-0016 (colis_endommage, pending) — camera shows drop marks
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C666777888FR', 'prise_en_charge', '2025-07-05 14:00:00', 'Bureau de Poste Bordeaux Centre', 'Prise en charge du colis', '33000', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C666777888FR', 'tri', '2025-07-05 22:00:00', 'Centre de tri Bordeaux Begles', 'Tri effectue', '33130', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C666777888FR', 'en_cours_acheminement', '2025-07-06 04:00:00', 'Plateforme Colis Bordeaux', 'En cours d''acheminement', '33000', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C666777888FR', 'arrive_centre', '2025-07-07 06:00:00', 'Centre courrier Bordeaux Bastide', 'Arrive au centre de distribution', '33100', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C666777888FR', 'en_livraison', '2025-07-08 08:00:00', 'Bordeaux Centre', 'En cours de livraison', '33000', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C666777888FR', 'livre', '2025-07-08 10:30:00', 'Bordeaux Centre', 'Distribue', '33000', true, '{"detail_en": "Delivered"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0017 (colis_perdu, pending) — last scan at sorting center
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C777888999FR', 'prise_en_charge', '2025-07-05 09:00:00', 'Bureau de Poste Paris 20e', 'Prise en charge de l''envoi recommande', '75020', false, '{"detail_en": "Registered mail accepted"}'),
+    (uuid_generate_v4(), '6C777888999FR', 'tri', '2025-07-05 20:00:00', 'Centre de tri Paris Nord', 'Tri effectue', '93200', false, '{"detail_en": "Sorted"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0018 (vol_point_relais, pending) — delivered to pickup point
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C888999000FR', 'prise_en_charge', '2025-07-06 11:00:00', 'Bureau de Poste Lyon 6e', 'Prise en charge du colis', '69006', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C888999000FR', 'tri', '2025-07-06 20:00:00', 'Centre de tri Lyon Venissieux', 'Tri effectue', '69200', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C888999000FR', 'arrive_centre', '2025-07-07 06:00:00', 'Centre courrier Lyon 3e', 'Arrive au centre de distribution', '69003', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C888999000FR', 'point_relais', '2025-07-07 14:00:00', 'Relais Colis Boulangerie Martin, Lyon 3e', 'Colis depose en point relais', '69003', true, '{"point_relais_id": "PR-69003-08", "detail_en": "Package deposited at pickup point"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0019 (mauvaise_adresse, pending) — delivered to old address
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C999000111FR', 'prise_en_charge', '2025-07-07 10:00:00', 'Bureau de Poste Nantes Centre', 'Prise en charge du colis', '44000', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C999000111FR', 'tri', '2025-07-07 20:00:00', 'Centre de tri Nantes Chantenay', 'Tri effectue', '44100', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C999000111FR', 'en_cours_acheminement', '2025-07-08 03:00:00', 'Plateforme Colis Nantes', 'En cours d''acheminement', '44000', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C999000111FR', 'arrive_centre', '2025-07-08 06:00:00', 'Centre courrier Nantes Erdre', 'Arrive au centre de distribution', '44300', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C999000111FR', 'en_livraison', '2025-07-09 08:00:00', 'Nantes Centre', 'En cours de livraison', '44000', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C999000111FR', 'livre', '2025-07-09 10:00:00', 'Nantes Centre', 'Distribue a l''ancienne adresse', '44000', true, '{"delivered_to_old_address": true, "detail_en": "Delivered to old address"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0020 (retard_livraison, pending) — stuck in processing
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C000111222FR', 'prise_en_charge', '2025-07-02 15:00:00', 'Bureau de Poste Toulouse Capitole', 'Prise en charge du colis', '31000', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C000111222FR', 'tri', '2025-07-02 22:00:00', 'Centre de tri Toulouse Colomiers', 'Tri effectue', '31770', false, '{"detail_en": "Sorted"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0021 (colis_endommage, processing) — guitar damage
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C101112131FR', 'prise_en_charge', '2025-07-08 10:00:00', 'Bureau de Poste Paris 12e', 'Prise en charge du colis', '75012', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C101112131FR', 'tri', '2025-07-08 21:00:00', 'Centre de tri Paris Sud', 'Tri effectue', '94500', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C101112131FR', 'en_cours_acheminement', '2025-07-09 03:00:00', 'Plateforme Colis Paris', 'En cours d''acheminement', '94500', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C101112131FR', 'arrive_centre', '2025-07-10 05:00:00', 'Centre courrier Marseille 8e', 'Arrive au centre de distribution', '13008', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C101112131FR', 'en_livraison', '2025-07-10 08:00:00', 'Marseille 8e', 'En cours de livraison', '13008', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C101112131FR', 'livre', '2025-07-10 11:00:00', 'Marseille 8e', 'Distribue', '13008', true, '{"detail_en": "Delivered"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0022 (non_livre, processing) — marked delivered, nothing received
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C121314151FR', 'prise_en_charge', '2025-07-05 13:00:00', 'Bureau de Poste Lyon Part-Dieu', 'Prise en charge du colis', '69003', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C121314151FR', 'tri', '2025-07-05 21:00:00', 'Centre de tri Lyon Venissieux', 'Tri effectue', '69200', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C121314151FR', 'en_cours_acheminement', '2025-07-06 03:00:00', 'Plateforme Colis Lyon', 'En cours d''acheminement', '69200', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C121314151FR', 'arrive_centre', '2025-07-08 05:00:00', 'Centre courrier Nice Centre', 'Arrive au centre de distribution', '06000', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C121314151FR', 'en_livraison', '2025-07-09 07:30:00', 'Nice Centre', 'En cours de livraison', '06000', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C121314151FR', 'livre', '2025-07-09 10:00:00', 'Nice Centre', 'Distribue', '06000', true, '{"detail_en": "Delivered"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0023 (colis_perdu, processing) — stuck in customs (Japan)
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C131415161FR', 'prise_en_charge', '2025-06-01 09:00:00', 'Japan Post Tokyo', 'Prise en charge de l''envoi international', '100-8798', false, '{"country": "JP", "detail_en": "International shipment accepted"}'),
+    (uuid_generate_v4(), '6C131415161FR', 'en_cours_acheminement', '2025-06-03 12:00:00', 'Japan Post International', 'Depart du pays d''origine', '100-8798', false, '{"country": "JP", "detail_en": "Departed country of origin"}'),
+    (uuid_generate_v4(), '6C131415161FR', 'arrive_centre', '2025-06-06 08:00:00', 'Centre de tri international Roissy CDG', 'Arrive en France', '95700', false, '{"detail_en": "Arrived in France"}'),
+    (uuid_generate_v4(), '6C131415161FR', 'tri', '2025-06-06 14:00:00', 'Douane Roissy CDG', 'Dedouanement en cours', '95700', false, '{"customs_status": "in_progress", "detail_en": "Customs clearance in progress"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0024 (retard_livraison, processing) — Chronopost delay
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C141516171FR', 'prise_en_charge', '2025-07-07 10:00:00', 'Bureau de Poste Strasbourg Centre', 'Prise en charge du colis Chronopost', '67000', false, '{"service": "chronopost", "detail_en": "Chronopost package accepted"}'),
+    (uuid_generate_v4(), '6C141516171FR', 'tri', '2025-07-07 18:00:00', 'Centre de tri Strasbourg Entzheim', 'Tri effectue', '67960', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C141516171FR', 'en_cours_acheminement', '2025-07-08 02:00:00', 'Plateforme Chronopost Strasbourg', 'En cours d''acheminement', '67000', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C141516171FR', 'incident', '2025-07-09 10:00:00', 'Centre de tri Paris Gennevilliers', 'Retard de traitement -- surcharge plateforme', '92230', false, '{"delay_reason": "platform_overload", "detail_en": "Processing delay -- platform overload"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0025 (vol_point_relais, processing) — unauthorized pickup
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C151617181FR', 'prise_en_charge', '2025-07-08 11:00:00', 'Bureau de Poste Toulouse Wilson', 'Prise en charge du colis', '31000', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C151617181FR', 'tri', '2025-07-08 20:00:00', 'Centre de tri Toulouse Colomiers', 'Tri effectue', '31770', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C151617181FR', 'en_cours_acheminement', '2025-07-09 04:00:00', 'Plateforme Colis Toulouse', 'En cours d''acheminement', '31100', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C151617181FR', 'arrive_centre', '2025-07-09 06:00:00', 'Centre courrier Toulouse Centre', 'Arrive au centre de distribution', '31000', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C151617181FR', 'point_relais', '2025-07-09 14:00:00', 'Presse Loto Tabac, Toulouse', 'Colis depose en point relais', '31000', true, '{"point_relais_id": "PR-31000-05", "detail_en": "Package deposited at pickup point"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0026 (colis_endommage, manual_review) — RTX 4090
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C161718191FR', 'prise_en_charge', '2025-07-09 15:00:00', 'Bureau de Poste Lyon 7e', 'Prise en charge du colis', '69007', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C161718191FR', 'tri', '2025-07-09 23:00:00', 'Centre de tri Lyon Venissieux', 'Tri effectue', '69200', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C161718191FR', 'en_cours_acheminement', '2025-07-10 04:00:00', 'Plateforme Colis Lyon', 'En cours d''acheminement', '69200', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C161718191FR', 'arrive_centre', '2025-07-11 06:00:00', 'Centre courrier Strasbourg Neudorf', 'Arrive au centre de distribution', '67100', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C161718191FR', 'en_livraison', '2025-07-11 08:00:00', 'Strasbourg Centre', 'En cours de livraison', '67000', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C161718191FR', 'livre', '2025-07-11 10:30:00', 'Strasbourg Centre', 'Distribue', '67000', true, '{"detail_en": "Delivered"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0027 (colis_perdu, manual_review) — jewelry
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C171819202FR', 'prise_en_charge', '2025-07-10 10:00:00', 'Bureau de Poste Paris 16e', 'Prise en charge du colis', '75016', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C171819202FR', 'tri', '2025-07-10 20:00:00', 'Centre de tri Paris Ouest', 'Tri effectue', '92000', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C171819202FR', 'en_cours_acheminement', '2025-07-11 03:00:00', 'Plateforme Colis Paris', 'En cours d''acheminement', '92000', false, '{"detail_en": "In transit"}'),
+    (uuid_generate_v4(), '6C171819202FR', 'arrive_centre', '2025-07-11 06:00:00', 'Centre courrier Paris 16e', 'Arrive au centre de distribution', '75016', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C171819202FR', 'en_livraison', '2025-07-11 08:00:00', 'Paris 16e', 'En cours de livraison', '75016', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C171819202FR', 'livre', '2025-07-11 10:00:00', 'Paris 16e', 'Distribue', '75016', true, '{"detail_en": "Delivered"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0028 (mauvaise_adresse, manual_review) — homonym
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C181920213FR', 'prise_en_charge', '2025-07-10 12:00:00', 'Bureau de Poste Montpellier Comedie', 'Prise en charge du colis', '34000', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C181920213FR', 'tri', '2025-07-10 21:00:00', 'Centre de tri Montpellier', 'Tri effectue', '34070', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C181920213FR', 'arrive_centre', '2025-07-11 06:00:00', 'Centre courrier Montpellier Antigone', 'Arrive au centre de distribution', '34000', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C181920213FR', 'en_livraison', '2025-07-11 08:00:00', 'Montpellier Centre', 'En cours de livraison', '34000', false, '{"detail_en": "Out for delivery"}'),
+    (uuid_generate_v4(), '6C181920213FR', 'livre', '2025-07-11 10:00:00', 'Montpellier Centre', 'Distribue au 14 rue des Oliviers', '34000', true, '{"delivered_to": "14 rue des Oliviers", "intended_address": "14 bis rue des Oliviers", "detail_en": "Delivered to 14 rue des Oliviers (intended: 14 bis)"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0029 (vol_point_relais, escalated) — organized theft
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C192021224FR', 'prise_en_charge', '2025-07-09 10:00:00', 'Bureau de Poste Lyon 2e', 'Prise en charge du colis', '69002', false, '{"detail_en": "Package accepted"}'),
+    (uuid_generate_v4(), '6C192021224FR', 'tri', '2025-07-09 20:00:00', 'Centre de tri Lyon Venissieux', 'Tri effectue', '69200', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C192021224FR', 'arrive_centre', '2025-07-10 06:00:00', 'Centre courrier Lyon 7e', 'Arrive au centre de distribution', '69007', false, '{"detail_en": "Arrived at distribution center"}'),
+    (uuid_generate_v4(), '6C192021224FR', 'point_relais', '2025-07-10 14:00:00', 'Tabac Presse du Pont, Lyon 7e', 'Colis depose en point relais', '69007', true, '{"point_relais_id": "PR-69007-03", "detail_en": "Package deposited at pickup point"}')
+ON CONFLICT DO NOTHING;
+
+-- Tracking for RECL-2025-0030 (colis_perdu, escalated) — art piece
+INSERT INTO tracking_events (id, numero_suivi, event_type, event_date, location, detail, code_postal, is_final, metadata) VALUES
+    (uuid_generate_v4(), '6C202122235FR', 'prise_en_charge', '2025-07-01 14:00:00', 'Bureau de Poste Paris 6e', 'Prise en charge du colis assure', '75006', false, '{"insured": true, "detail_en": "Insured package accepted"}'),
+    (uuid_generate_v4(), '6C202122235FR', 'tri', '2025-07-01 22:00:00', 'Centre de tri Paris Sud', 'Tri effectue', '94500', false, '{"detail_en": "Sorted"}'),
+    (uuid_generate_v4(), '6C202122235FR', 'en_cours_acheminement', '2025-07-02 04:00:00', 'Plateforme Colis Paris', 'En cours d''acheminement', '94500', false, '{"detail_en": "In transit"}')
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- RECLAMATION PROCESSING LOGS (for completed and rejected: 1-15)
+-- ============================================================================
+
+INSERT INTO reclamation_processing_logs (id, reclamation_id, step, status, started_at, completed_at, duration_ms, output_data, error_message) VALUES
+    -- RECL-2025-0001 (completed)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', 'tracking_analysis', 'completed', '2025-06-10 09:15:05', '2025-06-10 09:15:15', 10000, '{"events_count": 6, "final_status": "livre"}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', 'document_analysis', 'completed', '2025-06-10 09:15:15', '2025-06-10 09:16:00', 45000, '{"photos_analyzed": 3, "damage_confirmed": true}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', 'rag_retrieval', 'completed', '2025-06-10 09:16:00', '2025-06-10 09:16:30', 30000, '{"policies_found": 2, "relevance": 0.89}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', 'llm_decision', 'completed', '2025-06-10 09:16:30', '2025-06-10 09:18:00', 90000, '{"decision": "rembourser", "confidence": 0.92}', NULL),
+    -- RECL-2025-0002 (completed)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02', 'tracking_analysis', 'completed', '2025-06-12 14:30:05', '2025-06-12 14:30:20', 15000, '{"events_count": 3, "last_scan_days_ago": 10}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02', 'rag_retrieval', 'completed', '2025-06-12 14:30:20', '2025-06-12 14:30:50', 30000, '{"policies_found": 1, "relevance": 0.91}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02', 'llm_decision', 'completed', '2025-06-12 14:30:50', '2025-06-12 14:35:00', 250000, '{"decision": "rembourser", "confidence": 0.88}', NULL),
+    -- RECL-2025-0003 (completed)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03', 'tracking_analysis', 'completed', '2025-06-15 10:45:05', '2025-06-15 10:45:20', 15000, '{"events_count": 5, "delivery_attempts": 2}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03', 'rag_retrieval', 'completed', '2025-06-15 10:45:20', '2025-06-15 10:45:50', 30000, '{"policies_found": 1}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03', 'llm_decision', 'completed', '2025-06-15 10:45:50', '2025-06-15 10:48:00', 130000, '{"decision": "reexpedier", "confidence": 0.85}', NULL),
+    -- RECL-2025-0004 (completed)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04', 'tracking_analysis', 'completed', '2025-06-18 16:20:05', '2025-06-18 16:20:25', 20000, '{"events_count": 8, "days_late": 5}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04', 'rag_retrieval', 'completed', '2025-06-18 16:20:25', '2025-06-18 16:21:00', 35000, '{"policies_found": 2}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04', 'llm_decision', 'completed', '2025-06-18 16:21:00', '2025-06-18 16:24:00', 180000, '{"decision": "rembourser", "confidence": 0.90}', NULL),
+    -- RECL-2025-0005 (completed)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05', 'tracking_analysis', 'completed', '2025-06-20 11:00:05', '2025-06-20 11:00:20', 15000, '{"events_count": 7, "point_relais_delivery": true}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05', 'rag_retrieval', 'completed', '2025-06-20 11:00:20', '2025-06-20 11:01:00', 40000, '{"policies_found": 2}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05', 'llm_decision', 'completed', '2025-06-20 11:01:00', '2025-06-20 11:05:00', 240000, '{"decision": "rembourser", "confidence": 0.87}', NULL),
+    -- RECL-2025-0006 to 0010 (completed - abbreviated)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e06', 'tracking_analysis', 'completed', '2025-06-22 08:30:05', '2025-06-22 08:30:15', 10000, '{"events_count": 6}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e06', 'llm_decision', 'completed', '2025-06-22 08:30:30', '2025-06-22 08:33:00', 150000, '{"decision": "rembourser", "confidence": 0.82}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e07', 'tracking_analysis', 'completed', '2025-06-25 13:45:05', '2025-06-25 13:45:15', 10000, '{"events_count": 6}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e07', 'llm_decision', 'completed', '2025-06-25 13:45:30', '2025-06-25 13:49:00', 210000, '{"decision": "reexpedier", "confidence": 0.91}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e08', 'tracking_analysis', 'completed', '2025-06-28 15:10:05', '2025-06-28 15:10:20', 15000, '{"events_count": 5, "customs_hold": true}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e08', 'llm_decision', 'completed', '2025-06-28 15:10:35', '2025-06-28 15:15:00', 265000, '{"decision": "rembourser", "confidence": 0.86}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e09', 'tracking_analysis', 'completed', '2025-07-01 09:00:05', '2025-07-01 09:00:20', 15000, '{"events_count": 10, "failed_attempts": 3}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e09', 'llm_decision', 'completed', '2025-07-01 09:00:35', '2025-07-01 09:04:00', 205000, '{"decision": "reexpedier", "confidence": 0.89}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e10', 'tracking_analysis', 'completed', '2025-07-03 17:30:05', '2025-07-03 17:30:25', 20000, '{"events_count": 8, "days_late": 3}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e10', 'llm_decision', 'completed', '2025-07-03 17:30:40', '2025-07-03 17:34:00', 200000, '{"decision": "rembourser", "confidence": 0.93}', NULL),
+    -- RECL-2025-0011 to 0015 (rejected)
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e11', 'tracking_analysis', 'completed', '2025-07-05 10:00:05', '2025-07-05 10:00:15', 10000, '{"events_count": 6}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e11', 'llm_decision', 'completed', '2025-07-05 10:00:30', '2025-07-05 10:03:00', 150000, '{"decision": "rejeter", "confidence": 0.95}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e12', 'tracking_analysis', 'completed', '2025-07-06 14:15:05', '2025-07-06 14:15:15', 10000, '{"events_count": 6, "days_late": 1}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e12', 'llm_decision', 'completed', '2025-07-06 14:15:25', '2025-07-06 14:17:00', 95000, '{"decision": "rejeter", "confidence": 0.94}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e13', 'tracking_analysis', 'completed', '2025-07-07 11:30:05', '2025-07-07 11:30:15', 10000, '{"events_count": 6, "delivered": true}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e13', 'llm_decision', 'completed', '2025-07-07 11:30:25', '2025-07-07 11:32:00', 95000, '{"decision": "rejeter", "confidence": 0.97}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e14', 'tracking_analysis', 'completed', '2025-07-08 16:45:05', '2025-07-08 16:45:15', 10000, '{"events_count": 7, "returned": true}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e14', 'llm_decision', 'completed', '2025-07-08 16:45:25', '2025-07-08 16:47:00', 95000, '{"decision": "rejeter", "confidence": 0.93}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e15', 'tracking_analysis', 'completed', '2025-07-09 09:20:05', '2025-07-09 09:20:15', 10000, '{"events_count": 6, "claim_age_months": 14}', NULL),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e15', 'llm_decision', 'completed', '2025-07-09 09:20:25', '2025-07-09 09:23:00', 155000, '{"decision": "rejeter", "confidence": 0.96}', NULL)
+ON CONFLICT DO NOTHING;
+
 -- ============================================================================
 -- RECLAMATION DECISIONS (for completed and rejected reclamations)
 -- ============================================================================
 
 -- Decisions for completed reclamations (1-10)
-INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at) VALUES
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0001', 'rembourser', 0.92, 'Colis endommagé avec preuves photographiques. Dommages visibles sur le contenu (porcelaine brisée). Valeur déclarée raisonnable.', '2025-06-10 09:18:00', 'rembourser', 0.92, 'Remboursement approuvé — dommages confirmés par photos et réserves à la livraison.', 'mistral-large-latest', false, '2025-06-10 09:18:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0002', 'rembourser', 0.88, 'Colis perdu confirmé — dernier scan au centre de tri il y a plus de 10 jours. Aucune mise à jour du suivi.', '2025-06-12 14:34:00', 'rembourser', 0.88, 'Remboursement approuvé — colis considéré comme perdu après 10 jours sans mouvement.', 'mistral-large-latest', false, '2025-06-12 14:34:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0003', 'reexpedier', 0.85, 'Non-livraison malgré présence du destinataire. Avis de passage sans tentative réelle. Réexpédition recommandée.', '2025-06-15 10:47:00', 'reexpedier', 0.85, 'Réexpédition ordonnée — défaut de livraison imputable au facteur.', 'mistral-large-latest', false, '2025-06-15 10:47:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0004', 'rembourser', 0.90, 'Retard majeur (5 jours pour un J+2). Erreur d''acheminement documentée. Indemnisation conforme aux CGV.', '2025-06-18 16:24:00', 'rembourser', 0.90, 'Remboursement des frais de port + indemnité forfaitaire pour retard excessif.', 'mistral-large-latest', false, '2025-06-18 16:24:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0005', 'rembourser', 0.87, 'Vol en point relais suspecté. Le colis est marqué comme arrivé mais le commerçant nie l''avoir reçu.', '2025-06-20 11:04:00', 'rembourser', 0.87, 'Remboursement approuvé — responsabilité du point relais engagée.', 'mistral-large-latest', false, '2025-06-20 11:04:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0006', 'rembourser', 0.82, 'Dommages causés par l''humidité durant le transport. Contenu (livres) inutilisable.', '2025-06-22 08:32:00', 'rembourser', 0.82, 'Remboursement partiel — dommages liés aux conditions de transport.', 'mistral-large-latest', false, '2025-06-22 08:32:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0007', 'reexpedier', 0.91, 'Erreur d''adresse imputable au service de livraison. Colis livré à la mauvaise rue.', '2025-06-25 13:48:00', 'reexpedier', 0.91, 'Réexpédition à la bonne adresse — erreur du facteur confirmée.', 'mistral-large-latest', false, '2025-06-25 13:48:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0008', 'rembourser', 0.86, 'Colis bloqué en douane depuis 3 semaines sans évolution. Considéré comme perdu.', '2025-06-28 15:14:00', 'rembourser', 0.86, 'Remboursement approuvé — colis bloqué en douane sans perspective de déblocage.', 'mistral-large-latest', false, '2025-06-28 15:14:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0009', 'reexpedier', 0.89, 'Trois tentatives de livraison échouées sans preuve de passage réel. Caméra du client confirme l''absence du facteur.', '2025-07-01 09:03:00', 'reexpedier', 0.89, 'Réexpédition avec instruction de livraison spécifique au facteur.', 'mistral-large-latest', false, '2025-07-01 09:03:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0010', 'rembourser', 0.93, 'Express 24h livré avec 3 jours de retard. Contenu périssable détérioré. Faute manifeste du service.', '2025-07-03 17:34:00', 'rembourser', 0.93, 'Remboursement total — retard excessif ayant entraîné la perte du contenu périssable.', 'mistral-large-latest', false, '2025-07-03 17:34:00')
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at, metadata) VALUES
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01', 'rembourser', 0.92, 'Colis endommage avec preuves photographiques. Dommages visibles sur le contenu (porcelaine brisee). Valeur declaree raisonnable.', '2025-06-10 09:18:00', 'rembourser', 0.92, 'Remboursement approuve -- dommages confirmes par photos et reserves a la livraison.', 'mistral-large-latest', false, '2025-06-10 09:18:00', '{"reasoning_en": "Reimbursement approved -- damage confirmed by photos and reservations noted at delivery. Declared value reasonable."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02', 'rembourser', 0.88, 'Colis perdu confirme -- dernier scan au centre de tri il y a plus de 10 jours. Aucune mise a jour du suivi.', '2025-06-12 14:34:00', 'rembourser', 0.88, 'Remboursement approuve -- colis considere comme perdu apres 10 jours sans mouvement.', 'mistral-large-latest', false, '2025-06-12 14:34:00', '{"reasoning_en": "Reimbursement approved -- package considered lost after 10 days without movement in tracking."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03', 'reexpedier', 0.85, 'Non-livraison malgre presence du destinataire. Avis de passage sans tentative reelle. Reexpedition recommandee.', '2025-06-15 10:47:00', 'reexpedier', 0.85, 'Reexpedition ordonnee -- defaut de livraison imputable au facteur.', 'mistral-large-latest', false, '2025-06-15 10:47:00', '{"reasoning_en": "Re-shipment ordered -- delivery failure attributable to the postal carrier."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04', 'rembourser', 0.90, 'Retard majeur (5 jours pour un J+2). Erreur d''acheminement documentee. Indemnisation conforme aux CGV.', '2025-06-18 16:24:00', 'rembourser', 0.90, 'Remboursement des frais de port + indemnite forfaitaire pour retard excessif.', 'mistral-large-latest', false, '2025-06-18 16:24:00', '{"reasoning_en": "Reimbursement of shipping costs + flat-rate compensation for excessive delay (5 days for a J+2 service)."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05', 'rembourser', 0.87, 'Vol en point relais suspecte. Le colis est marque comme arrive mais le commercant nie l''avoir recu.', '2025-06-20 11:04:00', 'rembourser', 0.87, 'Remboursement approuve -- responsabilite du point relais engagee.', 'mistral-large-latest', false, '2025-06-20 11:04:00', '{"reasoning_en": "Reimbursement approved -- pickup point liability engaged. Package marked as arrived but shopkeeper denies receipt."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e06', 'rembourser', 0.82, 'Dommages causes par l''humidite durant le transport. Contenu (livres) inutilisable.', '2025-06-22 08:32:00', 'rembourser', 0.82, 'Remboursement partiel -- dommages lies aux conditions de transport.', 'mistral-large-latest', false, '2025-06-22 08:32:00', '{"reasoning_en": "Partial reimbursement -- damage linked to transport conditions. Books rendered unusable by moisture."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e07', 'reexpedier', 0.91, 'Erreur d''adresse imputable au service de livraison. Colis livre a la mauvaise rue.', '2025-06-25 13:48:00', 'reexpedier', 0.91, 'Reexpedition a la bonne adresse -- erreur du facteur confirmee.', 'mistral-large-latest', false, '2025-06-25 13:48:00', '{"reasoning_en": "Re-shipment to the correct address -- postal carrier error confirmed. Delivered to wrong street."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e08', 'rembourser', 0.86, 'Colis bloque en douane depuis 3 semaines sans evolution. Considere comme perdu.', '2025-06-28 15:14:00', 'rembourser', 0.86, 'Remboursement approuve -- colis bloque en douane sans perspective de deblocage.', 'mistral-large-latest', false, '2025-06-28 15:14:00', '{"reasoning_en": "Reimbursement approved -- package stuck in customs for 3 weeks with no prospect of clearance. Considered lost."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e09', 'reexpedier', 0.89, 'Trois tentatives de livraison echouees sans preuve de passage reel. Camera du client confirme l''absence du facteur.', '2025-07-01 09:03:00', 'reexpedier', 0.89, 'Reexpedition avec instruction de livraison specifique au facteur.', 'mistral-large-latest', false, '2025-07-01 09:03:00', '{"reasoning_en": "Re-shipment with specific delivery instructions for the carrier. Customer camera confirms no actual delivery attempts were made."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e10', 'rembourser', 0.93, 'Express 24h livre avec 3 jours de retard. Contenu perissable deteriore. Faute manifeste du service.', '2025-07-03 17:34:00', 'rembourser', 0.93, 'Remboursement total -- retard excessif ayant entraine la perte du contenu perissable.', 'mistral-large-latest', false, '2025-07-03 17:34:00', '{"reasoning_en": "Full reimbursement -- excessive delay caused loss of perishable content. Express 24h delivered 3 days late."}')
 ON CONFLICT DO NOTHING;
 
 -- Decisions for rejected reclamations (11-15)
-INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at) VALUES
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0011', 'rejeter', 0.95, 'Dommages superficiels sur l''emballage uniquement. Contenu intact et fonctionnel. Pas de préjudice.', '2025-07-05 10:02:00', 'rejeter', 0.95, 'Réclamation rejetée — aucun dommage sur le contenu du colis.', 'mistral-large-latest', false, '2025-07-05 10:02:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0012', 'rejeter', 0.94, 'Retard de 1 jour seulement par rapport à l''estimation. Les dates estimées ne sont pas contractuelles.', '2025-07-06 14:17:00', 'rejeter', 0.94, 'Réclamation rejetée — retard mineur dans les tolérances du service.', 'mistral-large-latest', false, '2025-07-06 14:17:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0013', 'rejeter', 0.97, 'Le client a retrouvé son colis chez le gardien. Réclamation sans objet.', '2025-07-07 11:32:00', 'rejeter', 0.97, 'Réclamation rejetée — colis retrouvé par le client.', 'mistral-large-latest', false, '2025-07-07 11:32:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0014', 'rejeter', 0.93, 'Adresse erronée fournie par le client. La non-livraison n''est pas imputable au service postal.', '2025-07-08 16:47:00', 'rejeter', 0.93, 'Réclamation rejetée — erreur d''adresse de la part de l''expéditeur.', 'mistral-large-latest', false, '2025-07-08 16:47:00'),
-    (uuid_generate_v4(), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0015', 'rejeter', 0.96, 'Réclamation déposée 14 mois après la livraison. Délai de réclamation dépassé (1 an maximum).', '2025-07-09 09:23:00', 'rejeter', 0.96, 'Réclamation rejetée — délai de prescription dépassé (14 mois).', 'mistral-large-latest', false, '2025-07-09 09:23:00')
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at, metadata) VALUES
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e11', 'rejeter', 0.95, 'Dommages superficiels sur l''emballage uniquement. Contenu intact et fonctionnel. Pas de prejudice.', '2025-07-05 10:02:00', 'rejeter', 0.95, 'Reclamation rejetee -- aucun dommage sur le contenu du colis.', 'mistral-large-latest', false, '2025-07-05 10:02:00', '{"reasoning_en": "Claim rejected -- no damage to package contents. Only superficial marks on outer packaging."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e12', 'rejeter', 0.94, 'Retard de 1 jour seulement par rapport a l''estimation. Les dates estimees ne sont pas contractuelles.', '2025-07-06 14:17:00', 'rejeter', 0.94, 'Reclamation rejetee -- retard mineur dans les tolerances du service.', 'mistral-large-latest', false, '2025-07-06 14:17:00', '{"reasoning_en": "Claim rejected -- minor delay within service tolerances. Estimated dates are not contractual."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e13', 'rejeter', 0.97, 'Le client a retrouve son colis chez le gardien. Reclamation sans objet.', '2025-07-07 11:32:00', 'rejeter', 0.97, 'Reclamation rejetee -- colis retrouve par le client.', 'mistral-large-latest', false, '2025-07-07 11:32:00', '{"reasoning_en": "Claim rejected -- package found by the customer at the building concierge. Claim is moot."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e14', 'rejeter', 0.93, 'Adresse erronee fournie par le client. La non-livraison n''est pas imputable au service postal.', '2025-07-08 16:47:00', 'rejeter', 0.93, 'Reclamation rejetee -- erreur d''adresse de la part de l''expediteur.', 'mistral-large-latest', false, '2025-07-08 16:47:00', '{"reasoning_en": "Claim rejected -- incorrect address provided by the customer. Non-delivery is not attributable to the postal service."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e15', 'rejeter', 0.96, 'Reclamation deposee 14 mois apres la livraison. Delai de reclamation depasse (1 an maximum).', '2025-07-09 09:23:00', 'rejeter', 0.96, 'Reclamation rejetee -- delai de prescription depasse (14 mois).', 'mistral-large-latest', false, '2025-07-09 09:23:00', '{"reasoning_en": "Claim rejected -- statute of limitations exceeded (14 months). Maximum claim period is 1 year."}')
 ON CONFLICT DO NOTHING;
+
+-- Decisions for manual_review reclamations (26-28) — requires_manual_review = true
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at, metadata) VALUES
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e26', 'rembourser', 0.52, 'Impossible de determiner si le dommage est du au transport ou a un defaut d''emballage. Expertise technique necessaire.', '2025-07-13 09:35:00', 'rembourser', 0.52, 'Expertise technique requise -- la cause du dommage (transport vs emballage d''origine) ne peut etre determinee automatiquement.', 'mistral-large-latest', true, '2025-07-13 09:35:00', '{"reasoning_en": "Technical expertise required -- the cause of damage (transport vs original packaging) cannot be determined automatically. High-value item (RTX 4090)."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e27', 'rembourser', 0.45, 'Pattern suspect: 3eme reclamation en 6 mois pour des colis de valeur. Verification du profil client necessaire avant decision.', '2025-07-13 11:05:00', 'rembourser', 0.45, 'Verification du profil client necessaire -- pattern de reclamations repetitives pour des objets de valeur detecte.', 'mistral-large-latest', true, '2025-07-13 11:05:00', '{"reasoning_en": "Client profile verification required -- pattern of repeated claims for valuable items detected. Third similar claim in 6 months."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e28', 'reexpedier', 0.55, 'Situation d''homonymie complexe. Intervention du bureau de poste necessaire pour recuperer le colis et confirmer l''identite du destinataire.', '2025-07-13 14:05:00', 'reexpedier', 0.55, 'Mediation necessaire -- homonymie confirmee entre deux residents de la meme rue. Le bureau de poste doit intervenir.', 'mistral-large-latest', true, '2025-07-13 14:05:00', '{"reasoning_en": "Mediation required -- confirmed case of same-name residents on the same street. Post office must intervene to recover package and verify recipient identity."}')
+ON CONFLICT DO NOTHING;
+
+-- Decisions for escalated reclamations (29-30) — requires_manual_review = true
+INSERT INTO reclamation_decisions (id, reclamation_id, initial_decision, initial_confidence, initial_reasoning, initial_decided_at, decision, confidence, reasoning, llm_model, requires_manual_review, decided_at, metadata) VALUES
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e29', 'escalader', 0.40, 'Vol organise au point relais impliquant plusieurs victimes. Enquete de police en cours (PV-2025-07890). Escalade vers le service juridique necessaire.', '2025-07-13 16:05:00', 'escalader', 0.40, 'Escalade vers service juridique -- vol organise avec plainte de police. Plusieurs victimes. Point relais desactive.', 'mistral-large-latest', true, '2025-07-13 16:05:00', '{"reasoning_en": "Escalation to legal department -- organized theft with police report. Multiple victims. Pickup point deactivated. Requires coordination with law enforcement."}'),
+    (uuid_generate_v4(), 'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e30', 'escalader', 0.48, 'Litige assureur complexe. Valeur declaree (500 EUR) vs estimation expert (2500 EUR). Expertise independante en cours. Montant depasse le seuil de decision autonome.', '2025-07-14 08:05:00', 'escalader', 0.48, 'Escalade vers le service contentieux -- litige assureur sur le montant d''indemnisation. Expertise independante en attente.', 'mistral-large-latest', true, '2025-07-14 08:05:00', '{"reasoning_en": "Escalation to litigation department -- insurer dispute over compensation amount. Declared value (500 EUR) vs expert valuation (2500 EUR). Independent appraisal pending."}')
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- RECLAMATION DOCUMENTS (OCR for processed reclamations 1-15, 26-30)
+-- ============================================================================
+
+-- Documents for completed reclamations (1-10)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e01',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_001.pdf',
+    85000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C198745632FR
+Date de depot: 10/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Jean-Pierre Dupont
+Email: jp.dupont@gmail.com
+Telephone: 06 12 34 56 78
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis recu avec le carton completement ecrase. Le contenu (service a the en porcelaine) est brise en plusieurs morceaux. Des reserves ont ete emises a la signature.
+
+Valeur declaree: 89,90 EUR
+
+PIECES JOINTES:
+- Photos du colis endommage (3 photos)
+- Bon de livraison avec reserves
+- Facture d''achat du contenu',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C198745632FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: J***-P*** D***
+Email: j***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis recu avec le carton completement ecrase. Le contenu (service a the en porcelaine) est brise en plusieurs morceaux. Des reserves ont ete emises a la signature.
+
+Valeur declaree: 89,90 EUR
+
+PIECES JOINTES:
+- Photos du colis endommage (3 photos)
+- Bon de livraison avec reserves
+- Facture d''achat du contenu',
+    '{"numero_suivi": "6C198745632FR", "type_reclamation": "colis_endommage", "client_nom": "Jean-Pierre Dupont", "valeur_declaree": 89.90, "date_depot": "2025-06-10", "pieces_jointes": 3}',
+    0.94,
+    '2025-06-10 09:16:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e02',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_001.pdf',
+    72000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C234567891FR
+Date de depot: 12/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Marie-Claire Lefebvre
+Email: mc.lefebvre@orange.fr
+Telephone: 07 23 45 67 89
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Colis expedie le 2 juin 2025, toujours pas recu. Le suivi indique un dernier scan au centre de tri de Roissy le 4 juin. Aucune mise a jour depuis.
+
+Valeur declaree: 245,00 EUR
+
+PIECES JOINTES:
+- Capture d''ecran du suivi Colissimo
+- Confirmation d''expedition du vendeur
+- Facture d''achat',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C234567891FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: M***-C*** L***
+Email: m***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Colis expedie le ** juin ****, toujours pas recu. Le suivi indique un dernier scan au centre de tri de Roissy le ** juin. Aucune mise a jour depuis.
+
+Valeur declaree: 245,00 EUR
+
+PIECES JOINTES:
+- Capture d''ecran du suivi Colissimo
+- Confirmation d''expedition du vendeur
+- Facture d''achat',
+    '{"numero_suivi": "6C234567891FR", "type_reclamation": "colis_perdu", "client_nom": "Marie-Claire Lefebvre", "valeur_declaree": 245.00, "date_depot": "2025-06-12", "dernier_scan": "Roissy", "jours_sans_mouvement": 10}',
+    0.93,
+    '2025-06-12 14:31:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e03',
+    'reclamation_colis',
+    'reclamations/reclamation_non_livre_001.pdf',
+    68000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C345678912FR
+Date de depot: 15/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Francois Martin
+Email: f.martin@free.fr
+Telephone: 06 34 56 78 90
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Le livreur a laisse un avis de passage alors que j''etais present a mon domicile toute la journee. Aucune tentative de sonnette. Le colis a ete renvoye au bureau de poste sans raison.
+
+Valeur declaree: 32,50 EUR
+
+PIECES JOINTES:
+- Avis de passage (photo)
+- Attestation de presence a domicile',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C345678912FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: F*** M***
+Email: f***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Le livreur a laisse un avis de passage alors que j''etais present a mon domicile toute la journee. Aucune tentative de sonnette. Le colis a ete renvoye au bureau de poste sans raison.
+
+Valeur declaree: 32,50 EUR
+
+PIECES JOINTES:
+- Avis de passage (photo)
+- Attestation de presence a domicile',
+    '{"numero_suivi": "6C345678912FR", "type_reclamation": "non_livre", "client_nom": "Francois Martin", "valeur_declaree": 32.50, "date_depot": "2025-06-15", "avis_passage": true}',
+    0.95,
+    '2025-06-15 10:46:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e04',
+    'reclamation_colis',
+    'reclamations/reclamation_retard_livraison_001.pdf',
+    71000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C456789123FR
+Date de depot: 18/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Sophie Bernard
+Email: sophie.bernard@laposte.net
+Telephone: 06 45 67 89 01
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis commande en Colissimo J+2 le 8 juin 2025, toujours pas livre au 18 juin. Delai largement depasse. Il s''agissait d''un cadeau d''anniversaire qui n''est jamais arrive a temps.
+
+Service souscrit: Colissimo J+2
+Date d''expedition: 08/06/2025
+Delai attendu: 10/06/2025
+Retard constate: 8 jours et plus
+
+Valeur declaree: 67,00 EUR
+
+PIECES JOINTES:
+- Confirmation de commande
+- Capture du suivi Colissimo',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C456789123FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: S*** B***
+Email: s***@***.net
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis commande en Colissimo J+2 le ** juin ****, toujours pas livre au ** juin. Delai largement depasse. Il s''agissait d''un cadeau d''anniversaire qui n''est jamais arrive a temps.
+
+Service souscrit: Colissimo J+2
+Date d''expedition: **/**/****
+Delai attendu: **/**/****
+Retard constate: 8 jours et plus
+
+Valeur declaree: 67,00 EUR
+
+PIECES JOINTES:
+- Confirmation de commande
+- Capture du suivi Colissimo',
+    '{"numero_suivi": "6C456789123FR", "type_reclamation": "retard_livraison", "client_nom": "Sophie Bernard", "valeur_declaree": 67.00, "date_depot": "2025-06-18", "service": "Colissimo J+2", "retard_jours": 8}',
+    0.93,
+    '2025-06-18 16:21:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e05',
+    'reclamation_colis',
+    'reclamations/reclamation_vol_point_relais_001.pdf',
+    78000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C567891234FR
+Date de depot: 20/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Ahmed Benali
+Email: a.benali@hotmail.fr
+Telephone: 07 56 78 90 12
+
+TYPE DE RECLAMATION: Vol en point relais
+
+POINT RELAIS:
+Nom: Tabac Presse du Marais
+Identifiant: PR-75004-12
+Adresse: 15 rue des Francs-Bourgeois, 75004 Paris
+
+DESCRIPTION DES FAITS:
+Mon colis a ete marque comme livre au point relais Tabac Presse du Marais, mais le commercant affirme ne jamais l''avoir recu. Le suivi indique une livraison au point relais le 18 juin 2025. Je me suis presente le 19 juin et le commercant a nie toute reception.
+
+Valeur declaree: 189,99 EUR
+
+PIECES JOINTES:
+- Attestation du commercant
+- Capture du suivi indiquant "livre"',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C567891234FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: A*** B***
+Email: a***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Vol en point relais
+
+POINT RELAIS:
+Nom: Tabac Presse du Marais
+Identifiant: PR-75004-12
+Adresse: 15 rue des Francs-Bourgeois, 75004 Paris
+
+DESCRIPTION DES FAITS:
+Mon colis a ete marque comme livre au point relais Tabac Presse du Marais, mais le commercant affirme ne jamais l''avoir recu. Le suivi indique une livraison au point relais le ** juin ****. Je me suis presente le ** juin et le commercant a nie toute reception.
+
+Valeur declaree: 189,99 EUR
+
+PIECES JOINTES:
+- Attestation du commercant
+- Capture du suivi indiquant "livre"',
+    '{"numero_suivi": "6C567891234FR", "type_reclamation": "vol_point_relais", "client_nom": "Ahmed Benali", "valeur_declaree": 189.99, "date_depot": "2025-06-20", "point_relais_id": "PR-75004-12", "point_relais_nom": "Tabac Presse du Marais"}',
+    0.92,
+    '2025-06-20 11:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e06',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_002.pdf',
+    65000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C678912345FR
+Date de depot: 22/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Isabelle Moreau
+Email: i.moreau@sfr.fr
+Telephone: 06 67 89 01 23
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Emballage exterieur intact mais l''interieur du colis sentait fortement l''humidite. Les livres commandes sont completement gondoles et inutilisables. Le colis a vraisemblablement ete stocke dans un environnement humide durant le transport.
+
+Valeur declaree: 54,80 EUR
+
+PIECES JOINTES:
+- Photos des livres endommages (2 photos)
+- Facture de la librairie en ligne',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C678912345FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: I*** M***
+Email: i***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Emballage exterieur intact mais l''interieur du colis sentait fortement l''humidite. Les livres commandes sont completement gondoles et inutilisables. Le colis a vraisemblablement ete stocke dans un environnement humide durant le transport.
+
+Valeur declaree: 54,80 EUR
+
+PIECES JOINTES:
+- Photos des livres endommages (2 photos)
+- Facture de la librairie en ligne',
+    '{"numero_suivi": "6C678912345FR", "type_reclamation": "colis_endommage", "client_nom": "Isabelle Moreau", "valeur_declaree": 54.80, "date_depot": "2025-06-22", "cause_dommage": "humidite"}',
+    0.95,
+    '2025-06-22 08:31:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e07',
+    'reclamation_colis',
+    'reclamations/reclamation_mauvaise_adresse_001.pdf',
+    70000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C789123456FR
+Date de depot: 25/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Pierre Dubois
+Email: p.dubois@gmail.com
+Telephone: 06 78 90 12 34
+
+TYPE DE RECLAMATION: Mauvaise adresse de livraison
+
+ADRESSE PREVUE: 12 rue des Tilleuls, 75012 Paris
+ADRESSE DE LIVRAISON EFFECTIVE: 12 rue des Lilas, 75012 Paris
+
+DESCRIPTION DES FAITS:
+Colis livre au 12 rue des Lilas au lieu du 12 rue des Tilleuls. Le voisin qui l''a recu refuse de me le remettre. L''adresse sur le colis est correcte (rue des Tilleuls), l''erreur est imputable au facteur.
+
+Valeur declaree: 125,00 EUR
+
+PIECES JOINTES:
+- Photo de l''etiquette d''expedition
+- Confirmation de commande avec adresse correcte',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C789123456FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: P*** D***
+Email: p***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Mauvaise adresse de livraison
+
+ADRESSE PREVUE: 12 rue des Tilleuls, 75012 Paris
+ADRESSE DE LIVRAISON EFFECTIVE: 12 rue des Lilas, 75012 Paris
+
+DESCRIPTION DES FAITS:
+Colis livre au 12 rue des Lilas au lieu du 12 rue des Tilleuls. Le voisin qui l''a recu refuse de me le remettre. L''adresse sur le colis est correcte (rue des Tilleuls), l''erreur est imputable au facteur.
+
+Valeur declaree: 125,00 EUR
+
+PIECES JOINTES:
+- Photo de l''etiquette d''expedition
+- Confirmation de commande avec adresse correcte',
+    '{"numero_suivi": "6C789123456FR", "type_reclamation": "mauvaise_adresse", "client_nom": "Pierre Dubois", "valeur_declaree": 125.00, "date_depot": "2025-06-25", "adresse_prevue": "12 rue des Tilleuls, 75012", "adresse_effective": "12 rue des Lilas, 75012"}',
+    0.94,
+    '2025-06-25 13:46:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e08',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_002.pdf',
+    75000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C891234567FR
+Date de depot: 28/06/2025
+
+INFORMATIONS CLIENT:
+Nom: Nathalie Girard
+Email: n.girard@yahoo.fr
+Telephone: 07 89 01 23 45
+
+TYPE DE RECLAMATION: Colis perdu (international)
+
+DESCRIPTION DES FAITS:
+Colis expedie depuis la Belgique le 5 juin 2025. Le suivi s''arrete a la douane de Lille depuis 3 semaines. Aucune information disponible aupres du service client. Le contenu est un lot de vetements de marque.
+
+Pays d''origine: Belgique
+Douane bloquante: Lille
+Duree de blocage: 3 semaines
+
+Valeur declaree: 340,00 EUR
+
+PIECES JOINTES:
+- Preuve d''expedition (BPost Belgique)
+- Facture des articles
+- Capture du suivi arrete a Lille',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C891234567FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: N*** G***
+Email: n***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu (international)
+
+DESCRIPTION DES FAITS:
+Colis expedie depuis la Belgique le ** juin ****. Le suivi s''arrete a la douane de Lille depuis 3 semaines. Aucune information disponible aupres du service client. Le contenu est un lot de vetements de marque.
+
+Pays d''origine: Belgique
+Douane bloquante: Lille
+Duree de blocage: 3 semaines
+
+Valeur declaree: 340,00 EUR
+
+PIECES JOINTES:
+- Preuve d''expedition (BPost Belgique)
+- Facture des articles
+- Capture du suivi arrete a Lille',
+    '{"numero_suivi": "6C891234567FR", "type_reclamation": "colis_perdu", "client_nom": "Nathalie Girard", "valeur_declaree": 340.00, "date_depot": "2025-06-28", "international": true, "pays_origine": "Belgique", "douane": "Lille"}',
+    0.91,
+    '2025-06-28 15:11:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e09',
+    'reclamation_colis',
+    'reclamations/reclamation_non_livre_002.pdf',
+    69000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C912345678FR
+Date de depot: 01/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Laurent Petit
+Email: l.petit@outlook.fr
+Telephone: 06 90 12 34 56
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Troisieme tentative de livraison echouee. Je suis en teletravail a domicile tous les jours et personne ne sonne a la porte. La camera de surveillance installee a l''entree ne montre aucun passage de facteur aux heures indiquees sur les avis.
+
+Nombre de tentatives: 3
+Presence confirmee: Oui (teletravail)
+Camera de surveillance: Oui
+
+Valeur declaree: 78,50 EUR
+
+PIECES JOINTES:
+- Extraits video de la camera (3 fichiers)
+- Avis de passage (3 avis)',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C912345678FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: L*** P***
+Email: l***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Troisieme tentative de livraison echouee. Je suis en teletravail a domicile tous les jours et personne ne sonne a la porte. La camera de surveillance installee a l''entree ne montre aucun passage de facteur aux heures indiquees sur les avis.
+
+Nombre de tentatives: 3
+Presence confirmee: Oui (teletravail)
+Camera de surveillance: Oui
+
+Valeur declaree: 78,50 EUR
+
+PIECES JOINTES:
+- Extraits video de la camera (3 fichiers)
+- Avis de passage (3 avis)',
+    '{"numero_suivi": "6C912345678FR", "type_reclamation": "non_livre", "client_nom": "Laurent Petit", "valeur_declaree": 78.50, "date_depot": "2025-07-01", "tentatives_livraison": 3, "camera_surveillance": true}',
+    0.94,
+    '2025-07-01 09:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e10',
+    'reclamation_colis',
+    'reclamations/reclamation_retard_livraison_002.pdf',
+    67000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C123456789FR
+Date de depot: 03/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Camille Roux
+Email: c.roux@gmail.com
+Telephone: 07 01 23 45 67
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colissimo express 24h envoye le lundi 30 juin, toujours en attente le vendredi 4 juillet. Contenu perissable (chocolats artisanaux) probablement deteriore par la chaleur et le delai.
+
+Service souscrit: Colissimo Express 24h
+Date d''expedition: 30/06/2025
+Delai attendu: 01/07/2025
+Retard constate: 4 jours
+Contenu perissable: Oui
+
+Valeur declaree: 95,00 EUR
+
+PIECES JOINTES:
+- Bon d''expedition Express 24h
+- Facture chocolatier',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C123456789FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: C*** R***
+Email: c***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colissimo express 24h envoye le lundi ** juin, toujours en attente le vendredi ** juillet. Contenu perissable (chocolats artisanaux) probablement deteriore par la chaleur et le delai.
+
+Service souscrit: Colissimo Express 24h
+Date d''expedition: **/**/****
+Delai attendu: **/**/****
+Retard constate: 4 jours
+Contenu perissable: Oui
+
+Valeur declaree: 95,00 EUR
+
+PIECES JOINTES:
+- Bon d''expedition Express 24h
+- Facture chocolatier',
+    '{"numero_suivi": "6C123456789FR", "type_reclamation": "retard_livraison", "client_nom": "Camille Roux", "valeur_declaree": 95.00, "date_depot": "2025-07-03", "service": "Colissimo Express 24h", "retard_jours": 4, "contenu_perissable": true}',
+    0.93,
+    '2025-07-03 17:31:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+-- Documents for rejected reclamations (11-15)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e11',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_003.pdf',
+    55000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C111222333FR
+Date de depot: 05/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Gerard Fontaine
+Email: g.fontaine@wanadoo.fr
+Telephone: 06 11 22 33 44
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Legere eraflure sur le carton d''emballage exterieur. Le contenu (vetements) est intact et en parfait etat. Je demande tout de meme un geste commercial.
+
+Valeur declaree: 29,90 EUR
+
+PIECES JOINTES:
+- Photo de l''eraflure sur le carton',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C111222333FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: G*** F***
+Email: g***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Legere eraflure sur le carton d''emballage exterieur. Le contenu (vetements) est intact et en parfait etat. Je demande tout de meme un geste commercial.
+
+Valeur declaree: 29,90 EUR
+
+PIECES JOINTES:
+- Photo de l''eraflure sur le carton',
+    '{"numero_suivi": "6C111222333FR", "type_reclamation": "colis_endommage", "client_nom": "Gerard Fontaine", "valeur_declaree": 29.90, "date_depot": "2025-07-05", "contenu_intact": true, "dommage_superficiel": true}',
+    0.96,
+    '2025-07-05 10:01:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e12',
+    'reclamation_colis',
+    'reclamations/reclamation_retard_livraison_003.pdf',
+    52000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C222333444FR
+Date de depot: 06/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Monique Duval
+Email: m.duval@free.fr
+Telephone: 07 22 33 44 55
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis livre avec 1 jour de retard sur la date estimee. Pas de prejudice particulier, mais c''est le principe. Les dates estimees devraient etre respectees.
+
+Service souscrit: Colissimo domicile
+Retard constate: 1 jour
+
+Valeur declaree: 15,00 EUR',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C222333444FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: M*** D***
+Email: m***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis livre avec 1 jour de retard sur la date estimee. Pas de prejudice particulier, mais c''est le principe. Les dates estimees devraient etre respectees.
+
+Service souscrit: Colissimo domicile
+Retard constate: 1 jour
+
+Valeur declaree: 15,00 EUR',
+    '{"numero_suivi": "6C222333444FR", "type_reclamation": "retard_livraison", "client_nom": "Monique Duval", "valeur_declaree": 15.00, "date_depot": "2025-07-06", "retard_jours": 1, "prejudice": false}',
+    0.96,
+    '2025-07-06 14:16:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e13',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_003.pdf',
+    50000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C333444555FR
+Date de depot: 07/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Eric Leroy
+Email: e.leroy@gmail.com
+Telephone: 06 33 44 55 66
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Je n''ai pas recu mon colis.
+
+MISE A JOUR: En fait il etait chez le gardien de l''immeuble, je ne l''avais pas vu. Desole pour le derangement.
+
+Valeur declaree: 45,00 EUR',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C333444555FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: E*** L***
+Email: e***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Je n''ai pas recu mon colis.
+
+MISE A JOUR: En fait il etait chez le gardien de l''immeuble, je ne l''avais pas vu. Desole pour le derangement.
+
+Valeur declaree: 45,00 EUR',
+    '{"numero_suivi": "6C333444555FR", "type_reclamation": "colis_perdu", "client_nom": "Eric Leroy", "valeur_declaree": 45.00, "date_depot": "2025-07-07", "auto_resolu": true}',
+    0.96,
+    '2025-07-07 11:31:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e14',
+    'reclamation_colis',
+    'reclamations/reclamation_non_livre_003.pdf',
+    54000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C444555666FR
+Date de depot: 08/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Valerie Simon
+Email: v.simon@orange.fr
+Telephone: 07 44 55 66 77
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Colis non livre a mon adresse. En verifiant ma commande, je me suis rendu compte que j''avais donne une mauvaise adresse lors de la commande (ancien code postal). L''erreur est de mon fait.
+
+Valeur declaree: 22,00 EUR',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C444555666FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: V*** S***
+Email: v***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Non livre
+
+DESCRIPTION DES FAITS:
+Colis non livre a mon adresse. En verifiant ma commande, je me suis rendu compte que j''avais donne une mauvaise adresse lors de la commande (ancien code postal). L''erreur est de mon fait.
+
+Valeur declaree: 22,00 EUR',
+    '{"numero_suivi": "6C444555666FR", "type_reclamation": "non_livre", "client_nom": "Valerie Simon", "valeur_declaree": 22.00, "date_depot": "2025-07-08", "erreur_client": true}',
+    0.96,
+    '2025-07-08 16:46:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e15',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_004.pdf',
+    58000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C555666777FR
+Date de depot: 09/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Thierry Lambert
+Email: t.lambert@laposte.net
+Telephone: 06 55 66 77 88
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Reclamation pour colis endommage recu il y a 14 mois. Je viens seulement de m''en apercevoir en ouvrant le carton que j''avais stocke dans mon garage. Le contenu (casque audio) est casse.
+
+Date de reception du colis: Mai 2024
+Delai avant ouverture: 14 mois
+
+Valeur declaree: 180,00 EUR
+
+PIECES JOINTES:
+- Photo du casque casse',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C555666777FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: T*** L***
+Email: t***@***.net
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Reclamation pour colis endommage recu il y a 14 mois. Je viens seulement de m''en apercevoir en ouvrant le carton que j''avais stocke dans mon garage. Le contenu (casque audio) est casse.
+
+Date de reception du colis: Mai ****
+Delai avant ouverture: 14 mois
+
+Valeur declaree: 180,00 EUR
+
+PIECES JOINTES:
+- Photo du casque casse',
+    '{"numero_suivi": "6C555666777FR", "type_reclamation": "colis_endommage", "client_nom": "Thierry Lambert", "valeur_declaree": 180.00, "date_depot": "2025-07-09", "delai_reclamation_mois": 14, "prescription_depassee": true}',
+    0.95,
+    '2025-07-09 09:21:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+-- Documents for manual_review reclamations (26-28)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e26',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_007.pdf',
+    92000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C161718191FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Helene Picard
+Email: h.picard@sfr.fr
+Telephone: 07 16 17 18 19
+
+TYPE DE RECLAMATION: Colis endommage (materiel informatique haute valeur)
+
+DESCRIPTION DES FAITS:
+Colis contenant du materiel informatique (carte graphique NVIDIA RTX 4090, valeur 500 EUR). Le produit ne fonctionne plus apres livraison. Aucun dommage visible sur l''emballage exterieur. La question est de savoir si le dommage est du au transport (choc interne) ou a un emballage d''origine insuffisant de la part du vendeur.
+
+Le vendeur affirme avoir emballe correctement le produit. La Poste indique que le colis n''a pas subi de choc anormal.
+
+Valeur declaree: 500,00 EUR
+
+PIECES JOINTES:
+- Photos de l''emballage exterieur intact
+- Photos de l''emballage interieur
+- Facture d''achat
+- Attestation du vendeur sur l''emballage',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C161718191FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: H*** P***
+Email: h***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage (materiel informatique haute valeur)
+
+DESCRIPTION DES FAITS:
+Colis contenant du materiel informatique (carte graphique NVIDIA RTX 4090, valeur 500 EUR). Le produit ne fonctionne plus apres livraison. Aucun dommage visible sur l''emballage exterieur. La question est de savoir si le dommage est du au transport (choc interne) ou a un emballage d''origine insuffisant de la part du vendeur.
+
+Le vendeur affirme avoir emballe correctement le produit. La Poste indique que le colis n''a pas subi de choc anormal.
+
+Valeur declaree: 500,00 EUR
+
+PIECES JOINTES:
+- Photos de l''emballage exterieur intact
+- Photos de l''emballage interieur
+- Facture d''achat
+- Attestation du vendeur sur l''emballage',
+    '{"numero_suivi": "6C161718191FR", "type_reclamation": "colis_endommage", "client_nom": "Helene Picard", "valeur_declaree": 500.00, "date_depot": "2025-07-13", "haute_valeur": true, "cause_ambigue": true, "produit": "RTX 4090"}',
+    0.93,
+    '2025-07-13 09:31:00',
+    3,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e27',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_006.pdf',
+    88000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C171819202FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Yannick Lemaire
+Email: y.lemaire@hotmail.fr
+Telephone: 06 17 18 19 20
+
+TYPE DE RECLAMATION: Colis perdu (bijoux de valeur)
+
+DESCRIPTION DES FAITS:
+Envoi de bijoux de valeur (bague en or). Le suivi montre une livraison effectuee le 10 juillet mais je n''ai rien recu. Pas d''avis de passage, pas de signature sur le bon de livraison.
+
+NOTE INTERNE: Il s''agit de la troisieme reclamation similaire de ce client en 6 mois pour des colis de valeur. Les deux precedentes ont ete indemnisees.
+
+Reclamation precedente 1: RECL-2025-XXX (boucles d''oreilles, 220 EUR, indemnise)
+Reclamation precedente 2: RECL-2025-YYY (bracelet, 350 EUR, indemnise)
+
+Valeur declaree: 480,00 EUR
+
+PIECES JOINTES:
+- Facture du bijoutier
+- Capture du suivi',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C171819202FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: Y*** L***
+Email: y***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu (bijoux de valeur)
+
+DESCRIPTION DES FAITS:
+Envoi de bijoux de valeur (bague en or). Le suivi montre une livraison effectuee le ** juillet mais je n''ai rien recu. Pas d''avis de passage, pas de signature sur le bon de livraison.
+
+NOTE INTERNE: Il s''agit de la troisieme reclamation similaire de ce client en 6 mois pour des colis de valeur. Les deux precedentes ont ete indemnisees.
+
+Reclamation precedente 1: RECL-2025-XXX (boucles d''oreilles, *** EUR, indemnise)
+Reclamation precedente 2: RECL-2025-YYY (bracelet, *** EUR, indemnise)
+
+Valeur declaree: 480,00 EUR
+
+PIECES JOINTES:
+- Facture du bijoutier
+- Capture du suivi',
+    '{"numero_suivi": "6C171819202FR", "type_reclamation": "colis_perdu", "client_nom": "Yannick Lemaire", "valeur_declaree": 480.00, "date_depot": "2025-07-13", "reclamations_precedentes": 2, "pattern_suspect": true, "produit": "bague en or"}',
+    0.91,
+    '2025-07-13 11:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e28',
+    'reclamation_colis',
+    'reclamations/reclamation_mauvaise_adresse_003.pdf',
+    82000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C181920213FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Stephanie Vincent
+Email: s.vincent@gmail.com
+Telephone: 07 18 19 20 21
+
+TYPE DE RECLAMATION: Mauvaise adresse (homonymie)
+
+ADRESSE DU DESTINATAIRE: 8 avenue Victor Hugo, 92100 Boulogne-Billancourt
+ADRESSE DE LIVRAISON EFFECTIVE: 8 avenue Victor Hugo, 92100 Boulogne-Billancourt (meme adresse, personne differente)
+
+DESCRIPTION DES FAITS:
+Le colis a ete livre a un homonyme (S. Vincent) habitant dans le meme immeuble au 3eme etage, alors que je suis au 5eme. Le destinataire qui a recu le colis refuse de le restituer, pretendant qu''il lui etait destine. Le facteur n''a pas verifie le numero d''appartement.
+
+Situation complexe: meme nom, meme adresse, meme immeuble. Intervention du bureau de poste necessaire.
+
+Valeur declaree: 175,00 EUR
+
+PIECES JOINTES:
+- Avis de passage au nom de S. Vincent (sans precision d''etage)
+- Confirmation de commande avec numero d''appartement',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C181920213FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: S*** V***
+Email: s***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Mauvaise adresse (homonymie)
+
+ADRESSE DU DESTINATAIRE: 8 avenue Victor Hugo, 92100 Boulogne-Billancourt
+ADRESSE DE LIVRAISON EFFECTIVE: 8 avenue Victor Hugo, 92100 Boulogne-Billancourt (meme adresse, personne differente)
+
+DESCRIPTION DES FAITS:
+Le colis a ete livre a un homonyme (S*** V***) habitant dans le meme immeuble au 3eme etage, alors que je suis au 5eme. Le destinataire qui a recu le colis refuse de le restituer, pretendant qu''il lui etait destine. Le facteur n''a pas verifie le numero d''appartement.
+
+Situation complexe: meme nom, meme adresse, meme immeuble. Intervention du bureau de poste necessaire.
+
+Valeur declaree: 175,00 EUR
+
+PIECES JOINTES:
+- Avis de passage au nom de S*** V*** (sans precision d''etage)
+- Confirmation de commande avec numero d''appartement',
+    '{"numero_suivi": "6C181920213FR", "type_reclamation": "mauvaise_adresse", "client_nom": "Stephanie Vincent", "valeur_declaree": 175.00, "date_depot": "2025-07-13", "homonymie": true, "meme_immeuble": true}',
+    0.92,
+    '2025-07-13 14:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+-- Documents for escalated reclamations (29-30)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e29',
+    'reclamation_colis',
+    'reclamations/reclamation_vol_point_relais_004.pdf',
+    105000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C192021224FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Marc-Antoine Dupuis
+Email: ma.dupuis@orange.fr
+Telephone: 06 19 20 21 22
+
+TYPE DE RECLAMATION: Vol organise en point relais
+
+POINT RELAIS:
+Nom: Relais Colis Express Toulouse
+Identifiant: PR-31000-05
+Adresse: 42 rue Alsace-Lorraine, 31000 Toulouse
+
+DESCRIPTION DES FAITS:
+Vol organise au point relais: 3 colis de clients differents ont disparu le meme jour (11 juillet 2025). Le commercant est soupconne de complicite. Plainte deposee au commissariat de Toulouse (PV-2025-07890).
+
+Mon colis contenait du materiel electronique (console de jeu + accessoires).
+
+Autres victimes identifiees: 2 autres clients La Poste ont signale des disparitions le meme jour au meme point relais.
+
+Valeur declaree: 450,00 EUR
+
+PIECES JOINTES:
+- Copie du depot de plainte (PV-2025-07890)
+- Capture du suivi indiquant "livre au point relais"
+- Facture d''achat du materiel
+- Attestation sur l''honneur',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C192021224FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: M***-A*** D***
+Email: m***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Vol organise en point relais
+
+POINT RELAIS:
+Nom: Relais Colis Express Toulouse
+Identifiant: PR-31000-05
+Adresse: 42 rue Alsace-Lorraine, 31000 Toulouse
+
+DESCRIPTION DES FAITS:
+Vol organise au point relais: 3 colis de clients differents ont disparu le meme jour (** juillet ****). Le commercant est soupconne de complicite. Plainte deposee au commissariat de Toulouse (PV-****-*****).
+
+Mon colis contenait du materiel electronique (console de jeu + accessoires).
+
+Autres victimes identifiees: 2 autres clients La Poste ont signale des disparitions le meme jour au meme point relais.
+
+Valeur declaree: 450,00 EUR
+
+PIECES JOINTES:
+- Copie du depot de plainte (PV-****-*****)
+- Capture du suivi indiquant "livre au point relais"
+- Facture d''achat du materiel
+- Attestation sur l''honneur',
+    '{"numero_suivi": "6C192021224FR", "type_reclamation": "vol_point_relais", "client_nom": "Marc-Antoine Dupuis", "valeur_declaree": 450.00, "date_depot": "2025-07-13", "point_relais_id": "PR-31000-05", "plainte_police": "PV-2025-07890", "victimes_multiples": 3, "vol_organise": true}',
+    0.90,
+    '2025-07-13 16:01:00',
+    3,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e30',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_007.pdf',
+    98000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C202122235FR
+Date de depot: 14/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Christine Delorme
+Email: c.delorme@free.fr
+Telephone: 07 20 21 22 23
+
+TYPE DE RECLAMATION: Colis perdu (oeuvre d''art, assurance ad valorem)
+
+DESCRIPTION DES FAITS:
+Colis contenant un tableau de valeur (oeuvre d''art originale, huile sur toile, artiste contemporain reconnu). Le colis est disparu depuis 3 semaines, aucune mise a jour du suivi depuis le depart.
+
+Une assurance ad valorem avait ete souscrite pour 500 EUR (valeur declaree a l''expedition). Cependant, une expertise independante a depuis estime la valeur reelle de l''oeuvre a 2 500 EUR. Litige en cours avec le service d''assurance sur le montant d''indemnisation.
+
+Valeur declaree a l''expedition: 500,00 EUR
+Estimation expert: 2 500,00 EUR
+Ecart: L''assurance ne couvre que la valeur declaree, pas la valeur expertisee.
+
+Valeur declaree: 500,00 EUR
+
+PIECES JOINTES:
+- Attestation d''assurance ad valorem
+- Rapport d''expertise independante
+- Certificat d''authenticite de l''oeuvre
+- Photos de l''oeuvre avant expedition',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C202122235FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: C*** D***
+Email: c***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu (oeuvre d''art, assurance ad valorem)
+
+DESCRIPTION DES FAITS:
+Colis contenant un tableau de valeur (oeuvre d''art originale, huile sur toile, artiste contemporain reconnu). Le colis est disparu depuis 3 semaines, aucune mise a jour du suivi depuis le depart.
+
+Une assurance ad valorem avait ete souscrite pour 500 EUR (valeur declaree a l''expedition). Cependant, une expertise independante a depuis estime la valeur reelle de l''oeuvre a 2 500 EUR. Litige en cours avec le service d''assurance sur le montant d''indemnisation.
+
+Valeur declaree a l''expedition: 500,00 EUR
+Estimation expert: 2 500,00 EUR
+Ecart: L''assurance ne couvre que la valeur declaree, pas la valeur expertisee.
+
+Valeur declaree: 500,00 EUR
+
+PIECES JOINTES:
+- Attestation d''assurance ad valorem
+- Rapport d''expertise independante
+- Certificat d''authenticite de l''oeuvre
+- Photos de l''oeuvre avant expedition',
+    '{"numero_suivi": "6C202122235FR", "type_reclamation": "colis_perdu", "client_nom": "Christine Delorme", "valeur_declaree": 500.00, "date_depot": "2025-07-14", "assurance_ad_valorem": true, "valeur_expertisee": 2500.00, "litige_assureur": true, "oeuvre_art": true}',
+    0.89,
+    '2025-07-14 08:01:00',
+    3,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+-- Documents for pending reclamations (16-20)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e16',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_005.pdf',
+    78000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C666777888FR
+Date de depot: 10/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Claire Rousseau
+Email: c.rousseau@gmail.com
+Telephone: 06 66 77 88 99
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis recu avec l''emballage defonce sur le dessus. Le contenu (camera numerique professionnelle) est casse : objectif fissure et boitier raye. Des reserves ont ete emises a la signature. La camera etait neuve et commandee pour un mariage le week-end suivant.
+
+Valeur declaree: 499,00 EUR
+
+PIECES JOINTES:
+- Photos du colis endommage (4 photos)
+- Facture d''achat de la camera
+- Bon de livraison avec reserves',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C666777888FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: C*** R***
+Email: c***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis recu avec l''emballage defonce sur le dessus. Le contenu (camera numerique professionnelle) est casse : objectif fissure et boitier raye. Des reserves ont ete emises a la signature. La camera etait neuve et commandee pour un mariage le week-end suivant.
+
+Valeur declaree: 499,00 EUR
+
+PIECES JOINTES:
+- Photos du colis endommage (4 photos)
+- Facture d''achat de la camera
+- Bon de livraison avec reserves',
+    '{"numero_suivi": "6C666777888FR", "type_reclamation": "colis_endommage", "client_nom": "Claire Rousseau", "valeur_declaree": 499.00, "date_depot": "2025-07-10"}',
+    0.94,
+    '2025-07-10 08:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e17',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_004.pdf',
+    62000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C777888999FR
+Date de depot: 10/07/2025
+
+INFORMATIONS CLIENT:
+Nom: David Mercier
+Email: d.mercier@hotmail.fr
+Telephone: 07 77 88 99 00
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Lettre recommandee envoyee le 28 juin 2025 contenant des documents administratifs importants. Le suivi indique "pris en charge" depuis le 29 juin mais aucune mise a jour depuis. Le destinataire n''a rien recu. Il s''agissait de documents urgents pour une procedure juridique.
+
+Valeur declaree: 50,00 EUR
+
+PIECES JOINTES:
+- Recu de depot en bureau de poste
+- Capture du suivi en ligne',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C777888999FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: D*** M***
+Email: d***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Lettre recommandee envoyee le ** juin **** contenant des documents administratifs importants. Le suivi indique "pris en charge" depuis le ** juin mais aucune mise a jour depuis. Le destinataire n''a rien recu. Il s''agissait de documents urgents pour une procedure juridique.
+
+Valeur declaree: 50,00 EUR
+
+PIECES JOINTES:
+- Recu de depot en bureau de poste
+- Capture du suivi en ligne',
+    '{"numero_suivi": "6C777888999FR", "type_reclamation": "colis_perdu", "client_nom": "David Mercier", "valeur_declaree": 50.00, "date_depot": "2025-07-10"}',
+    0.93,
+    '2025-07-10 08:15:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e18',
+    'reclamation_colis',
+    'reclamations/reclamation_vol_point_relais_002.pdf',
+    71000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C888999000FR
+Date de depot: 11/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Emilie Fournier
+Email: e.fournier@sfr.fr
+Telephone: 06 88 99 00 11
+
+TYPE DE RECLAMATION: Vol en point relais
+
+DESCRIPTION DES FAITS:
+Je me suis presentee au point relais pour recuperer mon colis le 10 juillet. Le commercant m''a indique que le colis avait deja ete retire par quelqu''un d''autre le 8 juillet. Je n''ai donne procuration a personne. Le colis contenait un sac a main de marque.
+
+Valeur declaree: 156,50 EUR
+
+PIECES JOINTES:
+- Copie de ma piece d''identite
+- Capture du suivi indiquant "retire au point relais"
+- Facture d''achat du sac',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C888999000FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: E*** F***
+Email: e***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Vol en point relais
+
+DESCRIPTION DES FAITS:
+Je me suis presentee au point relais pour recuperer mon colis le ** juillet. Le commercant m''a indique que le colis avait deja ete retire par quelqu''un d''autre le ** juillet. Je n''ai donne procuration a personne. Le colis contenait un sac a main de marque.
+
+Valeur declaree: 156,50 EUR
+
+PIECES JOINTES:
+- Copie de ma piece d''identite
+- Capture du suivi indiquant "retire au point relais"
+- Facture d''achat du sac',
+    '{"numero_suivi": "6C888999000FR", "type_reclamation": "vol_point_relais", "client_nom": "Emilie Fournier", "valeur_declaree": 156.50, "date_depot": "2025-07-11"}',
+    0.92,
+    '2025-07-11 08:01:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e19',
+    'reclamation_colis',
+    'reclamations/reclamation_mauvaise_adresse_002.pdf',
+    67000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C999000111FR
+Date de depot: 11/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Nicolas Bonnet
+Email: n.bonnet@outlook.fr
+Telephone: 07 99 00 11 22
+
+TYPE DE RECLAMATION: Mauvaise adresse de livraison
+
+DESCRIPTION DES FAITS:
+Mon colis a ete livre a mon ancienne adresse malgre le changement d''adresse effectue aupres de La Poste il y a 2 mois. Le nouveau locataire de mon ancien appartement refuse de me remettre le colis. Le colis contenait des livres commandes en ligne.
+
+Valeur declaree: 88,00 EUR
+
+PIECES JOINTES:
+- Justificatif de changement d''adresse
+- Confirmation de commande avec nouvelle adresse
+- Capture du suivi indiquant livraison a l''ancienne adresse',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C999000111FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: N*** B***
+Email: n***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Mauvaise adresse de livraison
+
+DESCRIPTION DES FAITS:
+Mon colis a ete livre a mon ancienne adresse malgre le changement d''adresse effectue aupres de La Poste il y a 2 mois. Le nouveau locataire de mon ancien appartement refuse de me remettre le colis. Le colis contenait des livres commandes en ligne.
+
+Valeur declaree: 88,00 EUR
+
+PIECES JOINTES:
+- Justificatif de changement d''adresse
+- Confirmation de commande avec nouvelle adresse
+- Capture du suivi indiquant livraison a l''ancienne adresse',
+    '{"numero_suivi": "6C999000111FR", "type_reclamation": "mauvaise_adresse", "client_nom": "Nicolas Bonnet", "valeur_declaree": 88.00, "date_depot": "2025-07-11"}',
+    0.91,
+    '2025-07-11 08:30:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e20',
+    'reclamation_colis',
+    'reclamations/reclamation_retard_livraison_004.pdf',
+    58000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C000111222FR
+Date de depot: 12/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Audrey Blanc
+Email: a.blanc@gmail.com
+Telephone: 06 00 11 22 33
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis envoye le 1er juillet en Colissimo domicile. Le suivi indique "en cours de traitement" depuis le 3 juillet sans aucune mise a jour. Cela fait plus de 10 jours sans mouvement. Le colis contenait un cadeau d''anniversaire deja en retard.
+
+Valeur declaree: 42,00 EUR
+
+PIECES JOINTES:
+- Capture du suivi bloque depuis le 03/07
+- Recu de depot',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C000111222FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: A*** B***
+Email: a***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis envoye le ** juillet en Colissimo domicile. Le suivi indique "en cours de traitement" depuis le ** juillet sans aucune mise a jour. Cela fait plus de 10 jours sans mouvement. Le colis contenait un cadeau d''anniversaire deja en retard.
+
+Valeur declaree: 42,00 EUR
+
+PIECES JOINTES:
+- Capture du suivi bloque depuis le **/**
+- Recu de depot',
+    '{"numero_suivi": "6C000111222FR", "type_reclamation": "retard_livraison", "client_nom": "Audrey Blanc", "valeur_declaree": 42.00, "date_depot": "2025-07-12"}',
+    0.95,
+    '2025-07-12 08:01:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+-- Documents for processing reclamations (21-25)
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e21',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_endommage_006.pdf',
+    82000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C101112131FR
+Date de depot: 12/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Philippe Garnier
+Email: p.garnier@free.fr
+Telephone: 06 10 11 12 13
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis contenant une guitare acoustique recu avec le carton perce sur le cote. Le manche de la guitare est casse net au niveau de la jonction avec le corps. L''instrument est irreparable. L''emballage d''origine (etui rigide + carton renforce) etait pourtant conforme aux recommandations.
+
+Valeur declaree: 350,00 EUR
+
+PIECES JOINTES:
+- Photos de la guitare cassee (5 photos)
+- Facture d''achat de la guitare
+- Photo de l''emballage d''origine conforme',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C101112131FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: P*** G***
+Email: p***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis endommage
+
+DESCRIPTION DES FAITS:
+Colis contenant une guitare acoustique recu avec le carton perce sur le cote. Le manche de la guitare est casse net au niveau de la jonction avec le corps. L''instrument est irreparable. L''emballage d''origine (etui rigide + carton renforce) etait pourtant conforme aux recommandations.
+
+Valeur declaree: 350,00 EUR
+
+PIECES JOINTES:
+- Photos de la guitare cassee (5 photos)
+- Facture d''achat de la guitare
+- Photo de l''emballage d''origine conforme',
+    '{"numero_suivi": "6C101112131FR", "type_reclamation": "colis_endommage", "client_nom": "Philippe Garnier", "valeur_declaree": 350.00, "date_depot": "2025-07-12"}',
+    0.93,
+    '2025-07-12 08:45:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e22',
+    'reclamation_colis',
+    'reclamations/reclamation_non_livre_004.pdf',
+    69000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C121314151FR
+Date de depot: 12/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Sandrine Chevalier
+Email: s.chevalier@yahoo.fr
+Telephone: 07 12 13 14 15
+
+TYPE DE RECLAMATION: Colis non livre
+
+DESCRIPTION DES FAITS:
+Le suivi indique que mon colis a ete "livre" le 9 juillet a 14h32 mais je n''ai rien recu. J''etais presente a mon domicile toute la journee. Aucun avis de passage n''a ete depose. Mes voisins n''ont rien receptionne non plus. Le colis contenait des produits cosmetiques commandes en ligne.
+
+Valeur declaree: 76,00 EUR
+
+PIECES JOINTES:
+- Capture du suivi indiquant "livre"
+- Attestation sur l''honneur de non-reception
+- Facture de la commande',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C121314151FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: S*** C***
+Email: s***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis non livre
+
+DESCRIPTION DES FAITS:
+Le suivi indique que mon colis a ete "livre" le ** juillet a **h** mais je n''ai rien recu. J''etais presente a mon domicile toute la journee. Aucun avis de passage n''a ete depose. Mes voisins n''ont rien receptionne non plus. Le colis contenait des produits cosmetiques commandes en ligne.
+
+Valeur declaree: 76,00 EUR
+
+PIECES JOINTES:
+- Capture du suivi indiquant "livre"
+- Attestation sur l''honneur de non-reception
+- Facture de la commande',
+    '{"numero_suivi": "6C121314151FR", "type_reclamation": "non_livre", "client_nom": "Sandrine Chevalier", "valeur_declaree": 76.00, "date_depot": "2025-07-12"}',
+    0.94,
+    '2025-07-12 09:10:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e23',
+    'reclamation_colis',
+    'reclamations/reclamation_colis_perdu_005.pdf',
+    87000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C131415161FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Julien Morel
+Email: j.morel@laposte.net
+Telephone: 06 13 14 15 16
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Colis envoye vers le Japon (envoi international) le 25 juin 2025. Le suivi indique que le colis est bloque en douane a Roissy depuis le 28 juin sans aucune mise a jour. Le service client m''indique que le colis est "en cours de dedouanement" mais cela fait maintenant plus de 2 semaines. Le colis contenait des produits artisanaux francais (fromages sous vide et confiseries).
+
+Valeur declaree: 420,00 EUR
+
+PIECES JOINTES:
+- Recu de depot international
+- Formulaire CN23 de declaration douaniere
+- Factures des produits',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C131415161FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: J*** M***
+Email: j***@***.net
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Colis perdu
+
+DESCRIPTION DES FAITS:
+Colis envoye vers le Japon (envoi international) le ** juin ****. Le suivi indique que le colis est bloque en douane a Roissy depuis le ** juin sans aucune mise a jour. Le service client m''indique que le colis est "en cours de dedouanement" mais cela fait maintenant plus de 2 semaines. Le colis contenait des produits artisanaux francais (fromages sous vide et confiseries).
+
+Valeur declaree: 420,00 EUR
+
+PIECES JOINTES:
+- Recu de depot international
+- Formulaire CN23 de declaration douaniere
+- Factures des produits',
+    '{"numero_suivi": "6C131415161FR", "type_reclamation": "colis_perdu", "client_nom": "Julien Morel", "valeur_declaree": 420.00, "date_depot": "2025-07-13"}',
+    0.92,
+    '2025-07-13 08:01:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e24',
+    'reclamation_colis',
+    'reclamations/reclamation_retard_livraison_005.pdf',
+    75000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C141516171FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Veronique Blanc
+Email: ve.blanc@orange.fr
+Telephone: 07 14 15 16 17
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis Chronopost envoye en express le 8 juillet pour une livraison J+1. Le colis n''est toujours pas arrive 5 jours plus tard. Il contient des medicaments veterinaires urgents pour mon chat malade (traitement prescrit par le veterinaire). J''ai du racheter les medicaments en urgence chez un veterinaire local a un cout superieur.
+
+Valeur declaree: 210,00 EUR
+
+PIECES JOINTES:
+- Recu d''envoi Chronopost express
+- Ordonnance veterinaire
+- Facture des medicaments rachetes en urgence',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C141516171FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: V*** B***
+Email: v***@***.fr
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Retard de livraison
+
+DESCRIPTION DES FAITS:
+Colis Chronopost envoye en express le ** juillet pour une livraison J+1. Le colis n''est toujours pas arrive 5 jours plus tard. Il contient des medicaments veterinaires urgents pour mon chat malade (traitement prescrit par le veterinaire). J''ai du racheter les medicaments en urgence chez un veterinaire local a un cout superieur.
+
+Valeur declaree: 210,00 EUR
+
+PIECES JOINTES:
+- Recu d''envoi Chronopost express
+- Ordonnance veterinaire
+- Facture des medicaments rachetes en urgence',
+    '{"numero_suivi": "6C141516171FR", "type_reclamation": "retard_livraison", "client_nom": "Veronique Blanc", "valeur_declaree": 210.00, "date_depot": "2025-07-13"}',
+    0.93,
+    '2025-07-13 08:30:00',
+    2,
+    'fra'
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO reclamation_documents (
+    id, reclamation_id, document_type, file_path, file_size_bytes, mime_type,
+    raw_ocr_text, raw_ocr_text_redacted,
+    structured_data, ocr_confidence, ocr_processed_at,
+    page_count, language
+) VALUES (
+    uuid_generate_v4(),
+    'd1a2b3c4-e5f6-4a7b-8c9d-1a2b3c4d5e25',
+    'reclamation_colis',
+    'reclamations/reclamation_vol_point_relais_003.pdf',
+    73000,
+    'application/pdf',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C151617181FR
+Date de depot: 13/07/2025
+
+INFORMATIONS CLIENT:
+Nom: Remi Faure
+Email: r.faure@gmail.com
+Telephone: 06 15 16 17 18
+
+TYPE DE RECLAMATION: Vol en point relais
+
+DESCRIPTION DES FAITS:
+Mon colis a ete retire au point relais par une personne non autorisee le 11 juillet. Je n''ai donne aucune procuration et la personne qui a retire le colis a presente une fausse piece d''identite selon le commercant. Le colis contenait une tablette tactile neuve. J''ai depose une main courante au commissariat.
+
+Valeur declaree: 299,00 EUR
+
+PIECES JOINTES:
+- Main courante deposee au commissariat
+- Capture du suivi indiquant "retire au point relais"
+- Facture d''achat de la tablette',
+    'FORMULAIRE DE RECLAMATION - La Poste / Colissimo
+
+Numero de suivi: 6C151617181FR
+Date de depot: **/**/****
+
+INFORMATIONS CLIENT:
+Nom: R*** F***
+Email: r***@***.com
+Telephone: ** ** ** ** **
+
+TYPE DE RECLAMATION: Vol en point relais
+
+DESCRIPTION DES FAITS:
+Mon colis a ete retire au point relais par une personne non autorisee le ** juillet. Je n''ai donne aucune procuration et la personne qui a retire le colis a presente une fausse piece d''identite selon le commercant. Le colis contenait une tablette tactile neuve. J''ai depose une main courante au commissariat.
+
+Valeur declaree: 299,00 EUR
+
+PIECES JOINTES:
+- Main courante deposee au commissariat
+- Capture du suivi indiquant "retire au point relais"
+- Facture d''achat de la tablette',
+    '{"numero_suivi": "6C151617181FR", "type_reclamation": "vol_point_relais", "client_nom": "Remi Faure", "valeur_declaree": 299.00, "date_depot": "2025-07-13"}',
+    0.91,
+    '2025-07-13 08:45:00',
+    1,
+    'fra'
+) ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- COURRIER KNOWLEDGE BASE (15 entries, embeddings left NULL)

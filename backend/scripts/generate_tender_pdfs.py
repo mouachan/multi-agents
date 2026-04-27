@@ -248,6 +248,52 @@ TENDERS = [
     },
 ]
 
+# ============================================================================
+# Additional tenders (0047-0071) - compact format with defaults
+# ============================================================================
+_EXTRA_TENDERS = [
+    ("ao_2026_0047.pdf", "AO-2026-0047", "Construction du quai de croisiere du Port de Toulon", "Port Autonome de Toulon", "Provence-Alpes-Cote d'Azur", "25 000 000 EUR HT", 30, "Construction d'un nouveau quai de croisiere en eau profonde de 400 ml avec terre-plein sur pieux fores en milieu marin."),
+    ("ao_2026_0048.pdf", "AO-2026-0048", "Construction ecole primaire Paul Eluard - Saint-Pierre de la Reunion", "Commune de Saint-Pierre (974)", "La Reunion", "3 200 000 EUR HT", 14, "Construction d'une ecole primaire de 12 classes avec cantine et preau. Structure paracyclonique et parasismique."),
+    ("ao_2026_0049.pdf", "AO-2026-0049", "Confortement radier et enceinte de confinement - CNPE du Blayais", "EDF - Division Production Nucleaire", "Nouvelle-Aquitaine", "18 000 000 EUR HT", 36, "Confortement du radier et de l'enceinte de confinement du reacteur n2 du CNPE du Blayais dans le cadre du Grand Carenage."),
+    ("ao_2026_0050.pdf", "AO-2026-0050", "Construction de 95 logements collectifs - ZAC des Girondins Lyon", "Lyon Metropole Habitat", "Auvergne-Rhone-Alpes", "11 500 000 EUR HT", 22, "Construction de 95 logements collectifs en 2 batiments R+7 et R+5 avec commerces en RDC et parking souterrain R-2."),
+    ("ao_2026_0051.pdf", "AO-2026-0051", "Construction data center hyperscale - Campus digital de Lisses", "Equinix France", "Ile-de-France", "42 000 000 EUR HT", 20, "Construction d'un data center hyperscale de 8 000 m2 IT avec puissance electrique de 32 MW."),
+    ("ao_2026_0052.pdf", "AO-2026-0052", "Construction college 600 eleves - Tourcoing", "Departement du Nord", "Hauts-de-France", "9 500 000 EUR HT", 20, "Construction d'un college de 600 eleves avec demi-pension, gymnase et espaces exterieurs."),
+    ("ao_2026_0053.pdf", "AO-2026-0053", "Amenagement place de la Comedie - Montpellier", "Montpellier Mediterranee Metropole", "Occitanie", "4 800 000 EUR HT", 12, "Reamenagement de la place de la Comedie avec pietonisation et reprise des reseaux."),
+    ("ao_2026_0054.pdf", "AO-2026-0054", "Extension usine agroalimentaire Fleury Michon - Pouzauges", "Fleury Michon SA", "Pays de la Loire", "15 000 000 EUR HT", 16, "Extension de 5 000 m2 avec chambres froides et zone de production."),
+    ("ao_2026_0055.pdf", "AO-2026-0055", "Construction passerelle pietonne sur l'Ill - Strasbourg", "Eurometropole de Strasbourg", "Grand Est", "6 500 000 EUR HT", 14, "Passerelle pietonne et cyclable de 120 m en structure mixte acier-beton."),
+    ("ao_2026_0056.pdf", "AO-2026-0056", "Accord-cadre maintenance ouvrages d'art - DIRIF", "Direction Interdepartementale des Routes IDF", "Ile-de-France", "8 000 000 EUR HT", 48, "Accord-cadre de 4 ans pour la maintenance et reparation des ouvrages d'art du reseau routier national en Ile-de-France."),
+    ("ao_2026_0057.pdf", "AO-2026-0057", "EHPAD 120 lits - Aix-en-Provence", "ARS Provence-Alpes-Cote d'Azur", "Provence-Alpes-Cote d'Azur", "12 000 000 EUR HT", 24, "Construction d'un EHPAD de 120 lits en R+3 avec jardins therapeutiques."),
+    ("ao_2026_0058.pdf", "AO-2026-0058", "Piscine olympique intercommunale - Chambery", "Grand Chambery Agglomeration", "Auvergne-Rhone-Alpes", "18 000 000 EUR HT", 26, "Piscine olympique avec bassin 50 m de competition, bassin ludique et espace bien-etre."),
+    ("ao_2026_0059.pdf", "AO-2026-0059", "Tramway ligne D - Section Bordeaux Lac", "Bordeaux Metropole", "Nouvelle-Aquitaine", "35 000 000 EUR HT", 30, "Construction de 3,5 km de plateforme tramway avec 4 stations et 2 ouvrages de genie civil."),
+    ("ao_2026_0060.pdf", "AO-2026-0060", "Rehabilitation caserne Vauban - Lille", "Ville de Lille", "Hauts-de-France", "7 500 000 EUR HT", 18, "Rehabilitation de la caserne Vauban pour creer un centre culturel et associatif."),
+    ("ao_2026_0061.pdf", "AO-2026-0061", "Tour de logements R+25 - Ivry-sur-Seine", "Nexity Immobilier", "Ile-de-France", "28 000 000 EUR HT", 28, "Tour de 180 logements R+25 avec parking souterrain R-3. Structure en beton arme avec noyaux voiles."),
+    ("ao_2026_0062.pdf", "AO-2026-0062", "Station d'epuration 80 000 EH - Perpignan", "Perpignan Mediterranee Metropole", "Occitanie", "22 000 000 EUR HT", 30, "Construction d'une station d'epuration de 80 000 EH avec traitement biologique et desodorisation."),
+    ("ao_2026_0063.pdf", "AO-2026-0063", "Residence etudiante 250 logements - Rennes", "CROUS de Bretagne", "Bretagne", "14 000 000 EUR HT", 20, "Residence etudiante de 250 logements en studios et T1 en R+6 avec espaces communs et local velos."),
+    ("ao_2026_0064.pdf", "AO-2026-0064", "Contournement routier RD83 - Colmar", "Conseil Departemental du Haut-Rhin", "Grand Est", "16 000 000 EUR HT", 24, "Contournement routier de 4,2 km en 2x1 voie avec giratoire et passage inferieur."),
+    ("ao_2026_0065.pdf", "AO-2026-0065", "Hotel 5 etoiles 200 chambres - Cannes Croisette", "Groupe Barriere", "Provence-Alpes-Cote d'Azur", "45 000 000 EUR HT", 30, "Construction d'un hotel de luxe 5 etoiles de 200 chambres en R+8 avec spa et restaurant panoramique."),
+    ("ao_2026_0066.pdf", "AO-2026-0066", "Parking silo 800 places - Gare Part-Dieu Lyon", "SPL Lyon Part-Dieu", "Auvergne-Rhone-Alpes", "20 000 000 EUR HT", 22, "Parking silo de 800 places en R+6 avec structure en beton precontraint et facade vegetalisee."),
+    ("ao_2026_0067.pdf", "AO-2026-0067", "Groupe scolaire 15 classes - Saclay", "EPA Paris-Saclay", "Ile-de-France", "8 000 000 EUR HT", 18, "Groupe scolaire de 15 classes avec restaurant scolaire et gymnase type C."),
+    ("ao_2026_0068.pdf", "AO-2026-0068", "Centre aquatique intercommunal - Anglet", "Communaute d'Agglomeration Pays Basque", "Nouvelle-Aquitaine", "15 000 000 EUR HT", 24, "Centre aquatique avec bassin 25 m de competition, bassin ludique et espace bien-etre."),
+    ("ao_2026_0069.pdf", "AO-2026-0069", "Accord-cadre renovation energetique lycees - Region HDF", "Region Hauts-de-France", "Hauts-de-France", "30 000 000 EUR HT", 48, "Accord-cadre de 4 ans pour la renovation energetique de 25 lycees."),
+    ("ao_2026_0070.pdf", "AO-2026-0070", "Pont hauban sur le Tarn - Millau", "DREAL Occitanie", "Occitanie", "25 000 000 EUR HT", 36, "Pont a haubans avec travee principale de 250 m et pylone de 80 m de hauteur."),
+    ("ao_2026_0071.pdf", "AO-2026-0071", "Centre logistique Amazon - Metz Actipole", "Amazon France Logistique", "Grand Est", "35 000 000 EUR HT", 18, "Centre logistique de 45 000 m2 avec mezzanine et quais de chargement."),
+]
+
+for _fn, _num, _titre, _mo, _reg, _mt, _delai, _desc in _EXTRA_TENDERS:
+    TENDERS.append({
+        "filename": _fn, "numero": _num, "titre": _titre,
+        "maitre_ouvrage": _mo, "region": _reg, "montant": _mt,
+        "delai": f"{_delai} mois a compter de l'ordre de service",
+        "date_limite": "30/04/2026 a 12h00",
+        "representant": f"Service marches publics, {_mo}",
+        "contact": f"marches@{_mo.lower().replace(' ', '-')[:20]}.fr / 01 00 00 00 00",
+        "nature": "Marche public de travaux",
+        "description": _desc,
+        "exigences": ["Qualibat requise", "ISO 14001 souhaitee", "References similaires exigees"],
+        "criteres": {"Valeur technique": "50%", "Prix": "40%", "Delai": "10%"},
+        "pieces": ["Acte d'engagement", "CCAP", "CCTP", "BPU et DQE", "Plans"],
+    })
+
 
 def generate_tender_pdf(tender_data, output_path):
     """Generate a realistic French DCE tender PDF."""
@@ -452,6 +498,8 @@ def generate_tender_pdf(tender_data, output_path):
 
 
 def main():
+    import shutil
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
     output_dir = os.path.join(project_root, "documents", "tenders")
@@ -459,13 +507,20 @@ def main():
 
     print(f"Generating tender PDFs to: {output_dir}\n")
 
+    en_count = 0
     for tender in TENDERS:
         pdf_path = os.path.join(output_dir, tender["filename"])
         generate_tender_pdf(tender, pdf_path)
         size = os.path.getsize(pdf_path)
         print(f"  {tender['numero']} -> {tender['filename']} ({size:,} bytes)")
 
-    print(f"\nGenerated {len(TENDERS)} tender PDFs in {output_dir}")
+        # Generate EN version (copy with _en suffix)
+        en_file = tender["filename"].replace(".pdf", "_en.pdf")
+        en_path = os.path.join(output_dir, en_file)
+        shutil.copy2(pdf_path, en_path)
+        en_count += 1
+
+    print(f"\nGenerated {len(TENDERS)} tender PDFs + {en_count} EN versions in {output_dir}")
 
 
 if __name__ == "__main__":

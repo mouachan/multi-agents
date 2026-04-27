@@ -215,7 +215,8 @@ CREATE TABLE claim_decisions (
 
     decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
 );
 
 CREATE INDEX idx_claim_decisions_claim_id ON claim_decisions(claim_id);
@@ -456,7 +457,8 @@ CREATE TABLE tender_decisions (
     requires_manual_review  BOOLEAN DEFAULT FALSE,
     decided_at              TIMESTAMP,
     created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata                JSONB DEFAULT '{}'
 );
 
 CREATE INDEX idx_tender_decisions_tender_id ON tender_decisions(tender_id);
@@ -813,7 +815,8 @@ CREATE TABLE IF NOT EXISTS reclamation_decisions (
 
     decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
 );
 
 CREATE INDEX idx_reclamation_decisions_reclamation_id ON reclamation_decisions(reclamation_id);

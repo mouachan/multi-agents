@@ -65,6 +65,7 @@ export interface TenderDecision {
   llm_model?: string
   requires_manual_review: boolean
   decided_at: string
+  metadata?: Record<string, any>
 }
 
 export interface ProcessingStepLog {

@@ -208,6 +208,9 @@ class ReclamationDecision(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
+    # Bilingual metadata (reasoning_en, etc.)
+    decision_metadata = Column("metadata", JSON, default=dict)
+
     # Relationship
     reclamation = relationship("Reclamation", back_populates="decision")
 

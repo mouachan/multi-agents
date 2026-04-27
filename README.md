@@ -4,6 +4,7 @@ An intelligent multi-agent decision platform powered by AI agents, demonstrating
 
 - **Insurance Claims Processing** — Approve / Deny / Manual Review decisions
 - **Tender Management (Appels d'Offres)** — Go / No-Go / Needs Deeper Review decisions for construction (BTP) tenders
+- **Postal Mail Processing (Courrier)** — Complaint handling, package tracking, and knowledge base queries
 - **Multi-Agent Orchestrator** — Intent-based routing, chat sessions, and cross-domain agent chaining
 
 ## Table of Contents
@@ -39,6 +40,17 @@ Many business processes require expert analysis of documents, comparison with hi
 - Analyzes the tender against the company's past project references, certifications, and historical tender outcomes using RAG similarity search
 - Generates a **Go / No-Go / Needs Deeper Review** recommendation with risk analysis, win probability, estimated margin, strengths and weaknesses
 - Supports Human-in-the-Loop review when confidence is low
+
+### Use Case 3: Postal Mail Processing (Courrier)
+
+- Handles customer complaints (reclamations) related to postal services (lost packages, damaged mail, delivery delays)
+- Tracks package and mail delivery status via the tracking MCP server
+- Searches an internal postal knowledge base for regulations, procedures, and precedents
+- Generates structured responses with resolution recommendations
+- Three specialized sub-agents:
+  - **courrier-reclamation**: Complaint CRUD, document management, decision saving
+  - **courrier-suivi**: Real-time package/mail tracking
+  - **courrier-info**: Knowledge base search for postal regulations
 
 ### The ReAct Agentic Workflow
 
@@ -77,22 +89,22 @@ The platform includes a **multi-agent orchestrator** that classifies user intent
 User Message
     |
     v
-+------------------------------+
-|   Multi-Agent Orchestrator   |
-|   (Intent Classification)    |
-+------------------------------+
-    |              |
-    v              v
-+---------+  +-----------+
-| Claims  |  | Tenders   |
-| Agent   |  | Agent     |
-+---------+  +-----------+
-    |              |
-    v              v
-+------------------------------+
-|     MCP Tool Servers         |
-| OCR | RAG | Claims | Tenders |
-+------------------------------+
++----------------------------------+
+|     Multi-Agent Orchestrator     |
+|     (Intent Classification)      |
++----------------------------------+
+    |              |              |
+    v              v              v
++---------+  +-----------+  +-----------+
+| Claims  |  | Tenders   |  | Courrier  |
+| Agent   |  | Agent     |  | Agent     |
++---------+  +-----------+  +-----------+
+    |              |              |
+    v              v              v
++--------------------------------------------------+
+|              MCP Tool Servers                     |
+| OCR | RAG | Claims | Tenders | Postal | Tracking |
++--------------------------------------------------+
     |
     v
 +------------------------------+
@@ -161,6 +173,8 @@ graph TB
             RAG["RAG MCP Server<br/>pgvector similarity"]
             CLAIMS_MCP["Claims MCP Server<br/>CRUD + save_decision"]
             TENDERS_MCP["Tenders MCP Server<br/>CRUD + save_decision"]
+            POSTAL_MCP["Postal MCP Server<br/>Reclamations + Documents"]
+            TRACKING_MCP["Tracking MCP Server<br/>Package/Mail Tracking"]
         end
 
         subgraph "Data Layer"
@@ -180,11 +194,15 @@ graph TB
     LS -->|MCP/SSE| RAG
     LS -->|MCP/SSE| CLAIMS_MCP
     LS -->|MCP/SSE| TENDERS_MCP
+    LS -->|MCP/SSE| POSTAL_MCP
+    LS -->|MCP/SSE| TRACKING_MCP
     RAG -->|Vector Search| DB
     B -->|CRUD| DB
     B -->|Documents| S3
     CLAIMS_MCP -->|Decisions + Embeddings| DB
     TENDERS_MCP -->|Decisions + Embeddings| DB
+    POSTAL_MCP -->|Reclamations| DB
+    TRACKING_MCP -->|Tracking Data| DB
 
     style LS fill:#f3e5f5
     style LLM fill:#e8f5e9
@@ -231,19 +249,23 @@ backend/
 │   └── llamastack/           # Prompts & integration config
 │       ├── prompts.py              # Claims agent prompts
 │       ├── ao_prompts.py           # Tender agent prompts
+│       ├── courrier_prompts.py     # Courrier/postal agent prompts
 │       └── orchestrator_prompts.py # Multi-agent router prompts
 ├── mcp_servers/
 │   ├── shared/               # Shared DB module (connection, retry, queries)
 │   ├── ocr_server/           # Document OCR via Qwen2.5-VL vision model
 │   ├── rag_server/           # Vector search (pgvector) + embedding generation
 │   ├── claims_server/        # Claims CRUD + save_claim_decision + auto-embedding
-│   └── tenders_server/       # Tenders CRUD + save_tender_decision + auto-embedding
+│   ├── tenders_server/       # Tenders CRUD + save_tender_decision + auto-embedding
+│   ├── postal_server/        # Reclamations CRUD + documents + decision saving
+│   └── tracking_server/      # Package/mail tracking + postal knowledge base
 ├── scripts/
 │   ├── init_data.py          # Data initialization (download, upload, OCR, decisions)
 │   ├── init_data/            # Pre-defined decisions
-│   ├── generate_claim_pdfs.py    # Generate claim PDF test data
-│   ├── generate_tender_pdfs.py   # Generate tender PDF test data
-│   └── seed_database.py         # Database seeding utility
+│   ├── generate_claim_pdfs.py        # Generate claim PDF test data
+│   ├── generate_tender_pdfs.py       # Generate tender PDF test data
+│   ├── generate_reclamation_pdfs.py  # Generate reclamation PDF test data
+│   └── seed_database.py             # Database seeding utility
 frontend/
 ├── src/
 │   ├── pages/
@@ -251,9 +273,11 @@ frontend/
 │   │   ├── ChatPage.tsx          # Multi-agent chat interface
 │   │   ├── ClaimsListPage.tsx    # Claims list with filters & search
 │   │   ├── ClaimDetailPage.tsx   # Claim detail with processing steps
-│   │   ├── TendersListPage.tsx   # Tenders list & filtering
-│   │   ├── TenderDetailPage.tsx  # Tender detail with processing steps
-│   │   └── AdminPage.tsx         # Admin panel (reset, stats)
+│   │   ├── TendersListPage.tsx    # Tenders list & filtering
+│   │   ├── TenderDetailPage.tsx   # Tender detail with processing steps
+│   │   ├── PostalListPage.tsx     # Postal reclamations list
+│   │   ├── PostalDetailPage.tsx   # Reclamation detail with processing steps
+│   │   └── AdminPage.tsx          # Admin panel (reset, stats)
 │   ├── components/
 │   │   ├── Layout.tsx            # App layout with navigation
 │   │   ├── ReviewChatPanel.tsx   # HITL review chat panel
@@ -293,7 +317,7 @@ frontend/
 | **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
 | **Database** | PostgreSQL 16 + pgvector (HNSW) | Claims, tenders, vectors, chat sessions |
 | **Document Storage** | MinIO S3-compatible | PDF documents for claims & tenders |
-| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims CRUD, Tenders CRUD |
+| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims CRUD, Tenders CRUD, Postal, Tracking |
 | **Deployment** | Helm 3.x on OpenShift 4.x | Or docker/podman compose for local dev |
 
 **Key architectural choice**: All AI models run as **remote Model-as-a-Service (MaaS)** through LiteMaaS endpoints. No local GPU required. The OCR server sends PDF page images to Qwen2.5-VL via the LlamaStack inference API, eliminating the need for heavy local OCR libraries.
@@ -322,29 +346,33 @@ docker compose up --build
 
 | Service | Port | Description |
 |---------|------|-------------|
-| PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders) |
+| PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders, 25 reclamations) |
 | LlamaStack | 8321 | AI orchestration (ReAct agent, MCP tool routing) |
 | Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator |
 | OCR MCP Server | 8081 | Vision-based OCR via Qwen2.5-VL |
 | RAG MCP Server | 8082 | Vector search + embedding generation |
 | Claims MCP Server | 8083 | Claims CRUD + decision persistence + auto-embedding |
 | Tenders MCP Server | 8084 | Tenders CRUD + decision persistence + auto-embedding |
+| Postal MCP Server | 8085 | Reclamations CRUD + documents + decision saving |
+| Tracking MCP Server | 8086 | Package/mail tracking + postal knowledge base |
 | MinIO | 9000/9001 | S3-compatible document storage |
 | Frontend (React) | 3000 | Chat UI + domain pages |
-| **data-init** | — | Downloads PDFs, uploads to LlamaStack, processes 10+10 items |
+| **data-init** | — | Downloads PDFs, uploads to LlamaStack, processes 10+10+10 items |
 
 ### Automatic Data Initialization
 
 On first startup, the `data-init` service automatically:
 
-1. **Downloads PDF documents** from the GitHub repository archive (31 claims + 31 tenders)
+1. **Downloads PDF documents** from the GitHub repository archive (31 claims + 31 tenders + 25 reclamations, each with FR + EN bilingual versions)
 2. **Uploads PDFs to LlamaStack Files API** and updates `document_path` in database with file IDs (`file-xxx`)
 3. **Processes 10 claims** via MCP tools: OCR (Qwen2.5-VL) + save_claim_decision (with embedding)
 4. **Processes 10 tenders** via MCP tools: OCR + save_tender_decision (with embedding)
+5. **Processes 10 reclamations** via MCP tools: OCR + save_reclamation_decision (with embedding)
 
 After init completes, you'll have:
 - 31 claims: 21 pending, 4 approved, 3 denied, 3 manual_review (with processing steps, OCR text, embeddings)
 - 31 tenders: 21 pending, 4 go, 3 no_go, 3 needs_deeper_review
+- 25 reclamations: 15 pending, 10 processed with decisions
 
 The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside Docker images.
 
@@ -620,7 +648,7 @@ llamastack:
 
 ### Agent Prompts
 
-Prompts are defined in `backend/app/llamastack/prompts.py` (claims) and `ao_prompts.py` (tenders). On OpenShift, they are overridden via ConfigMap-mounted files at `/app/prompts/` and `/app/prompts-ao/`. Both sources must be kept in sync.
+Prompts are defined in `backend/app/llamastack/prompts.py` (claims), `ao_prompts.py` (tenders), and `courrier_prompts.py` (postal/courrier). On OpenShift, they are overridden via ConfigMap-mounted files at `/app/prompts/`, `/app/prompts-ao/`, and `/app/prompts-courrier/`. Both sources must be kept in sync.
 
 Each agent prompt distinguishes between **information queries** (detail, list, show) that call only CRUD tools, and **processing requests** (process, traiter, evaluate) that trigger the full workflow (OCR + RAG + decision).
 
@@ -637,6 +665,8 @@ OCR_SERVER_URL: http://ocr-server:8080
 RAG_SERVER_URL: http://rag-server:8080
 CLAIMS_SERVER_URL: http://claims-server:8080
 TENDERS_SERVER_URL: http://tenders-server:8080
+POSTAL_SERVER_URL: http://postal-server:8080
+TRACKING_SERVER_URL: http://tracking-server:8080
 
 # S3/MinIO
 S3_ENDPOINT_URL: http://minio:9000
@@ -768,9 +798,21 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v2.1
+### Current Version: v3
 
-**What's new in v2.1** (backend v2.1, frontend v2.3):
+**What's new in v3**:
+- **Postal/Courrier domain**: New business domain for postal mail processing — complaint handling (reclamations), package tracking, and postal knowledge base queries
+- **2 new MCP servers**: `postal-server` (reclamations CRUD, documents, decision saving) and `tracking-server` (package/mail tracking, postal knowledge base search)
+- **3 courrier sub-agents**: `courrier-reclamation`, `courrier-suivi`, `courrier-info` — each with specialized prompts and tool routing
+- **Bilingual PDF documents**: All claims, tenders, and reclamation PDFs now have French (FR) and English (EN) versions
+- **25 reclamation seed data**: Database seeded with 25 postal reclamations across multiple categories (lost packages, damaged mail, delivery delays, etc.)
+- **Backend API refactoring**: API routes split from monolithic files into modular sub-packages (`api/claims/`, `api/tenders/`, `api/postal/`, `api/hitl/`, etc.)
+- **Reclamation model**: New `reclamation` database model with full CRUD, processing pipeline, and decision persistence
+- **Helm chart**: Added `mcp.postal` and `mcp.tracking` sections, LlamaStack tool_groups for postal/tracking, courrier-prompts ConfigMap
+- **Token usage metadata**: Decision metadata now includes `tokens_used` tracking
+- **All images bumped to v3**: backend, frontend, data-init, ocr-server, rag-server, claims-server, tenders-server, postal-server, tracking-server
+
+**What was in v2.1** (backend v2.1, frontend v2.3):
 - **HITL domain-agnostic**: Human-in-the-Loop review now works for both claims AND tenders (was claims-only). Uses the existing `AgentRegistry` with HITL metadata — zero new files
 - **Tender processing fix**: All 5 MCP tools (`get_tender`, `ocr_document`, `retrieve_similar_references`, `retrieve_historical_tenders`, `retrieve_capabilities`) are now called correctly in a single batch. Fixed prompt format that caused the LLM to hallucinate tool calls as text instead of making real MCP calls
 - **`ReviewChatPanel` generic**: Frontend review panel accepts `entityType`/`entityId` props, works for any domain
@@ -797,8 +839,9 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
 - Auto-embedding generation on decision save (no separate pipeline)
-- Automatic data initialization (62 PDFs from GitHub archive, 20 processed items with OCR + decisions + embeddings)
-- Decision persistence via MCP tools (save_claim_decision, save_tender_decision)
+- Automatic data initialization (87+ bilingual PDFs from GitHub archive, 30 processed items with OCR + decisions + embeddings)
+- Decision persistence via MCP tools (save_claim_decision, save_tender_decision, save_reclamation_decision)
+- Postal/courrier domain: complaint handling, package tracking, knowledge base queries
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
 - HITL review workflow — domain-agnostic for claims & tenders (ask agent, approve, reject, request info)
@@ -814,13 +857,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 | Component | Image | Version |
 |-----------|-------|---------|
-| Backend | `quay.io/mouachan/multi-agents/backend` | **v2.1** |
-| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v2.3** |
-| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | v1.0 |
-| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | v1.0 |
-| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | v1.0 |
-| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | v1.1 |
-| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | v1.0 |
+| Backend | `quay.io/mouachan/multi-agents/backend` | **v3** |
+| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v3** |
+| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | **v3** |
+| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | **v3** |
+| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | **v3** |
+| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | **v3** |
+| Postal MCP Server | `quay.io/mouachan/multi-agents/postal-server` | **v3** |
+| Tracking MCP Server | `quay.io/mouachan/multi-agents/tracking-server` | **v3** |
+| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | **v3** |
 
 **In Progress**:
 - OpenShift OAuth authentication

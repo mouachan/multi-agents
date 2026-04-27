@@ -46,7 +46,9 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
   // Extract info from tender metadata (JSONB)
   const meta = tender.metadata || {}
   const titre = meta.titre || tender.objet_marche
-  const description = meta.description
+  const description = locale === 'en' && meta.description_en
+    ? meta.description_en
+    : meta.description
   const maitreOuvrage = meta.maitre_ouvrage || tender.maitre_ouvrage
   const montant = meta.montant_estime || tender.montant_estime
   const natureTravaux = meta.nature_travaux || tender.tender_type
@@ -59,7 +61,7 @@ export default function TenderHeader({ tender }: TenderHeaderProps) {
   const criteres = meta.criteres_attribution
   const exigences = meta.exigences_specifiques || []
 
-  const pdfUrl = `/api/v1/tenders/documents/${tender.id}/view`
+  const pdfUrl = `/api/v1/tenders/documents/${tender.id}/view?lang=${locale}`
 
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">

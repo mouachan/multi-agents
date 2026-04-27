@@ -57,14 +57,16 @@ export default function ClaimHeader({ claim, logs = [] }: ClaimHeaderProps) {
   // Extract useful metadata
   const metadata = claim.metadata || {}
   const projectRef = metadata.project_reference
-  const description = metadata.description
+  const description = locale === 'en' && metadata.description_en
+    ? metadata.description_en
+    : metadata.description
 
   // Display claim_number.pdf as document name instead of internal file ID
   const documentName = `${claim.claim_number}.pdf`
 
   // Build the API URL for document viewing
   const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-  const documentViewUrl = `${apiBaseUrl}/claims/documents/${claim.id}/view`
+  const documentViewUrl = `${apiBaseUrl}/claims/documents/${claim.id}/view?lang=${locale}`
 
   // Duration: use total_processing_time_ms if available, otherwise compute from submitted_at/processed_at
   const computeDuration = (): string | null => {

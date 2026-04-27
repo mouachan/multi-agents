@@ -18,7 +18,11 @@ def init_mlflow():
         logger.info("MLflow tracing disabled (MLFLOW_TRACKING_URI not set)")
         return
     try:
+        import os
         import mlflow
+        # Set tracking token for RHOAI Kubernetes auth (bearer token via Route)
+        if settings.mlflow_tracking_token:
+            os.environ["MLFLOW_TRACKING_TOKEN"] = settings.mlflow_tracking_token
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
         mlflow.set_experiment(settings.mlflow_experiment_name)
         _mlflow = mlflow
