@@ -11,7 +11,8 @@ metadata:
     "helm.sh/hook-weight": "25"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  backoffLimit: {{ .Values.dataInit.backoffLimit | default 3 }}
+  backoffLimit: {{ .Values.dataInit.backoffLimit | default 6 }}
+  activeDeadlineSeconds: {{ .Values.dataInit.activeDeadlineSeconds | default 1800 }}
   ttlSecondsAfterFinished: {{ .Values.dataInit.ttlSecondsAfterFinished | default 3600 }}
   template:
     metadata:
@@ -19,10 +20,11 @@ spec:
         {{- include "multi-agents.labels" . | nindent 8 }}
         app.kubernetes.io/component: data-init
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: data-init
           image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.dataInit.image.repository }}:{{ .Values.dataInit.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           env:
             - name: LLAMASTACK_ENDPOINT
               value: {{ quote (include "llamastack.endpoint" .) }}

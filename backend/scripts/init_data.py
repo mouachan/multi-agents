@@ -237,15 +237,21 @@ def reset_for_reinit():
         # --- Reclamations ---
         # Reset document_path for reclamations (restore original paths)
         cur.execute("""
-            UPDATE reclamations SET
-                document_path = 'reclamations/reclamation_' ||
-                    reclamation_type || '_' ||
-                    LPAD(
-                        (ROW_NUMBER() OVER (
-                            PARTITION BY reclamation_type ORDER BY reclamation_number
-                        ))::text, 3, '0'
-                    ) || '.pdf'
-            WHERE document_path LIKE 'file-%%'
+            UPDATE reclamations r SET
+                document_path = sub.new_path
+            FROM (
+                SELECT reclamation_number,
+                       'reclamations/reclamation_' ||
+                       reclamation_type || '_' ||
+                       LPAD(
+                           (ROW_NUMBER() OVER (
+                               PARTITION BY reclamation_type ORDER BY reclamation_number
+                           ))::text, 3, '0'
+                       ) || '.pdf' AS new_path
+                FROM reclamations
+                WHERE document_path LIKE 'file-%%'
+            ) sub
+            WHERE r.reclamation_number = sub.reclamation_number
         """)
         logger.info(f"  Reset {cur.rowcount} reclamation document_paths")
 

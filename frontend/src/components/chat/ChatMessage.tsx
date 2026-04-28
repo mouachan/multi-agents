@@ -10,9 +10,10 @@ interface ChatMessageProps {
 
 /** Shared color config for agent avatars and accents */
 const AGENT_STYLES: Record<string, { bg: string; label: string; accent: string; lightBg: string; border: string }> = {
-  orchestrator: { bg: 'bg-blue-600', label: 'HUB', accent: 'text-blue-700', lightBg: 'bg-blue-50', border: 'border-blue-200' },
-  claims:       { bg: 'bg-emerald-500', label: 'SI', accent: 'text-emerald-700', lightBg: 'bg-emerald-50', border: 'border-emerald-200' },
-  tenders:      { bg: 'bg-amber-500', label: 'AO', accent: 'text-amber-700', lightBg: 'bg-amber-50', border: 'border-amber-200' },
+  orchestrator:          { bg: 'bg-blue-600', label: 'HUB', accent: 'text-blue-700', lightBg: 'bg-blue-50', border: 'border-blue-200' },
+  claims:                { bg: 'bg-emerald-500', label: 'SI', accent: 'text-emerald-700', lightBg: 'bg-emerald-50', border: 'border-emerald-200' },
+  tenders:               { bg: 'bg-amber-500', label: 'AO', accent: 'text-amber-700', lightBg: 'bg-amber-50', border: 'border-amber-200' },
+  courrier_reclamation:  { bg: 'bg-purple-500', label: 'CR', accent: 'text-purple-700', lightBg: 'bg-purple-50', border: 'border-purple-200' },
 }
 
 function getAgentStyle(agentId?: string) {

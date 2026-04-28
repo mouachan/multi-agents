@@ -16,6 +16,7 @@ const AGENT_BADGE: Record<string, { bg: string; label: string }> = {
   orchestrator: { bg: 'bg-blue-600', label: 'HUB' },
   claims: { bg: 'bg-emerald-500', label: 'SI' },
   tenders: { bg: 'bg-amber-500', label: 'AO' },
+  courrier_reclamation: { bg: 'bg-purple-500', label: 'CR' },
 }
 
 export default function ChatWindow({

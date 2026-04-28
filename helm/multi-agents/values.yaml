@@ -476,15 +476,16 @@ dataInit:
     tag: v3
   documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
   forceReinit: "false"
-  backoffLimit: 3
+  backoffLimit: 6
+  activeDeadlineSeconds: 1800
   ttlSecondsAfterFinished: 3600
   resources:
     requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
       cpu: 500m
       memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 # =============================================================================
 # Data Science Pipelines (RHOAI DSPA)
