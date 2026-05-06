@@ -84,4 +84,9 @@ data:
 
   # Admin & Database Reset
   SEED_DATA_URL: {{ .Values.backend.seedDataUrl | quote }}
+{{- if .Values.mlflow.enabled }}
+  MLFLOW_TRACKING_URI: {{ .Values.mlflow.trackingUri | quote }}
+  MLFLOW_EXPERIMENT_NAME: {{ .Values.mlflow.experimentName | quote }}
+  MLFLOW_RHOAI_WORKSPACE: {{ .Values.mlflow.workspace | quote }}
+{{- end }}
 {{- end }}

@@ -228,14 +228,16 @@ class OrchestratorService:
                         )
 
                     # Log to MLflow (non-streaming)
-                    tracing.log_llm_call(
+                    tracing.log_agent_trace(
                         agent_id=agent_id,
                         model=result.get("model", ""),
                         input_text=str(message)[:2000],
                         output_text=result.get("output", "")[:2000],
-                        tool_calls=len(result.get("tool_calls", [])),
+                        tool_calls=result.get("tool_calls", []),
                         usage=result.get("usage"),
                         stream=False,
+                        session_id=session_id,
+                        user_id=user_id,
                     )
 
                 except Exception as e:
@@ -427,14 +429,16 @@ class OrchestratorService:
         suggested_actions = self._generate_post_response_actions(full_text, agent_id, user_lang)
 
         # Log to MLflow (streaming)
-        tracing.log_llm_call(
+        tracing.log_agent_trace(
             agent_id=agent_id,
             model=model if isinstance(model, str) else "",
             input_text=str(message)[:2000],
             output_text=full_text[:2000],
-            tool_calls=len(tool_calls),
+            tool_calls=tool_calls,
             usage=token_usage,
             stream=True,
+            session_id=session_id,
+            user_id=user_id,
         )
 
         # Store last_response_id for conversation chaining

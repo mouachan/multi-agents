@@ -681,6 +681,33 @@ POSTGRES_USER: multi_agent_user
 POSTGRES_PASSWORD: ***
 ```
 
+### MLflow Tracing (OpenTelemetry)
+
+The backend supports distributed tracing via **OpenTelemetry** with traces exported to **MLflow RHOAI** (GenAI apps & agents tab). Tracing is optional — disabled by default, activated when `MLFLOW_TRACKING_URI` is set.
+
+**How it works**: The backend uses the OpenTelemetry SDK with an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Each agent call produces a trace with spans for the orchestrator, agent, tool calls, and LLM response. Authentication uses the pod's ServiceAccount token, TLS uses OpenShift's `service-ca.crt`.
+
+**Enable via Helm**:
+
+```bash
+helm upgrade multi-agents helm/multi-agents \
+  --set mlflow.enabled=true \
+  --set mlflow.workspace=<NAMESPACE>
+```
+
+**Helm parameters**:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `mlflow.enabled` | Enable tracing | `false` |
+| `mlflow.trackingUri` | MLflow RHOAI internal URL | `https://mlflow.redhat-ods-applications.svc.cluster.local:8443` |
+| `mlflow.experimentName` | MLflow experiment name | `multi-agent-orchestrator` |
+| `mlflow.workspace` | RHOAI workspace (namespace) | `""` |
+
+**Reusability**: When agents are separated into individual services, each service only needs `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http` packages and the same env vars (`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`, `MLFLOW_RHOAI_WORKSPACE`). No MLflow SDK or custom code required — OTel context propagation handles cross-service trace correlation automatically.
+
+**Local development**: Set `MLFLOW_TRACKING_URI` in your `.env` file to point to your MLflow instance. Without it, tracing is silently disabled.
+
 ### Frontend Configuration
 
 Frontend uses nginx reverse proxy — no environment variables needed. API calls go to `/api/v1/...` (relative path), nginx routes to backend.
@@ -798,9 +825,15 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v3
+### Current Version: v3.3
 
-**What's new in v3**:
+**What's new in v3.3** (backend only):
+- **OpenTelemetry tracing**: Replaced MLflow Python SDK with OpenTelemetry SDK + OTLP/HTTP exporter for distributed tracing. Traces appear in MLflow RHOAI "GenAI apps & agents" tab with full span hierarchy (orchestrator -> agent -> tools + LLM)
+- **Reusable tracing architecture**: Each future separated agent only needs OTel SDK + env vars — no MLflow-specific code required
+- **Removed MLflow SDK dependency**: `mlflow[auth]` replaced by lightweight `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http`
+- **Removed MLflow workspace plugin**: `mlflow_rhoai_workspace.py` no longer needed — workspace header injected directly in OTLP headers
+
+**What was in v3**:
 - **Postal/Courrier domain**: New business domain for postal mail processing — complaint handling (reclamations), package tracking, and postal knowledge base queries
 - **2 new MCP servers**: `postal-server` (reclamations CRUD, documents, decision saving) and `tracking-server` (package/mail tracking, postal knowledge base search)
 - **3 courrier sub-agents**: `courrier-reclamation`, `courrier-suivi`, `courrier-info` — each with specialized prompts and tool routing
@@ -857,7 +890,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 | Component | Image | Version |
 |-----------|-------|---------|
-| Backend | `quay.io/mouachan/multi-agents/backend` | **v3** |
+| Backend | `quay.io/mouachan/multi-agents/backend` | **v3.3** |
 | Frontend | `quay.io/mouachan/multi-agents/frontend` | **v3** |
 | Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | **v3** |
 | Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | **v3** |

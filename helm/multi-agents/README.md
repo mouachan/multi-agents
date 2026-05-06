@@ -11,17 +11,16 @@ Helm chart for deploying the complete AI-powered insurance claims processing sys
 - **Helm 3.8+** CLI
 - **kubectl or oc CLI** configured
 
-### AI Models (Deployed separately via OpenShift AI)
+### AI Models (via LiteMaaS — Model as a Service)
 
-This Helm chart requires AI models to be **already deployed** before installation.
+This Helm chart requires AI model endpoints to be configured. Models run as remote MaaS — no local GPU required.
 
-Required models:
-- **Llama 3.3 70B INT8** (vLLM runtime)
-- **Gemma 300m** (Hugging Face runtime for embeddings)
+Required model endpoints:
+- **Llama-4-Scout-17B** — LLM reasoning + tool calling
+- **Qwen2.5-VL-7B** — Vision OCR (PDF page images)
+- **nomic-embed-text-v1-5** — Embeddings (768-dim)
 
-> **📚 See the main repository README.md for complete model deployment instructions:**
-> - Step 3: Deploy vLLM Inference Model (Llama 3.3 70B)
-> - Gemma 300m embedding model deployment
+> **See the main repository README.md for model configuration details.**
 
 ### Container Images
 
@@ -159,8 +158,22 @@ echo "https://frontend-multi-agents.apps.cluster-xxx.opentlc.com"
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `mcp.ocr.enabled` | Enable OCR server | `true` |
-| `mcp.ocr.env.OCR_LANGUAGES` | OCR languages | `en,fr` |
 | `mcp.rag.enabled` | Enable RAG server | `true` |
+| `mcp.claims.enabled` | Enable Claims MCP server | `true` |
+| `mcp.tenders.enabled` | Enable Tenders MCP server | `true` |
+| `mcp.postal.enabled` | Enable Postal MCP server | `true` |
+| `mcp.tracking.enabled` | Enable Tracking MCP server | `true` |
+
+### MLflow Tracing (RHOAI)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `mlflow.enabled` | Enable OpenTelemetry tracing to MLflow | `false` |
+| `mlflow.trackingUri` | MLflow RHOAI internal service URL | `https://mlflow.redhat-ods-applications.svc.cluster.local:8443` |
+| `mlflow.experimentName` | MLflow experiment name | `multi-agent-orchestrator` |
+| `mlflow.workspace` | RHOAI workspace (namespace for multi-tenancy) | `""` |
+
+When enabled, the backend exports OpenTelemetry traces to MLflow via OTLP/HTTP. Traces appear in the MLflow "GenAI apps & agents" tab with span hierarchy: orchestrator -> agent -> tools + LLM.
 
 ### Backend API
 
@@ -373,13 +386,21 @@ curl https://backend-multi-agents.apps.cluster-xxx.opentlc.com/health/live
 ```
 Frontend (React)
     → Backend API (FastAPI)
-       → LlamaStack (OpenShift AI)
-          ├─→ Llama 3.3 70B (reasoning)
+       → Multi-Agent Orchestrator (intent routing)
+       → LlamaStack (RHOAI 3.3)
+          ├─→ Llama-4-Scout-17B (reasoning + tool calling)
+          ├─→ Qwen2.5-VL-7B (vision OCR)
+          ├─→ nomic-embed-text-v1-5 (embeddings)
           └─→ MCP Tools (FastMCP/SSE)
-              • OCR Server (EasyOCR)
+              • OCR Server (Qwen2.5-VL vision)
               • RAG Server (pgvector)
+              • Claims Server (CRUD + decisions)
+              • Tenders Server (CRUD + decisions)
+              • Postal Server (reclamations)
+              • Tracking Server (package tracking)
                  ↓
-              PostgreSQL + pgvector
+              PostgreSQL + pgvector + MinIO S3
+       → MLflow RHOAI (OpenTelemetry tracing, optional)
 ```
 
 ## Support

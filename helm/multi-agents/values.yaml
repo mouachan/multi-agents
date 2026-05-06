@@ -488,6 +488,15 @@ dataInit:
       memory: 1Gi
 
 # =============================================================================
+# MLflow Tracing (RHOAI)
+# =============================================================================
+mlflow:
+  enabled: false
+  trackingUri: "https://mlflow.redhat-ods-applications.svc.cluster.local:8443"
+  experimentName: "multi-agent-orchestrator"
+  workspace: ""
+
+# =============================================================================
 # Data Science Pipelines (RHOAI DSPA)
 # =============================================================================
 dataSciencePipelines:

@@ -79,10 +79,10 @@ class Settings(BaseSettings):
     tracking_server_url: str = ""  # TRACKING_SERVER_URL
     guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional)
 
-    # MLflow tracing
-    mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI (optional, e.g. http://mlflow:5000)
+    # MLflow tracing (RHOAI)
+    mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI
     mlflow_experiment_name: str = "multi-agent-orchestrator"  # MLFLOW_EXPERIMENT_NAME
-    mlflow_tracking_token: str = ""  # MLFLOW_TRACKING_TOKEN (optional, for RHOAI Kubernetes auth)
+    mlflow_rhoai_workspace: str = ""  # MLFLOW_RHOAI_WORKSPACE (namespace as workspace)
 
     # Guardrails/Shields Configuration
     enable_pii_detection: bool = True  # Enable PII detection and dual-level storage
