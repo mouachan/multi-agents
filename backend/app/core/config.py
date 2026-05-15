@@ -84,10 +84,9 @@ class Settings(BaseSettings):
     mlflow_experiment_name: str = "multi-agent-orchestrator"  # MLFLOW_EXPERIMENT_NAME
     mlflow_rhoai_workspace: str = ""  # MLFLOW_RHOAI_WORKSPACE (namespace as workspace)
 
-    # Guardrails/Shields Configuration
-    enable_pii_detection: bool = True  # Enable PII detection and dual-level storage
+    # Guardrails (NeMo Guardrails)
+    enable_pii_detection: bool = True
     pii_redaction_mode: str = "dual"  # "dual" = store original + redacted, "redact_only" = only redacted
-    pii_shield_id: str = "pii_detector"  # LlamaStack shield ID for PII detection
 
     # CORS - default to restrictive, override in production via env vars
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]

@@ -176,36 +176,38 @@ class ClaimService(BaseAgentService):
         try:
             import httpx
 
-            async with httpx.AsyncClient() as client:
+            guardrails_url = settings.guardrails_server_url
+            if not guardrails_url:
+                logger.debug("No guardrails server URL configured, skipping PII check")
+                return {"violations_found": False, "detections": []}
+
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
-                    f"{settings.llamastack_endpoint}/v1/safety/run-shield",
+                    f"{guardrails_url}/v1/guardrails/checks",
                     json={
-                        "shield_id": settings.pii_shield_id,
-                        "messages": [{"content": text, "role": "user"}],
+                        "messages": [{"role": "user", "content": text}],
                     },
                     timeout=30.0,
                 )
 
                 if response.status_code != 200:
-                    logger.warning(f"Shield API returned {response.status_code}: {response.text}")
+                    logger.warning(f"NeMo Guardrails returned {response.status_code}: {response.text}")
                     return {"violations_found": False, "detections": []}
 
                 result = response.json()
-                violation_data = result.get("violation", {})
-                metadata = violation_data.get("metadata", {})
-                status = metadata.get("status", "pass")
+                status = result.get("status", "allowed")
 
-                if status == "violation":
-                    detections = metadata.get("results", [])
-                    logger.info(f"PII detected in claim {claim_id}: {len(detections)} violations")
+                if status == "blocked":
+                    detections = result.get("rails_info", {}).get("detections", [])
+                    logger.info(f"PII/safety violation in claim {claim_id}: {len(detections)} detections")
                     return {
                         "violations_found": True,
                         "detections": detections,
-                        "summary": metadata.get("summary", {}),
+                        "summary": result.get("rails_info", {}),
                     }
 
         except Exception as e:
-            logger.error(f"Error checking PII shield: {e}", exc_info=True)
+            logger.error(f"Error checking NeMo Guardrails: {e}", exc_info=True)
 
         return {"violations_found": False, "detections": []}
 

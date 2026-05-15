@@ -238,6 +238,7 @@ class OrchestratorService:
                         stream=False,
                         session_id=session_id,
                         user_id=user_id,
+                        response_id=result.get("response_id"),
                     )
 
                 except Exception as e:
@@ -439,6 +440,7 @@ class OrchestratorService:
             stream=True,
             session_id=session_id,
             user_id=user_id,
+            response_id=response_id,
         )
 
         # Store last_response_id for conversation chaining

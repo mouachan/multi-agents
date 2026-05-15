@@ -121,7 +121,7 @@ llamastack:
     embeddingUrl: "REPLACE_WITH_LITEMAAS_EMBEDDING_URL"
     visionUrl: "REPLACE_WITH_LITEMAAS_VISION_URL"
     defaultModel: "litemaas/llama-scout-17b"
-    embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+    embeddingModel: "litemaas/nomic-embed-text-v1-5"
     visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
 
   # Model configuration (legacy, kept for reference)
@@ -162,7 +162,7 @@ mcp:
 
     image:
       repository: ocr-server
-      tag: v3
+      tag: v3.4
 
     service:
       type: ClusterIP
@@ -191,7 +191,7 @@ mcp:
 
     image:
       repository: rag-server
-      tag: v3
+      tag: v3.4
 
     service:
       type: ClusterIP
@@ -216,7 +216,7 @@ mcp:
 
     image:
       repository: claims-server
-      tag: v3
+      tag: v3.4
 
     service:
       type: ClusterIP
@@ -240,7 +240,7 @@ mcp:
 
     image:
       repository: tenders-server
-      tag: v3
+      tag: v3.4
 
     service:
       type: ClusterIP
@@ -263,7 +263,7 @@ mcp:
     replicas: 1
     image:
       repository: postal-server
-      tag: v3
+      tag: v3.4
     service:
       type: ClusterIP
       port: 8080
@@ -283,7 +283,7 @@ mcp:
     replicas: 1
     image:
       repository: tracking-server
-      tag: v3
+      tag: v3.4
     service:
       type: ClusterIP
       port: 8080
@@ -308,7 +308,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v3
+    tag: v3.4
 
   # Service
   service:
@@ -359,7 +359,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v3
+    tag: v3.4
 
   # Service
   service:
@@ -473,7 +473,7 @@ dataInit:
   enabled: true
   image:
     repository: data-init
-    tag: v3
+    tag: v3.4
   documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
   forceReinit: "false"
   backoffLimit: 6
@@ -526,56 +526,37 @@ dataSciencePipelines:
       secretKey: AWS_SECRET_ACCESS_KEY
 
 # =============================================================================
-# Guardrails (TrustyAI)
+# Guardrails (NeMo Guardrails via TrustyAI Operator)
 # =============================================================================
 guardrails:
-  enabled: true  # Enable PII detection with TrustyAI guardrails
+  enabled: true
 
   name: claims-guardrails
-  configMapName: claims-guardrails-config
-
-  # GuardrailsOrchestrator configuration
-  enableBuiltInDetectors: true
-  enableGuardrailsGateway: false
   replicas: 1
-  logLevel: "info"
 
-  tls:
+  # PII detection (Presidio-based, runs inside NeMo server)
+  pii:
+    scoreThreshold: 0.3
+
+  # Llama Guard 3 1B detector InferenceService (optional, requires GPU)
+  llamaGuard:
     enabled: false
-
-  # Chat generation service (LlamaStack)
-  chatGeneration:
-    hostname: llamastack-rhoai-service  # Resolved within same namespace
-    port: 8321
-
-  # Detector configurations for ConfigMap
-  detectors:
-    regex:
-      threshold: 0.5
-    hap:
-      threshold: 0.5
-    pii:
-      threshold: 0.7
-
-    # Llama Guard 3 1B detector InferenceService
-    llamaGuard:
-      enabled: false  # Requires GPU, enable only if GPU available
-      minReplicas: 1
-      maxReplicas: 1
-      storageUri: "oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0"
-      resources:
-        requests:
-          cpu: "1"
-          memory: 8Gi
-          nvidia.com/gpu: "1"
-        limits:
-          cpu: "8"
-          memory: 10Gi
-          nvidia.com/gpu: "1"
-      tolerations:
-        - effect: NoSchedule
-          operator: Exists
-      placement: {}
+    minReplicas: 1
+    maxReplicas: 1
+    storageUri: "oci://quay.io/rh-aiservices-bu/llama-guard-3-1b-modelcar:2.0.0"
+    resources:
+      requests:
+        cpu: "1"
+        memory: 8Gi
+        nvidia.com/gpu: "1"
+      limits:
+        cpu: "8"
+        memory: 10Gi
+        nvidia.com/gpu: "1"
+    tolerations:
+      - effect: NoSchedule
+        operator: Exists
+    placement: {}
 
 # =============================================================================
 # GPT-OSS 120B (llm-d / LLMInferenceService)

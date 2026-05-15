@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import tracing
 from app.core.config import settings
 from app.services.agent.context_builder import ContextBuilder
 from app.services.agent.response_parser import ResponseParser
@@ -227,6 +228,25 @@ class BaseAgentService(ABC):
             self.set_entity_metadata(entity, metadata)
 
             await db.commit()
+
+            # Trace to MLflow
+            tracing.log_agent_trace(
+                agent_id=f"{self.get_entity_type()}-agent",
+                model=result.get("model", settings.llamastack_default_model),
+                input_text=processing_message[:2000],
+                output_text=response_content[:2000],
+                tool_calls=tool_calls,
+                usage=result.get("usage"),
+                stream=False,
+                response_id=result.get("response_id"),
+                metadata={
+                    "decision": decision_data,
+                    "recommendation": recommendation,
+                    "entity_type": self.get_entity_type(),
+                    "entity_id": str(entity_id),
+                    "status": new_status,
+                },
+            )
 
             return {
                 "response_id": result.get("response_id"),

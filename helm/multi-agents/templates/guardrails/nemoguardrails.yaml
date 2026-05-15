@@ -1,9 +1,9 @@
 {{- if .Values.guardrails.enabled }}
 ---
 apiVersion: trustyai.opendatahub.io/v1alpha1
-kind: GuardrailsOrchestrator
+kind: NemoGuardrails
 metadata:
-  name: guardrails-orchestrator
+  name: {{ .Values.guardrails.name }}
   namespace: {{ include "multi-agents.namespace" . }}
   labels:
     {{- include "multi-agents.labels" . | nindent 4 }}
@@ -12,9 +12,16 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 spec:
-  orchestratorConfig: "fms-orchestr8-config-nlp"
-  enableBuiltInDetectors: {{ .Values.guardrails.enableBuiltInDetectors }}
-  enableGuardrailsGateway: false
   replicas: {{ .Values.guardrails.replicas }}
-  logLevel: {{ .Values.guardrails.logLevel | quote }}
+  nemoConfigs:
+    - name: claims-guardrails
+      default: true
+      configMaps:
+        - nemo-guardrails-config
+  env:
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: litemaas-secret
+          key: LITEMAAS_API_KEY
 {{- end }}

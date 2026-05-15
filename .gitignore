@@ -120,5 +120,12 @@ openshift/README-OPENSHIFT-AI.md
 helm/values-secrets-*.yaml
 helm/values-local.yaml
 helm/values-demo-agentic.yaml
+helm/values-sandbox5465.yaml
 docker-compose.local.yml
 TODO-LUNDI.md
+
+# RHOAI cluster setup docs (local only)
+RHOAI-3.4-SETUP.md
+
+# Blog post (local only)
+blog-post-mono-to-multi-agent.md

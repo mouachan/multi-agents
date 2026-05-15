@@ -82,8 +82,8 @@ spec:
               key: MINIO_ROOT_PASSWORD
 {{- end }}
 {{- if .Values.guardrails.enabled }}
-        - name: FMS_ORCHESTRATOR_URL
-          value: "https://guardrails-orchestrator-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8032"
+        - name: NEMO_GUARDRAILS_URL
+          value: "http://{{ .Values.guardrails.name }}.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
 {{- end }}
       name: llama-stack
       port: 8321

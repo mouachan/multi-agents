@@ -15,14 +15,10 @@ data:
     image_name: rh-dev
 
     apis:
-    - agents
     - batches
-    - datasetio
-    - eval
     - files
     - inference
-    - safety
-    - scoring
+    - responses
     - tool_runtime
     - vector_io
 
@@ -31,7 +27,6 @@ data:
       - provider_id: litemaas
         provider_type: remote::vllm
         config:
-          # RHOAI 3.3 / llama-stack 0.4.x uses base_url (not url)
           base_url: {{ .Values.llamastack.litemaas.url | quote }}
           max_tokens: 4096
           api_token: ${env.LITEMAAS_API_KEY}
@@ -64,60 +59,21 @@ data:
             backend: kv_default
             namespace: vector_io::pgvector
 
-      safety:
-{{- if .Values.guardrails.enabled }}
-      - provider_id: trustyai_fms
-        provider_type: remote::trustyai_fms
-        module: llama_stack_provider_trustyai_fms
-        config:
-          orchestrator_url: ${env.FMS_ORCHESTRATOR_URL}
-          verify_ssl: false
-{{- else }}
-      []
-{{- end }}
-
-      agents:
-      - provider_id: meta-reference
-        provider_type: inline::meta-reference
+      responses:
+      - provider_id: builtin
+        provider_type: inline::builtin
         config:
           persistence:
             agent_state:
               backend: kv_default
-              namespace: agents::meta_reference
+              namespace: agents
             responses:
               backend: sql_default
               table_name: agents_responses
               max_write_queue_size: 10000
               num_writers: 4
 
-      eval:
-      - provider_id: meta-reference-eval
-        provider_type: inline::meta-reference
-        config:
-          kvstore:
-            backend: kv_default
-            namespace: eval
-
-      datasetio:
-      - provider_id: huggingface
-        provider_type: remote::huggingface
-        config:
-          kvstore:
-            backend: kv_default
-            namespace: datasetio::huggingface
-
-      scoring:
-      - provider_id: basic
-        provider_type: inline::basic
-        config: {}
-      - provider_id: llm-as-judge
-        provider_type: inline::llm-as-judge
-        config: {}
-
       tool_runtime:
-      - provider_id: rag-runtime
-        provider_type: inline::rag-runtime
-        config: {}
       - provider_id: model-context-protocol
         provider_type: remote::model-context-protocol
         config: {}
@@ -185,6 +141,9 @@ data:
         prompts:
           namespace: prompts
           backend: kv_default
+        responses:
+          table_name: agents_responses
+          backend: sql_default
 
     registered_resources:
       models:
@@ -205,34 +164,7 @@ data:
         provider_model_id: {{ .Values.llamastack.vision.providerModelId | default "Qwen2.5-VL-7B-Instruct" }}
         model_type: llm
 
-      shields:
-{{- if .Values.guardrails.enabled }}
-      # PII Detection Shield using regex detector
-      - shield_id: pii_detector
-        provider_shield_id: pii_detector
-        provider_id: trustyai_fms
-        params:
-          type: content
-          confidence_threshold: {{ .Values.guardrails.detectors.regex.threshold | default 0.5 }}
-          message_types:
-            - system
-            - user
-          verify_ssl: false
-          detectors:
-            regex:
-              detector_params:
-                regex:
-                  - email
-                  - us-social-security-number
-                  - credit-card
-                  - phone
-{{- else }}
-      []
-{{- end }}
       vector_dbs: []
-      datasets: []
-      scoring_fns: []
-      benchmarks: []
 
       tool_groups:
       - toolgroup_id: mcp::ocr-server
@@ -263,8 +195,6 @@ data:
         mcp_endpoint:
           uri: http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080/sse
 {{- end }}
-      - toolgroup_id: builtin::rag
-        provider_id: rag-runtime
 
     telemetry:
       enabled: true

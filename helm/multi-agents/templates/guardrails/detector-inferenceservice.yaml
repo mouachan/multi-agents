@@ -1,4 +1,4 @@
-{{- if and .Values.guardrails.enabled .Values.guardrails.detectors.llamaGuard.enabled }}
+{{- if and .Values.guardrails.enabled .Values.guardrails.llamaGuard.enabled }}
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -20,21 +20,21 @@ metadata:
 spec:
   predictor:
     automountServiceAccountToken: false
-    minReplicas: {{ .Values.guardrails.detectors.llamaGuard.minReplicas }}
-    maxReplicas: {{ .Values.guardrails.detectors.llamaGuard.maxReplicas }}
+    minReplicas: {{ .Values.guardrails.llamaGuard.minReplicas }}
+    maxReplicas: {{ .Values.guardrails.llamaGuard.maxReplicas }}
     model:
       modelFormat:
         name: vLLM
       runtime: llama-guard-3-1b
       # Using OCI modelcar from Red Hat AI Services
-      storageUri: {{ .Values.guardrails.detectors.llamaGuard.storageUri | quote }}
+      storageUri: {{ .Values.guardrails.llamaGuard.storageUri | quote }}
       resources:
-        {{- toYaml .Values.guardrails.detectors.llamaGuard.resources | nindent 8 }}
-{{- with .Values.guardrails.detectors.llamaGuard.tolerations }}
+        {{- toYaml .Values.guardrails.llamaGuard.resources | nindent 8 }}
+{{- with .Values.guardrails.llamaGuard.tolerations }}
     tolerations:
       {{- toYaml . | nindent 6 }}
 {{- end }}
-{{- with .Values.guardrails.detectors.llamaGuard.placement }}
+{{- with .Values.guardrails.llamaGuard.placement }}
 {{ toYaml . | indent 4 }}
 {{- end }}
 {{- end }}

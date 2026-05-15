@@ -687,6 +687,17 @@ The backend supports distributed tracing via **OpenTelemetry** with traces expor
 
 **How it works**: The backend uses the OpenTelemetry SDK with an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Each agent call produces a trace with spans for the orchestrator, agent, tool calls, and LLM response. Authentication uses the pod's ServiceAccount token, TLS uses OpenShift's `service-ca.crt`.
 
+**Span hierarchy** (visible in MLflow "GenAI apps & agents"):
+
+```
+{agent_id} | {message}       (root)
+└── agent-{agent_id}         (agent span)
+    ├── tool:{tool_name}     (one span per MCP tool call)
+    └── llm-response         (LLM inference span)
+```
+
+Each span includes: `response.id`, input/output text, tool call details, token usage, and agent decision metadata.
+
 **Enable via Helm**:
 
 ```bash
@@ -699,10 +710,14 @@ helm upgrade multi-agents helm/multi-agents \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `mlflow.enabled` | Enable tracing | `false` |
+| `mlflow.enabled` | Enable tracing + auto-create RBAC RoleBinding | `false` |
 | `mlflow.trackingUri` | MLflow RHOAI internal URL | `https://mlflow.redhat-ods-applications.svc.cluster.local:8443` |
 | `mlflow.experimentName` | MLflow experiment name | `multi-agent-orchestrator` |
 | `mlflow.workspace` | RHOAI workspace (namespace) | `""` |
+
+**RBAC (RHOAI 3.4)**: The Helm chart automatically creates a RoleBinding for the `mlflow-operator-mlflow-integration` ClusterRole when `mlflow.enabled=true`. This grants the backend's ServiceAccount access to MLflow pseudo-resources (`experiments`, `datasets`, `registeredmodels`) in the `mlflow.kubeflow.org` API group. Without this, trace exports fail with `403 Forbidden`.
+
+**Experiment creation**: The MLflow experiment specified in `mlflow.experimentName` must exist before traces can be sent. The backend auto-resolves the experiment ID at startup. If the experiment doesn't exist, create it via the MLflow API or SDK before deploying.
 
 **Reusability**: When agents are separated into individual services, each service only needs `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http` packages and the same env vars (`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`, `MLFLOW_RHOAI_WORKSPACE`). No MLflow SDK or custom code required — OTel context propagation handles cross-service trace correlation automatically.
 
@@ -825,10 +840,19 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
 - **Workaround**: Check LlamaStack pod logs for full trace
 
-### Current Version: v3.3
+### Current Version: v3.4
 
-**What's new in v3.3** (backend only):
-- **OpenTelemetry tracing**: Replaced MLflow Python SDK with OpenTelemetry SDK + OTLP/HTTP exporter for distributed tracing. Traces appear in MLflow RHOAI "GenAI apps & agents" tab with full span hierarchy (orchestrator -> agent -> tools + LLM)
+**What's new in v3.4**:
+- **RHOAI 3.4 / llama-stack 0.7.x compatibility**: Full migration from llama-stack 0.4.x (RHOAI 3.3) to 0.7.1 (RHOAI 3.4)
+- **Responses API**: Replaced deprecated `agents` API with `responses` API — new `inline::builtin` provider replaces `inline::meta-reference`
+- **NeMo Guardrails**: Replaced TrustyAI FMS guardrails (`remote::trustyai_fms`) with NeMo Guardrails (GA in RHOAI 3.4) — input/output safety rails + PII masking via Presidio
+- **MLflow RBAC**: Helm chart auto-creates `mlflow-operator-mlflow-integration` RoleBinding for trace export access to MLflow pseudo-resources (`mlflow.kubeflow.org` API group)
+- **Enhanced tracing**: `response.id` and agent decision metadata (decision, recommendation, entity info) added to OTel spans
+- **Harmonized truncation**: All trace output fields truncated at 2000 chars (was 500)
+- **All images bumped to v3.4**: backend, frontend, data-init, and all 6 MCP servers
+
+**What was in v3.3** (backend only):
+- **OpenTelemetry tracing**: Replaced MLflow Python SDK with OpenTelemetry SDK + OTLP/HTTP exporter for distributed tracing
 - **Reusable tracing architecture**: Each future separated agent only needs OTel SDK + env vars — no MLflow-specific code required
 - **Removed MLflow SDK dependency**: `mlflow[auth]` replaced by lightweight `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http`
 - **Removed MLflow workspace plugin**: `mlflow_rhoai_workspace.py` no longer needed — workspace header injected directly in OTLP headers
@@ -858,7 +882,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Fixed embedding model name mismatch (`nomic-embed-text-v1-5` with hyphens, not dots)
 
 **What was in v1.0**:
-- RHOAI 3.3 / llama-stack 0.4.x full compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
+- RHOAI 3.3 / llama-stack 0.4.x compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
 - Multi-namespace Helm deployment support (deploy multiple instances on the same cluster)
 - Route timeout 300s on frontend and backend (prevents gateway timeouts during agent processing)
 - Frontend tenders: i18n labels (FR/EN), decision rendering with Go/No-Go badges, search on metadata fields
@@ -884,21 +908,21 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Token consumption tracking (per-message and per-session)
 - Bilingual support FR/EN
 - Local development with docker-compose / podman-compose
-- Helm deployment on OpenShift (RHOAI 3.3 compatible)
+- Helm deployment on OpenShift (RHOAI 3.4 / llama-stack 0.7.x compatible)
 
 ### Image Versions
 
 | Component | Image | Version |
 |-----------|-------|---------|
-| Backend | `quay.io/mouachan/multi-agents/backend` | **v3.3** |
-| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v3** |
-| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | **v3** |
-| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | **v3** |
-| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | **v3** |
-| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | **v3** |
-| Postal MCP Server | `quay.io/mouachan/multi-agents/postal-server` | **v3** |
-| Tracking MCP Server | `quay.io/mouachan/multi-agents/tracking-server` | **v3** |
-| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | **v3** |
+| Backend | `quay.io/mouachan/multi-agents/backend` | **v3.4** |
+| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v3.4** |
+| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | **v3.4** |
+| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | **v3.4** |
+| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | **v3.4** |
+| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | **v3.4** |
+| Postal MCP Server | `quay.io/mouachan/multi-agents/postal-server` | **v3.4** |
+| Tracking MCP Server | `quay.io/mouachan/multi-agents/tracking-server` | **v3.4** |
+| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | **v3.4** |
 
 **In Progress**:
 - OpenShift OAuth authentication

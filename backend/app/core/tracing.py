@@ -131,11 +131,10 @@ def log_agent_trace(
     stream: bool = False,
     session_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    response_id: Optional[str] = None,
+    metadata: Optional[Dict] = None,
 ):
-    """Log an agentic call as an OTel trace exported to MLflow.
-
-    Same interface as before — drop-in replacement.
-    """
+    """Log an agentic call as an OTel trace exported to MLflow."""
     if not _enabled:
         return
     try:
@@ -146,6 +145,8 @@ def log_agent_trace(
         short_msg = input_text[:80].replace("\n", " ").strip()
         trace_name = f"{agent_id} | {short_msg}"
 
+        meta = metadata or {}
+
         # Root span — orchestrator level
         with _tracer.start_as_current_span(
             name=trace_name,
@@ -154,6 +155,7 @@ def log_agent_trace(
                 "mlflow.spanType": "AGENT",
                 "session.id": session_id or "",
                 "user.id": user_id or "",
+                "response.id": response_id or "",
                 "stream": stream,
             },
         ) as root:
@@ -168,6 +170,7 @@ def log_agent_trace(
                     "mlflow.spanType": "AGENT",
                     "agent.id": agent_id,
                     "gen_ai.request.model": model_short,
+                    "response.id": response_id or "",
                 },
             ) as agent_span:
                 agent_span.set_attribute(
@@ -236,26 +239,32 @@ def log_agent_trace(
                     llm_span.set_attribute("mlflow.spanOutputs", json.dumps(llm_outputs))
 
                 # Agent span outputs
-                agent_span.set_attribute(
-                    "mlflow.spanOutputs",
-                    json.dumps({
-                        "response": output_text[:500],
-                        "tool_count": len(tool_calls),
-                        "tools_used": [tc.get("name", "") for tc in tool_calls],
-                    }),
-                )
+                agent_outputs: Dict = {
+                    "response": output_text[:2000],
+                    "tool_count": len(tool_calls),
+                    "tools_used": [tc.get("name", "") for tc in tool_calls],
+                }
+                if response_id:
+                    agent_outputs["response_id"] = response_id
+                if meta.get("decision"):
+                    agent_outputs["decision"] = meta["decision"]
+                agent_span.set_attribute("mlflow.spanOutputs", json.dumps(agent_outputs))
 
             # Root span outputs
-            root.set_attribute(
-                "mlflow.spanOutputs",
-                json.dumps({
-                    "agent": agent_id,
-                    "model": model_short,
-                    "response": output_text[:500],
-                    "tools_used": [tc.get("name", "") for tc in tool_calls],
-                    "total_tokens": (usage.get("total_tokens", 0) or 0) if usage else 0,
-                }),
-            )
+            root_outputs: Dict = {
+                "agent": agent_id,
+                "model": model_short,
+                "response": output_text[:2000],
+                "tools_used": [tc.get("name", "") for tc in tool_calls],
+                "total_tokens": (usage.get("total_tokens", 0) or 0) if usage else 0,
+            }
+            if response_id:
+                root_outputs["response_id"] = response_id
+            if meta.get("decision"):
+                root_outputs["decision"] = meta["decision"]
+            if meta.get("recommendation"):
+                root_outputs["recommendation"] = meta["recommendation"]
+            root.set_attribute("mlflow.spanOutputs", json.dumps(root_outputs))
 
         logger.info(f"OTel trace sent: agent={agent_id}, tools={len(tool_calls)}")
     except Exception as e:

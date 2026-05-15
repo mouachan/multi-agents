@@ -43,9 +43,8 @@ data:
   TRACKING_SERVER_URL: "http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
 {{- end }}
 {{- if .Values.guardrails.enabled }}
-  GUARDRAILS_SERVER_URL: "https://guardrails-orchestrator-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8032"
+  GUARDRAILS_SERVER_URL: "http://{{ .Values.guardrails.name }}.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
   ENABLE_PII_DETECTION: "true"
-  PII_SHIELD_ID: "pii_detector"
 {{- end }}
 
   CORS_ORIGINS: '["*"]'
