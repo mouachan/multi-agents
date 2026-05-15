@@ -16,6 +16,8 @@ An intelligent multi-agent decision platform powered by AI agents, demonstrating
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
 - [Configuration](#configuration)
+- [NeMo Guardrails](#nemo-guardrails)
+- [MLflow Tracing](#mlflow-tracing-opentelemetry)
 - [Troubleshooting](#troubleshooting)
 - [Known Issues](#known-issues)
 
@@ -105,31 +107,52 @@ User Message
 |              MCP Tool Servers                     |
 | OCR | RAG | Claims | Tenders | Postal | Tracking |
 +--------------------------------------------------+
+    |                                    |
+    v                                    v
++------------------------------+  +------------------+
+|   S3/MinIO + PostgreSQL      |  | NeMo Guardrails  |
+|   Documents + Decisions      |  | PII + Safety     |
++------------------------------+  +------------------+
     |
     v
 +------------------------------+
-|   S3/MinIO + PostgreSQL      |
-|   Documents + Decisions      |
+|   MLflow RHOAI (OTel)        |
+|   Distributed Tracing        |
 +------------------------------+
 ```
 
 **Key capabilities**:
 - **SSE Streaming**: Real-time response streaming via `POST /chat/stream` with tool call events, text deltas, and completion notifications
-- **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` MCP tools to persist decisions, update status, and auto-generate embeddings
+- **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` / `save_reclamation_decision` MCP tools to persist decisions, update status, and auto-generate embeddings
 - **RAG by precedents**: Similar claims/tenders found via pgvector cosine similarity on OCR text embeddings
 - **Intent-based routing**: Keyword classification routes user messages to the correct domain agent
 - **Chat sessions**: Persistent conversation history with session management
 - **Tool call observability**: Full tool execution traces (name, server, output, error) persisted and displayed in UI
 - **Token consumption tracking**: Per-message and per-session LLM token usage displayed in chat
 - **Bilingual support**: FR/EN language detection and response generation
+- **NeMo Guardrails**: Input/output safety rails + PII masking via Presidio (PERSON, EMAIL, CREDIT_CARD, PHONE, SSN, IBAN)
+- **MLflow tracing**: Distributed tracing via OpenTelemetry → MLflow RHOAI with full span hierarchy
 
 ### Compliance & Guardrails
 
+#### NeMo Guardrails (TrustyAI)
+
+The platform integrates **NeMo Guardrails** (GA in RHOAI 3.4) deployed via the TrustyAI operator for content safety and PII protection:
+
+- **Input rails**: Self-check input flow — blocks harmful, abusive, or injection-style prompts before they reach the LLM
+- **Output rails**: Self-check output flow — validates bot responses meet moderation policy (no PII leakage, no offensive content)
+- **PII masking**: Presidio-based sensitive data detection on both input and output — automatically masks PERSON, EMAIL_ADDRESS, CREDIT_CARD, PHONE_NUMBER, US_SSN, and IBAN_CODE with `[REDACTED]` tokens
+- **Configurable threshold**: PII detection score threshold configurable via `guardrails.pii.scoreThreshold` (default: 0.3)
+- **Optional LLM detector**: LlamaGuard 3 1B can be enabled as an additional content safety detector (requires GPU)
+
+NeMo calls the LiteMaaS LLM directly (not via LlamaStack) for self-check prompts. The guardrails server is deployed as a `NemoGuardrails` CRD managed by the TrustyAI operator.
+
 #### PII Detection & Protection
 
-- Automatic detection of emails, phone numbers, dates of birth, license plates during processing
-- Real-time flagging without blocking workflow
+- Automatic detection of emails, phone numbers, dates of birth, credit cards, SSN, IBAN during processing
+- Real-time masking with `[REDACTED]` tokens without blocking workflow
 - Complete audit trail for GDPR/CCPA compliance
+- Dual-mode redaction: store both original + redacted versions, or redacted only (`pii_redaction_mode`)
 
 #### Human-in-the-Loop (HITL) Review
 
@@ -159,7 +182,15 @@ graph TB
         end
 
         subgraph "AI Orchestration"
-            LS["LlamaStack<br/>ReAct + MCP routing"]
+            LS["LlamaStack 0.7.x<br/>Responses API + MCP routing"]
+        end
+
+        subgraph "Safety & Compliance"
+            NEMO["NeMo Guardrails<br/>Input/Output Rails + PII Masking"]
+        end
+
+        subgraph "Observability"
+            MLFLOW["MLflow RHOAI<br/>OTel Distributed Tracing"]
         end
 
         subgraph "LiteMaaS — Model as a Service"
@@ -178,7 +209,7 @@ graph TB
         end
 
         subgraph "Data Layer"
-            DB[("PostgreSQL 16<br/>+ pgvector HNSW<br/>+ chat sessions")]
+            DB[("PostgreSQL 15<br/>+ pgvector HNSW<br/>+ chat sessions")]
             S3["MinIO S3<br/>Document Storage"]
         end
     end
@@ -187,6 +218,8 @@ graph TB
     F -->|REST API| B
     B --> ORCH
     B -->|Responses API| LS
+    B -->|OTel/OTLP| MLFLOW
+    NEMO -->|Safety check| LLM
     LS -->|Inference| LLM
     LS -->|Vision| VIS
     LS -->|Embeddings| EMB
@@ -205,6 +238,8 @@ graph TB
     TRACKING_MCP -->|Tracking Data| DB
 
     style LS fill:#f3e5f5
+    style NEMO fill:#ffcdd2
+    style MLFLOW fill:#bbdefb
     style LLM fill:#e8f5e9
     style VIS fill:#e8f5e9
     style EMB fill:#e8f5e9
@@ -216,21 +251,39 @@ graph TB
 ```
 backend/
 ├── app/
-│   ├── api/                  # Thin HTTP layer (routing, validation, schemas)
-│   │   ├── claims.py         # Claims REST endpoints
-│   │   ├── schemas.py        # Claims Pydantic schemas
-│   │   ├── tenders.py        # Tenders REST endpoints
-│   │   ├── ao_schemas.py     # Tenders Pydantic schemas
-│   │   ├── orchestrator.py   # Multi-agent chat/orchestrator endpoints
-│   │   ├── orchestrator_schemas.py  # Orchestrator Pydantic schemas
-│   │   ├── documents.py      # Document upload/download endpoints
-│   │   ├── hitl.py           # Human-in-the-Loop review endpoints
-│   │   ├── a2a.py            # Agent-to-Agent protocol endpoints
-│   │   ├── a2a_schemas.py    # A2A Pydantic schemas
-│   │   └── admin.py          # Admin panel (database reset, stats)
+│   ├── api/                          # Modular HTTP layer (sub-packages)
+│   │   ├── shared/                   # Shared schemas & decision service
+│   │   │   ├── schemas.py
+│   │   │   └── decision_service.py
+│   │   ├── claims/                   # Claims REST endpoints
+│   │   │   ├── router.py
+│   │   │   └── schemas.py
+│   │   ├── tenders/                  # Tenders REST endpoints
+│   │   │   ├── router.py
+│   │   │   └── schemas.py
+│   │   ├── postal/                   # Postal/reclamation REST endpoints
+│   │   │   ├── router.py
+│   │   │   └── schemas.py
+│   │   ├── orchestrator/             # Multi-agent chat/orchestrator endpoints
+│   │   │   ├── router.py
+│   │   │   └── schemas.py
+│   │   ├── hitl/                     # Human-in-the-Loop review endpoints
+│   │   │   └── router.py
+│   │   ├── documents/                # Document upload/download endpoints
+│   │   │   └── router.py
+│   │   ├── a2a/                      # Agent-to-Agent protocol endpoints
+│   │   │   ├── router.py
+│   │   │   └── schemas.py
+│   │   └── admin/                    # Admin panel (database reset, stats)
+│   │       └── router.py
+│   ├── core/                         # Application core
+│   │   ├── config.py                 # Settings from env vars (Pydantic)
+│   │   ├── database.py               # SQLAlchemy async engine & session
+│   │   └── tracing.py                # OpenTelemetry → MLflow OTLP exporter
 │   ├── services/
 │   │   ├── claim_service.py              # Claims orchestration
 │   │   ├── tender_service.py             # Tenders orchestration
+│   │   ├── reclamation_service.py        # Reclamations orchestration
 │   │   ├── document_storage.py           # Document storage (MinIO/S3)
 │   │   ├── agents/                       # Multi-agent layer
 │   │   │   ├── base_agent_service.py     # Common agent pattern
@@ -245,12 +298,16 @@ backend/
 │   │   └── pii/                          # PII detection & redaction
 │   │       ├── pii_service.py            # PII detection service
 │   │       └── redactor.py               # Text redaction utilities
-│   ├── models/               # Database ORM (claims, tenders, conversations)
-│   └── llamastack/           # Prompts & integration config
-│       ├── prompts.py              # Claims agent prompts
-│       ├── ao_prompts.py           # Tender agent prompts
-│       ├── courrier_prompts.py     # Courrier/postal agent prompts
-│       └── orchestrator_prompts.py # Multi-agent router prompts
+│   ├── models/                           # Database ORM
+│   │   ├── claim.py                      # Claims model
+│   │   ├── tender.py                     # Tenders model
+│   │   ├── reclamation.py                # Reclamations model
+│   │   └── conversation.py               # Chat conversations model
+│   └── llamastack/                       # Prompts & integration config
+│       ├── prompts.py                    # Claims agent prompts
+│       ├── ao_prompts.py                 # Tender agent prompts
+│       ├── courrier_prompts.py           # Courrier/postal agent prompts
+│       └── orchestrator_prompts.py       # Multi-agent router prompts
 ├── mcp_servers/
 │   ├── shared/               # Shared DB module (connection, retry, queries)
 │   ├── ocr_server/           # Document OCR via Qwen2.5-VL vision model
@@ -260,12 +317,13 @@ backend/
 │   ├── postal_server/        # Reclamations CRUD + documents + decision saving
 │   └── tracking_server/      # Package/mail tracking + postal knowledge base
 ├── scripts/
-│   ├── init_data.py          # Data initialization (download, upload, OCR, decisions)
-│   ├── init_data/            # Pre-defined decisions
-│   ├── generate_claim_pdfs.py        # Generate claim PDF test data
-│   ├── generate_tender_pdfs.py       # Generate tender PDF test data
-│   ├── generate_reclamation_pdfs.py  # Generate reclamation PDF test data
-│   └── seed_database.py             # Database seeding utility
+│   ├── init_data.py                      # Data initialization (download, upload, OCR, decisions)
+│   ├── init_data/                        # Pre-defined decisions
+│   ├── generate_claim_pdfs.py            # Generate claim PDF test data
+│   ├── generate_tender_pdfs.py           # Generate tender PDF test data
+│   ├── generate_reclamation_pdfs.py      # Generate reclamation PDF test data
+│   ├── seed_database.py                  # Database seeding utility
+│   └── upload_documents_to_llamastack.py # Upload PDFs to LlamaStack Files API
 frontend/
 ├── src/
 │   ├── pages/
@@ -273,18 +331,34 @@ frontend/
 │   │   ├── ChatPage.tsx          # Multi-agent chat interface
 │   │   ├── ClaimsListPage.tsx    # Claims list with filters & search
 │   │   ├── ClaimDetailPage.tsx   # Claim detail with processing steps
-│   │   ├── TendersListPage.tsx    # Tenders list & filtering
-│   │   ├── TenderDetailPage.tsx   # Tender detail with processing steps
-│   │   ├── PostalListPage.tsx     # Postal reclamations list
-│   │   ├── PostalDetailPage.tsx   # Reclamation detail with processing steps
-│   │   └── AdminPage.tsx          # Admin panel (reset, stats)
+│   │   ├── TendersListPage.tsx   # Tenders list & filtering
+│   │   ├── TenderDetailPage.tsx  # Tender detail with processing steps
+│   │   ├── PostalListPage.tsx    # Postal reclamations list
+│   │   ├── PostalDetailPage.tsx  # Reclamation detail with processing steps
+│   │   └── AdminPage.tsx         # Admin panel (reset, stats)
 │   ├── components/
 │   │   ├── Layout.tsx            # App layout with navigation
-│   │   ├── ReviewChatPanel.tsx   # HITL review chat panel
-│   │   ├── chat/                 # Chat UI (messages, agent graph, tool calls)
-│   │   ├── claim/                # ClaimHeader, ClaimDecision, ProcessingSteps
-│   │   ├── tender/               # TenderHeader, TenderDecision, TenderProcessingSteps
-│   │   └── common/               # Shared components (AgentCard, PIIBadge)
+│   │   ├── ReviewChatPanel.tsx   # HITL review chat panel (domain-agnostic)
+│   │   ├── chat/                 # Chat UI
+│   │   │   ├── AgentGraph.tsx        # Agent architecture visualization
+│   │   │   ├── ChatMessage.tsx       # Message rendering with tool calls
+│   │   │   ├── ChatWindow.tsx        # Chat window with SSE streaming
+│   │   │   └── ToolCallSteps.tsx     # Tool call step display
+│   │   ├── claim/                # Claims UI
+│   │   │   ├── ClaimHeader.tsx       # Claim metadata display
+│   │   │   ├── ClaimActions.tsx      # Process claim button
+│   │   │   ├── ClaimDecision.tsx     # Decision rendering with badges
+│   │   │   ├── ProcessingSteps.tsx   # Agent processing steps
+│   │   │   ├── StepOutputDisplay.tsx # Expandable step output
+│   │   │   └── GuardrailsAlert.tsx   # PII/guardrails alert display
+│   │   ├── tender/               # Tenders UI
+│   │   │   ├── TenderHeader.tsx      # Tender metadata display
+│   │   │   ├── TenderActions.tsx     # Process tender button
+│   │   │   ├── TenderDecision.tsx    # Go/No-Go decision rendering
+│   │   │   └── TenderProcessingSteps.tsx # Tender processing steps
+│   │   └── common/               # Shared components
+│   │       ├── AgentCard.tsx          # Agent status card
+│   │       └── PIIBadge.tsx           # PII detection badge
 │   ├── hooks/
 │   │   ├── useChat.ts            # Chat session management + SSE streaming
 │   │   ├── useAgents.ts          # Agent registry hook
@@ -292,6 +366,8 @@ frontend/
 │   │   ├── useClaimPolling.ts    # Claim status polling
 │   │   ├── useTender.ts          # Tender data fetching
 │   │   ├── useTenderPolling.ts   # Tender status polling
+│   │   ├── useReclamation.ts     # Reclamation data fetching
+│   │   ├── useReclamationPolling.ts # Reclamation status polling
 │   │   └── useToolDisplay.ts     # Tool call display formatting
 │   ├── services/               # API clients
 │   │   ├── api.ts                # Base axios instance
@@ -299,8 +375,12 @@ frontend/
 │   │   ├── orchestratorService.ts # Orchestrator API client
 │   │   ├── tenderApi.ts          # Tenders API client
 │   │   ├── tenderService.ts      # Tender business logic
+│   │   ├── postalApi.ts          # Postal API client
+│   │   ├── postalService.ts      # Postal business logic
 │   │   └── reviewService.ts      # HITL review API client
 │   └── i18n/                     # Internationalization FR/EN
+│       ├── LanguageContext.tsx    # React context for language state
+│       └── translations.ts       # FR/EN translation strings
 ```
 
 ---
@@ -312,13 +392,15 @@ frontend/
 | **LLM Inference** | LiteMaaS (Model as a Service) | Llama-4-Scout-17B (llama-scout-17b) |
 | **Vision OCR** | Qwen2.5-VL-7B via LiteMaaS | PDF page images -> structured text extraction |
 | **Embeddings** | nomic-embed-text-v1-5 via LiteMaaS | 768-dim vectors for similarity search |
-| **AI Orchestration** | LlamaStack RHOAI 3.3 (llama-stack 0.4.x) | ReAct agent, MCP tool routing, Responses API |
+| **AI Orchestration** | LlamaStack RHOAI 3.4 (llama-stack 0.7.x) | Responses API, MCP tool routing |
+| **Guardrails** | NeMo Guardrails (TrustyAI operator) | Input/output safety rails + Presidio PII masking |
+| **Tracing** | OpenTelemetry SDK → MLflow RHOAI | OTLP/HTTP distributed tracing with span hierarchy |
 | **Backend** | Python 3.12 + FastAPI | REST API + SSE streaming |
 | **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
-| **Database** | PostgreSQL 16 + pgvector (HNSW) | Claims, tenders, vectors, chat sessions |
-| **Document Storage** | MinIO S3-compatible | PDF documents for claims & tenders |
-| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims CRUD, Tenders CRUD, Postal, Tracking |
-| **Deployment** | Helm 3.x on OpenShift 4.x | Or docker/podman compose for local dev |
+| **Database** | PostgreSQL 15 + pgvector (HNSW) | Claims, tenders, reclamations, vectors, chat sessions |
+| **Document Storage** | MinIO S3-compatible | PDF documents for claims, tenders & reclamations |
+| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims, Tenders, Postal, Tracking |
+| **Deployment** | Helm 3.x on OpenShift 4.x | Or podman compose for local dev |
 
 **Key architectural choice**: All AI models run as **remote Model-as-a-Service (MaaS)** through LiteMaaS endpoints. No local GPU required. The OCR server sends PDF page images to Qwen2.5-VL via the LlamaStack inference API, eliminating the need for heavy local OCR libraries.
 
@@ -326,7 +408,7 @@ frontend/
 
 ## Local Development
 
-### Quick Start with Docker/Podman Compose
+### Quick Start with Podman Compose
 
 ```bash
 # 1. Set your LiteMaaS credentials (required)
@@ -337,9 +419,6 @@ export LITEMAAS_EMBEDDING_API_KEY=sk-your-key
 
 # 2. Start all services
 podman compose up --build
-
-# Or with docker
-docker compose up --build
 ```
 
 ### What Gets Started
@@ -347,7 +426,7 @@ docker compose up --build
 | Service | Port | Description |
 |---------|------|-------------|
 | PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders, 25 reclamations) |
-| LlamaStack | 8321 | AI orchestration (ReAct agent, MCP tool routing) |
+| LlamaStack | 8321 | AI orchestration (Responses API, MCP tool routing) |
 | Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator |
 | OCR MCP Server | 8081 | Vision-based OCR via Qwen2.5-VL |
 | RAG MCP Server | 8082 | Vector search + embedding generation |
@@ -381,64 +460,13 @@ The init is **idempotent** — it checks if `document_path` already contains fil
 If you need to re-ingest PDFs (e.g., after regenerating documents or updating seed data), set `FORCE_REINIT=true`. This resets the database state without requiring a full DB wipe:
 
 ```bash
-# Local (docker/podman compose)
+# Local (podman compose)
 FORCE_REINIT=true podman compose up data-init
 
 # OpenShift (via Helm)
 helm upgrade multi-agents helm/multi-agents \
   --set dataInit.forceReinit=true \
   -n multi-agent
-
-# OpenShift (standalone job)
-oc delete job data-init-force-reinit -n multi-agent 2>/dev/null
-cat <<'EOF' | oc apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: data-init-force-reinit
-spec:
-  backoffLimit: 3
-  ttlSecondsAfterFinished: 3600
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: data-init
-          image: quay.io/mouachan/multi-agents/data-init:v1.0
-          imagePullPolicy: Always
-          env:
-            - name: FORCE_REINIT
-              value: "true"
-            - name: DOCUMENTS_ARCHIVE_URL
-              value: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
-            - name: LLAMASTACK_ENDPOINT
-              value: "http://<llamastack-service>:8321"
-            - name: OCR_SERVER_URL
-              value: "http://ocr-server:8080"
-            - name: CLAIMS_SERVER_URL
-              value: "http://claims-server:8080"
-            - name: TENDERS_SERVER_URL
-              value: "http://tenders-server:8080"
-            - name: POSTGRES_HOST
-              value: "postgresql"
-            - name: POSTGRES_PORT
-              value: "5432"
-            - name: POSTGRES_DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: postgresql-secret
-                  key: POSTGRES_DATABASE
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: postgresql-secret
-                  key: POSTGRES_USER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgresql-secret
-                  key: POSTGRES_PASSWORD
-EOF
 ```
 
 **What FORCE_REINIT does:**
@@ -480,8 +508,9 @@ podman compose up --build
 ### Prerequisites
 
 1. **OpenShift 4.x** with Helm 3.12+
-2. **LiteMaaS endpoints** for LLM inference, vision OCR, and embeddings (no local GPU needed)
-3. **Container registry** access (Quay.io, Docker Hub, or internal)
+2. **RHOAI 3.4** with TrustyAI operator (for NeMo Guardrails) and MLflow (for tracing)
+3. **LiteMaaS endpoints** for LLM inference, vision OCR, and embeddings (no local GPU needed)
+4. **Container registry** access (Quay.io, Docker Hub, or internal)
 
 ### Deploy
 
@@ -500,7 +529,9 @@ helm install multi-agents helm/multi-agents \
   --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
   --set secrets.postgresPassword="<DB_PASSWORD>" \
   --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
-  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>" \
+  --set mlflow.enabled=true \
+  --set mlflow.workspace=<NAMESPACE>
 ```
 
 **Parameters:**
@@ -514,6 +545,9 @@ helm install multi-agents helm/multi-agents \
 | `llamastack.litemaas.visionUrl` | Vision model endpoint (OCR) | `https://litellm-vision.apps.example.com/v1` |
 | `secrets.litemaas*ApiKey` | API keys for each MaaS endpoint | `sk-...` |
 | `secrets.postgres*Password` | Database passwords | Any strong password |
+| `mlflow.enabled` | Enable tracing + auto-create RBAC | `true` |
+| `mlflow.workspace` | RHOAI workspace (namespace) | Same as namespace |
+| `guardrails.enabled` | Enable NeMo Guardrails | `true` (default) |
 
 ### Multi-namespace deployment
 
@@ -526,38 +560,34 @@ helm install multi-agents helm/multi-agents \
   --set global.namespace=multi-agent \
   --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
   --set llamastack.litemaas.url="..." \
-  --set llamastack.litemaas.embeddingUrl="..." \
-  --set llamastack.litemaas.visionUrl="..." \
   --set secrets.litemaasApiKey="..." \
-  --set secrets.litemaasEmbeddingApiKey="..." \
-  --set secrets.litemaasVisionApiKey="..." \
   --set secrets.postgresPassword="..." \
-  --set secrets.postgresAdminPassword="..." \
-  --set secrets.llamastackPassword="..."
+  ...
 
 # Instance 2 (different namespace, can use different API keys)
 helm install multi-agents helm/multi-agents \
   -n test-multi-agent --create-namespace --timeout 10m \
   --set global.namespace=test-multi-agent \
-  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
-  --set llamastack.litemaas.url="..." \
   ...
 ```
 
-Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
+Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, NeMo Guardrails, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
 
-### RHOAI 3.3 / LlamaStack 0.4.x compatibility
+### RHOAI 3.4 / LlamaStack 0.7.x compatibility
 
-The Helm chart is compatible with **RHOAI 3.3** which ships **llama-stack 0.4.2.1+rhai0**. This version introduced several breaking changes from earlier llama-stack releases:
+The Helm chart is compatible with **RHOAI 3.4** which ships **llama-stack 0.7.1+rhaiv.1**. Key changes from RHOAI 3.3:
 
-| Change | Before (llama-stack 0.3.5) | After (llama-stack 0.4.x / RHOAI 3.3) |
-|--------|---------------------------|----------------------------------------|
-| ConfigMap key | `run.yaml` | `config.yaml` (operator mounts at `/etc/llama-stack/config.yaml`) |
-| vLLM provider URL field | `url` | `base_url` (in `VLLMInferenceAdapterConfig`) |
-| Config variable substitution | `${env.XXX}` works everywhere | `${env.XXX}` works for secrets but URLs should be hardcoded via Helm template values |
-| Embedding model ID | Hardcoded in config | Templated from `values.yaml` (must match the LiteLLM proxy model name exactly) |
+| Change | RHOAI 3.3 (llama-stack 0.4.x) | RHOAI 3.4 (llama-stack 0.7.x) |
+|--------|-------------------------------|-------------------------------|
+| Agent API | `agents` API | `responses` API |
+| Provider type | `inline::meta-reference` | `inline::builtin` |
+| Provider config key | `agents` | `responses` |
+| Guardrails | TrustyAI FMS (`remote::trustyai_fms`) | NeMo Guardrails (TrustyAI operator) |
+| Tracing | MLflow Python SDK | OpenTelemetry SDK → MLflow OTLP |
+| ConfigMap key | `config.yaml` | `config.yaml` (unchanged) |
+| vLLM provider URL | `base_url` | `base_url` (unchanged) |
 
-The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of these automatically. LiteMaaS URLs are injected via Helm template values (`.Values.llamastack.litemaas.url` / `.embeddingUrl`), while secrets (API keys, DB passwords) use `${env.XXX}` variable substitution from the LlamaStackDistribution CRD environment variables.
+The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of these automatically. LiteMaaS URLs are injected via Helm template values, while secrets (API keys, DB passwords) use `${env.XXX}` variable substitution from the LlamaStackDistribution CRD environment variables.
 
 **Important**: The embedding `provider_model_id` must match the model name registered on the LiteLLM proxy exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This is configurable via `llamastack.embedding.providerModelId` in values.
 
@@ -579,7 +609,9 @@ helm install multi-agents helm/multi-agents \
   --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
   --set secrets.postgresPassword="<DB_PASSWORD>" \
   --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
-  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>"
+  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>" \
+  --set mlflow.enabled=true \
+  --set mlflow.workspace=<NAMESPACE>
 
 # Wait ~5 min for all pods to be ready, then access:
 echo "Frontend: https://frontend-<NAMESPACE>.<CLUSTER_DOMAIN>"
@@ -592,24 +624,30 @@ oc get pods -n <NAMESPACE>
 oc get routes -n <NAMESPACE>
 
 # Check data initialization completed
-oc logs -l job-name -n multi-agent
+oc logs -l job-name -n <NAMESPACE>
 
 # Verify file IDs in database
-oc exec postgresql-0 -n multi-agent -- \
+oc exec postgresql-0 -n <NAMESPACE> -- \
   psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT claim_number, document_path FROM claims WHERE document_path LIKE 'file-%' LIMIT 5;"
 
 # Verify embeddings
-oc exec postgresql-0 -n multi-agent -- \
+oc exec postgresql-0 -n <NAMESPACE> -- \
   psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
+
+# Check NeMo Guardrails
+oc get nemoguardrails -n <NAMESPACE>
+
+# Check MLflow traces
+oc logs deployment/backend -n <NAMESPACE> | grep -i "trace exported"
 ```
 
 ### Access
 
 ```bash
-echo "Frontend: https://$(oc get route frontend -n multi-agent -o jsonpath='{.spec.host}')"
-echo "Backend:  https://$(oc get route backend -n multi-agent -o jsonpath='{.spec.host}')/api/v1"
+echo "Frontend: https://$(oc get route frontend -n <NAMESPACE> -o jsonpath='{.spec.host}')"
+echo "Backend:  https://$(oc get route backend -n <NAMESPACE> -o jsonpath='{.spec.host}')/api/v1"
 ```
 
 ---
@@ -618,15 +656,15 @@ echo "Backend:  https://$(oc get route backend -n multi-agent -o jsonpath='{.spe
 
 ### LiteMaaS Models
 
-Models are configured in `llamastack/run-litemaas.yaml` (local) or via Helm values (OpenShift):
+Models are configured via Helm values (OpenShift) or environment variables (local):
 
 | Model | Role | Provider |
 |-------|------|----------|
 | `litemaas/llama-scout-17b` | Default LLM (reasoning + tool calling) | LiteMaaS |
-| `litemaas/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
-| `litemaas-embedding/nomic-embed-text-v1-5` | Embeddings (768-dim) | LiteMaaS |
+| `litemaas-vision/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
+| `litemaas/nomic-embed-text-v1-5` | Embeddings (768-dim) | LiteMaaS |
 
-> **Note**: LLM and vision models can point to different LiteMaaS endpoints. In the LlamaStack config, each model is registered under its own provider (`litemaas`, `litemaas-vision`, `litemaas-embedding`), each with its own `base_url` and `api_token`. This allows mixing endpoints — e.g., LLM on one endpoint, vision on another.
+> **Note**: LLM, vision, and embedding models can point to different LiteMaaS endpoints. In the LlamaStack config, each model is registered under its own provider (`litemaas`, `litemaas-vision`), each with its own `base_url` and `api_token`. This allows mixing endpoints — e.g., LLM on one endpoint, vision on another.
 
 Model IDs are fully configurable via Helm values:
 
@@ -637,7 +675,7 @@ llamastack:
     embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
     visionUrl: "https://your-litemaas-vision-endpoint/v1"
     defaultModel: "litemaas/llama-scout-17b"
-    embeddingModel: "litemaas-embedding/nomic-embed-text-v1-5"
+    embeddingModel: "litemaas/nomic-embed-text-v1-5"
     visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
   embedding:
     dimension: 768
@@ -658,7 +696,7 @@ Each agent prompt distinguishes between **information queries** (detail, list, s
 # LlamaStack
 LLAMASTACK_ENDPOINT: http://llamastack:8321
 LLAMASTACK_DEFAULT_MODEL: litemaas/llama-scout-17b
-LLAMASTACK_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1-5
+LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
 
 # MCP Servers
 OCR_SERVER_URL: http://ocr-server:8080
@@ -667,6 +705,18 @@ CLAIMS_SERVER_URL: http://claims-server:8080
 TENDERS_SERVER_URL: http://tenders-server:8080
 POSTAL_SERVER_URL: http://postal-server:8080
 TRACKING_SERVER_URL: http://tracking-server:8080
+
+# NeMo Guardrails (optional)
+GUARDRAILS_SERVER_URL: http://claims-guardrails:8000
+
+# MLflow Tracing (optional — disabled when empty)
+MLFLOW_TRACKING_URI: https://mlflow.redhat-ods-applications.svc.cluster.local:8443
+MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
+MLFLOW_RHOAI_WORKSPACE: multi-agent
+
+# PII Detection
+ENABLE_PII_DETECTION: "true"
+PII_REDACTION_MODE: "dual"  # "dual" = original + redacted, "redact_only" = redacted only
 
 # S3/MinIO
 S3_ENDPOINT_URL: http://minio:9000
@@ -681,7 +731,88 @@ POSTGRES_USER: multi_agent_user
 POSTGRES_PASSWORD: ***
 ```
 
-### MLflow Tracing (OpenTelemetry)
+### Frontend Configuration
+
+Frontend uses nginx reverse proxy — no environment variables needed. API calls go to `/api/v1/...` (relative path), nginx routes to backend.
+
+---
+
+## NeMo Guardrails
+
+### Architecture
+
+NeMo Guardrails is deployed via the **TrustyAI operator** as a `NemoGuardrails` CRD. It runs as a separate service that intercepts LLM interactions for safety checking and PII masking.
+
+```
+User Input
+    |
+    v
++---------------------------+
+|    NeMo Guardrails        |
+|  ┌─────────────────────┐  |
+|  │  Input Rails         │  |
+|  │  - self check input  │  |
+|  │  - mask PII (input)  │  |
+|  └─────────────────────┘  |
+|           |                |
+|           v                |
+|  ┌─────────────────────┐  |
+|  │  LLM (LiteMaaS)     │  |
+|  │  llama-scout-17b     │  |
+|  └─────────────────────┘  |
+|           |                |
+|           v                |
+|  ┌─────────────────────┐  |
+|  │  Output Rails        │  |
+|  │  - self check output │  |
+|  │  - mask PII (output) │  |
+|  └─────────────────────┘  |
++---------------------------+
+    |
+    v
+Bot Response (safe, PII-masked)
+```
+
+### Rails Configuration
+
+**Input rails**:
+- `self check input` — LLM-based prompt that checks if user input is harmful, abusive, or attempts injection attacks
+- `mask sensitive data on input` — Presidio-based PII detection and masking on incoming text
+
+**Output rails**:
+- `self check output` — LLM-based prompt that validates bot response meets moderation policy
+- `mask sensitive data on output` — Presidio-based PII masking on outgoing text
+
+### PII Entities Detected
+
+| Entity | Example |
+|--------|---------|
+| PERSON | "Jean Dupont" → `[REDACTED]` |
+| EMAIL_ADDRESS | "jean@email.com" → `[REDACTED]` |
+| CREDIT_CARD | "4111-1111-1111-1111" → `[REDACTED]` |
+| PHONE_NUMBER | "+33 6 12 34 56 78" → `[REDACTED]` |
+| US_SSN | "123-45-6789" → `[REDACTED]` |
+| IBAN_CODE | "FR76 3000 6000..." → `[REDACTED]` |
+
+### Helm Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `guardrails.enabled` | Deploy NeMo Guardrails | `true` |
+| `guardrails.name` | NemoGuardrails CR name | `claims-guardrails` |
+| `guardrails.replicas` | Number of replicas | `1` |
+| `guardrails.pii.scoreThreshold` | Presidio detection confidence threshold | `0.3` |
+| `guardrails.llamaGuard.enabled` | Deploy LlamaGuard 3 1B detector (requires GPU) | `false` |
+
+### Helm Templates
+
+- `templates/guardrails/nemoguardrails.yaml` — `NemoGuardrails` CRD (TrustyAI operator)
+- `templates/guardrails/nemo-configmap.yaml` — NeMo config (models, rails, prompts, PII entities)
+- `templates/guardrails/detector-inferenceservice.yaml` — Optional LlamaGuard InferenceService (GPU)
+
+---
+
+## MLflow Tracing (OpenTelemetry)
 
 The backend supports distributed tracing via **OpenTelemetry** with traces exported to **MLflow RHOAI** (GenAI apps & agents tab). Tracing is optional — disabled by default, activated when `MLFLOW_TRACKING_URI` is set.
 
@@ -723,10 +854,6 @@ helm upgrade multi-agents helm/multi-agents \
 
 **Local development**: Set `MLFLOW_TRACKING_URI` in your `.env` file to point to your MLflow instance. Without it, tracing is silently disabled.
 
-### Frontend Configuration
-
-Frontend uses nginx reverse proxy — no environment variables needed. API calls go to `/api/v1/...` (relative path), nginx routes to backend.
-
 ---
 
 ## Testing the Application
@@ -742,6 +869,8 @@ Frontend uses nginx reverse proxy — no environment variables needed. API calls
 4. **Chat Interface**: Use the multi-agent chat to process claims or tenders conversationally. The orchestrator routes to the correct agent. SSE streaming shows tool calls in real-time.
 
 5. **Tenders**: Same workflow for construction tenders — Go/No-Go/Needs Deeper Review decisions.
+
+6. **Guardrails**: PII detected during processing is flagged with a `GuardrailsAlert` badge. Try sending a prompt injection in the chat — NeMo blocks it.
 
 ### Via API
 
@@ -781,35 +910,36 @@ curl http://localhost:8321/v1/health
 podman logs multi-agents-llamastack
 
 # On OpenShift
-oc logs -l app=llama-stack -n multi-agent
+oc logs -l app=llama-stack -n <NAMESPACE>
 ```
 
 **Solution**: Verify `LITEMAAS_URL` and `LITEMAAS_API_KEY` environment variables are set correctly.
 
-### LlamaStack CrashLoopBackOff on RHOAI 3.3
+### LlamaStack CrashLoopBackOff on RHOAI 3.4
 
 Common causes and fixes:
 
-1. **"Could not resolve config"** — The configmap key must be `config.yaml` (not `run.yaml`). The RHOAI operator mounts the configmap at `/etc/llama-stack/` and the entrypoint expects `config.yaml`.
+1. **"Could not resolve config"** — The configmap key must be `config.yaml`. The RHOAI operator mounts the configmap at `/etc/llama-stack/` and the entrypoint expects `config.yaml`.
 
-2. **"You must provide a URL in config.yaml"** — llama-stack 0.4.x uses `base_url` instead of `url` in the vLLM provider config. Check `templates/llamastack/configmap.yaml`.
+2. **"You must provide a URL in config.yaml"** — llama-stack 0.7.x uses `base_url` in the vLLM provider config. Check `templates/llamastack/configmap.yaml`.
 
 3. **"Object already exists"** — Model already registered in PostgreSQL kvstore from a previous run. Clean up:
    ```bash
-   oc exec postgresql-0 -n multi-agent -- \
+   oc exec postgresql-0 -n <NAMESPACE> -- \
      psql -U multi_agent_user -d multi_agent_db -c \
      "DELETE FROM llamastack_kvstore WHERE key LIKE '%model%';"
    ```
    Then restart the LlamaStack pod.
 
-4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This also applies to the `EMBEDDING_MODEL` env var on the RAG server and Claims server. Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
+4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
 
 ### RAG Returns No Similar Claims
 
 **Check**:
 ```bash
 # Verify embeddings exist
-psql -h localhost -p 5433 -U claims_user -d claims_db -c \
+oc exec postgresql-0 -n <NAMESPACE> -- \
+  psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
 ```
 
@@ -819,8 +949,45 @@ psql -h localhost -p 5433 -U claims_user -d claims_db -c \
 
 The OCR server sends PDF page images to Qwen2.5-VL via LlamaStack. If it fails:
 - Check LlamaStack logs for inference errors
-- Verify the vision model `litemaas/Qwen2.5-VL-7B-Instruct` is accessible
+- Verify the vision model `litemaas-vision/Qwen2.5-VL-7B-Instruct` is accessible
 - Each page takes ~5-10 seconds, multi-page documents take longer
+
+### NeMo Guardrails Not Working
+
+```bash
+# Check NemoGuardrails CR status
+oc get nemoguardrails -n <NAMESPACE>
+
+# Check guardrails pod logs
+oc logs -l app=claims-guardrails -n <NAMESPACE>
+
+# Verify ConfigMap is mounted
+oc describe nemoguardrails claims-guardrails -n <NAMESPACE>
+```
+
+Common issues:
+- **LiteMaaS 401**: NeMo calls LiteMaaS directly — model name must NOT have `litemaas/` prefix (handled automatically by Helm `trimPrefix`)
+- **Pod not starting**: TrustyAI operator must be installed (`oc get csv -n redhat-ods-applications | grep trustyai`)
+
+### MLflow Traces Not Appearing
+
+```bash
+# Check backend logs for trace export
+oc logs deployment/backend -n <NAMESPACE> | grep -i "mlflow\|otlp\|trace"
+
+# Verify RBAC
+oc get rolebinding mlflow-backend-integration -n <NAMESPACE>
+
+# Verify experiment exists
+SA_TOKEN=$(oc create token default -n <NAMESPACE>)
+curl -k -H "Authorization: Bearer $SA_TOKEN" \
+  -H "x-]mlflow-workspace: <NAMESPACE>" \
+  "https://mlflow.redhat-ods-applications.svc.cluster.local:8443/api/2.0/mlflow/experiments/list"
+```
+
+Common issues:
+- **403 Forbidden**: Missing `mlflow-operator-mlflow-integration` RoleBinding — set `mlflow.enabled=true` in Helm values
+- **RESOURCE_DOES_NOT_EXIST**: Experiment not created — create it via MLflow API before deploying
 
 ### Data Init Service Fails
 
@@ -871,27 +1038,25 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 **What was in v2.1** (backend v2.1, frontend v2.3):
 - **HITL domain-agnostic**: Human-in-the-Loop review now works for both claims AND tenders (was claims-only). Uses the existing `AgentRegistry` with HITL metadata — zero new files
-- **Tender processing fix**: All 5 MCP tools (`get_tender`, `ocr_document`, `retrieve_similar_references`, `retrieve_historical_tenders`, `retrieve_capabilities`) are now called correctly in a single batch. Fixed prompt format that caused the LLM to hallucinate tool calls as text instead of making real MCP calls
+- **Tender processing fix**: All 5 MCP tools (`get_tender`, `ocr_document`, `retrieve_similar_references`, `retrieve_historical_tenders`, `retrieve_capabilities`) are now called correctly in a single batch
 - **`ReviewChatPanel` generic**: Frontend review panel accepts `entityType`/`entityId` props, works for any domain
-- **ConfigMap prompt fix**: Corrected `get_tender` parameter name (`tender_id` instead of `tender_number`) in the `ao-prompts` ConfigMap
 
 **What was in v2.0**:
 - Switched default LLM to `llama-scout-17b` (Llama-4-Scout-17B)
 - Multi-provider LlamaStack config: LLM, vision, and embedding can each point to different endpoints
-- Fixed RAG server health check — no longer calls embedding API on every K8s probe (was burning LiteLLM budget)
+- Fixed RAG server health check — no longer calls embedding API on every K8s probe
 - Fixed embedding model name mismatch (`nomic-embed-text-v1-5` with hyphens, not dots)
 
 **What was in v1.0**:
 - RHOAI 3.3 / llama-stack 0.4.x compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
-- Multi-namespace Helm deployment support (deploy multiple instances on the same cluster)
-- Route timeout 300s on frontend and backend (prevents gateway timeouts during agent processing)
-- Frontend tenders: i18n labels (FR/EN), decision rendering with Go/No-Go badges, search on metadata fields
-- Configurable embedding model ID and dimension via Helm values (no more hardcoded model names)
-- LiteMaaS URLs injected via Helm template values instead of `${env.}` substitution (more reliable)
+- Multi-namespace Helm deployment support
+- Route timeout 300s on frontend and backend
+- Configurable embedding model ID and dimension via Helm values
 
 **Working**:
 - End-to-end claim processing via multi-agent chat (4 parallel tool calls)
 - End-to-end tender / Appels d'Offres processing via multi-agent chat (5 parallel tool calls)
+- End-to-end postal/reclamation processing via multi-agent chat
 - SSE streaming responses (real-time tool calls + text deltas)
 - Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
@@ -899,6 +1064,8 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Automatic data initialization (87+ bilingual PDFs from GitHub archive, 30 processed items with OCR + decisions + embeddings)
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision, save_reclamation_decision)
 - Postal/courrier domain: complaint handling, package tracking, knowledge base queries
+- NeMo Guardrails: input/output safety rails + Presidio PII masking (PERSON, EMAIL, CREDIT_CARD, PHONE, SSN, IBAN)
+- MLflow distributed tracing via OpenTelemetry (orchestrator → agent → tool span hierarchy)
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
 - HITL review workflow — domain-agnostic for claims & tenders (ask agent, approve, reject, request info)
@@ -907,7 +1074,7 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Tool call observability (collapsible traces with output/error per tool)
 - Token consumption tracking (per-message and per-session)
 - Bilingual support FR/EN
-- Local development with docker-compose / podman-compose
+- Local development with podman compose
 - Helm deployment on OpenShift (RHOAI 3.4 / llama-stack 0.7.x compatible)
 
 ### Image Versions
