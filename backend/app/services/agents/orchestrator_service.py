@@ -14,6 +14,8 @@ import re
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
+
 from app.services.pii.redactor import redact_text_pii
 
 from sqlalchemy import select
@@ -162,6 +164,30 @@ class OrchestratorService:
             session.agent_id = agent_id
             previous_response_id = None  # New agent = new conversation context
             await db.commit()
+
+        # Input guardrails check — before any LLM call
+        blocked_msg = await self._check_input_guardrails(message)
+        if blocked_msg:
+            from app.models.conversation import ChatMessage
+            assistant_msg = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=blocked_msg,
+                agent_id=agent_id or "orchestrator",
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            return {
+                "session_id": session_id,
+                "intent": "blocked",
+                "agent_id": agent_id,
+                "message": blocked_msg,
+                "suggested_actions": [],
+                "entity_reference": None,
+                "tool_calls": [],
+                "token_usage": None,
+                "model_id": None,
+            }
 
         # Single LLM call — one model, all tools, the LLM decides everything
         if agent_id:
@@ -352,6 +378,30 @@ class OrchestratorService:
         agent_def = AgentRegistry.get(agent_id)
         if not agent_def or not agent_def.tools:
             yield {"type": "error", "message": f"Agent {agent_id} not found or has no tools"}
+            return
+
+        # Input guardrails check — before any LLM call
+        blocked_msg = await self._check_input_guardrails(message)
+        if blocked_msg:
+            from app.models.conversation import ChatMessage
+            assistant_msg = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=blocked_msg,
+                agent_id=agent_id or "orchestrator",
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            yield {"type": "text_delta", "delta": blocked_msg}
+            yield {
+                "type": "done",
+                "response_id": None,
+                "usage": None,
+                "tool_calls": [],
+                "agent_id": agent_id,
+                "model_id": None,
+                "suggested_actions": [],
+            }
             return
 
         # Emit agent info immediately so frontend can update badge/icon
@@ -671,6 +721,39 @@ class OrchestratorService:
 
         # Return default prompt
         return await self.get_session_prompt(db, session_id)
+
+    _GUARDRAILS_BLOCKED_FR = (
+        "Désolé, cette requête a été bloquée par notre système de sécurité (NeMo Guardrails). "
+        "Veuillez reformuler votre demande."
+    )
+    _GUARDRAILS_BLOCKED_EN = (
+        "Sorry, this request has been blocked by our safety system (NeMo Guardrails). "
+        "Please rephrase your request."
+    )
+
+    async def _check_input_guardrails(self, message: str) -> Optional[str]:
+        """Check user input via NeMo Guardrails. Returns refusal message if blocked, None if allowed."""
+        guardrails_url = settings.guardrails_server_url
+        if not guardrails_url:
+            return None
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+                resp = await client.post(
+                    f"{guardrails_url}/v1/guardrail/checks",
+                    json={
+                        "model": settings.guardrails_model_name,
+                        "messages": [{"role": "user", "content": message}],
+                    },
+                )
+                if resp.status_code == 200:
+                    result = resp.json()
+                    if result.get("status") == "blocked":
+                        logger.warning(f"NeMo Guardrails blocked input: {message[:100]}")
+                        lang = self._detect_language(message)
+                        return self._GUARDRAILS_BLOCKED_FR if lang == "fr" else self._GUARDRAILS_BLOCKED_EN
+        except Exception as e:
+            logger.warning(f"Guardrails check failed (allowing request): {e}")
+        return None
 
     @staticmethod
     def _wrap_instructions_for_chat(agent_instructions: str) -> str:

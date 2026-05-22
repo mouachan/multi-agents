@@ -145,7 +145,7 @@ The platform integrates **NeMo Guardrails** (GA in RHOAI 3.4) deployed via the T
 - **Configurable threshold**: PII detection score threshold configurable via `guardrails.pii.scoreThreshold` (default: 0.3)
 - **Optional LLM detector**: LlamaGuard 3 1B can be enabled as an additional content safety detector (requires GPU)
 
-NeMo calls the LiteMaaS LLM directly (not via LlamaStack) for self-check prompts. The guardrails server is deployed as a `NemoGuardrails` CRD managed by the TrustyAI operator.
+NeMo is deployed as a standalone service via the TrustyAI operator (`NemoGuardrails` CRD). It does **not** proxy/encapsulate the LlamaStack — the backend calls NeMo explicitly for input validation before each LLM call in the chat flow. NeMo uses LiteMaaS directly (not LlamaStack) for its self-check prompts. If NeMo is unreachable (timeout 5s), the request is allowed through (fail-open).
 
 #### PII Detection & Protection
 
@@ -707,7 +707,8 @@ POSTAL_SERVER_URL: http://postal-server:8080
 TRACKING_SERVER_URL: http://tracking-server:8080
 
 # NeMo Guardrails (optional)
-GUARDRAILS_SERVER_URL: http://claims-guardrails:8000
+GUARDRAILS_SERVER_URL: http://claims-guardrails:80
+GUARDRAILS_MODEL_NAME: llama-scout-17b  # must match LiteMaaS model name, NOT the NeMo config ID
 
 # MLflow Tracing (optional — disabled when empty)
 MLFLOW_TRACKING_URI: https://mlflow.redhat-ods-applications.svc.cluster.local:8443
@@ -741,37 +742,34 @@ Frontend uses nginx reverse proxy — no environment variables needed. API calls
 
 ### Architecture
 
-NeMo Guardrails is deployed via the **TrustyAI operator** as a `NemoGuardrails` CRD. It runs as a separate service that intercepts LLM interactions for safety checking and PII masking.
+NeMo Guardrails is deployed via the **TrustyAI operator** as a `NemoGuardrails` CRD. It runs as a **standalone service** — the backend calls it explicitly for input validation before each LLM call. NeMo does NOT proxy/encapsulate LlamaStack.
 
 ```
 User Input
     |
     v
-+---------------------------+
-|    NeMo Guardrails        |
-|  ┌─────────────────────┐  |
-|  │  Input Rails         │  |
-|  │  - self check input  │  |
-|  │  - mask PII (input)  │  |
-|  └─────────────────────┘  |
-|           |                |
-|           v                |
-|  ┌─────────────────────┐  |
-|  │  LLM (LiteMaaS)     │  |
-|  │  llama-scout-17b     │  |
-|  └─────────────────────┘  |
-|           |                |
-|           v                |
-|  ┌─────────────────────┐  |
-|  │  Output Rails        │  |
-|  │  - self check output │  |
-|  │  - mask PII (output) │  |
-|  └─────────────────────┘  |
++---------------------------+       +---------------------------+
+|    Backend Orchestrator   |       |    NeMo Guardrails        |
+|                           |       |  ┌─────────────────────┐  |
+|  1. Check input ─────────────────>│  Input Rails          │  |
+|     POST /v1/guardrail/   |       |  │  - self check input │  |
+|           checks          |<──────│  │  - mask PII (input) │  |
+|                           |       |  └─────────────────────┘  |
+|  2. If blocked → refuse   |       +---------------------------+
+|     If allowed ↓          |
+|                           |       +---------------------------+
+|  3. Call LlamaStack ─────────────>|    LlamaStack             |
+|     POST /v1/responses    |<──────|    (Responses API)        |
+|                           |       +---------------------------+
+|  4. PII redaction (local) |
+|     regex-based masking   |
 +---------------------------+
     |
     v
-Bot Response (safe, PII-masked)
+Bot Response (safe, PII-redacted)
 ```
+
+**Important**: The `model` field in NeMo API calls must be the actual LLM model name (e.g. `llama-scout-17b`), not the config ID. NeMo uses this model for self-check prompts via LiteMaaS. The NeMo service listens on port **80** (not 8000/8080). The guardrail check endpoint is `/v1/guardrail/checks` (singular, not `/v1/guardrails/checks`).
 
 ### Rails Configuration
 
@@ -848,7 +846,9 @@ helm upgrade multi-agents helm/multi-agents \
 
 **RBAC (RHOAI 3.4)**: The Helm chart automatically creates a RoleBinding for the `mlflow-operator-mlflow-integration` ClusterRole when `mlflow.enabled=true`. This grants the backend's ServiceAccount access to MLflow pseudo-resources (`experiments`, `datasets`, `registeredmodels`) in the `mlflow.kubeflow.org` API group. Without this, trace exports fail with `403 Forbidden`.
 
-**Experiment creation**: The MLflow experiment specified in `mlflow.experimentName` must exist before traces can be sent. The backend auto-resolves the experiment ID at startup. If the experiment doesn't exist, create it via the MLflow API or SDK before deploying.
+**Experiment creation**: The backend auto-resolves the experiment ID at startup with retry logic (5 attempts, 3s delay). If the experiment doesn't exist, the backend **auto-creates it**. If MLflow is unreachable after all retries, tracing is disabled gracefully.
+
+**Graceful shutdown**: The backend flushes all pending OTel spans on shutdown via `TracerProvider.force_flush()` to avoid trace loss from the `BatchSpanProcessor` buffer.
 
 **Reusability**: When agents are separated into individual services, each service only needs `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http` packages and the same env vars (`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`, `MLFLOW_RHOAI_WORKSPACE`). No MLflow SDK or custom code required — OTel context propagation handles cross-service trace correlation automatically.
 
@@ -966,7 +966,9 @@ oc describe nemoguardrails claims-guardrails -n <NAMESPACE>
 ```
 
 Common issues:
-- **LiteMaaS 401**: NeMo calls LiteMaaS directly — model name must NOT have `litemaas/` prefix (handled automatically by Helm `trimPrefix`)
+- **LiteMaaS 401**: The `model` field in NeMo API calls must be the LLM model name (e.g. `llama-scout-17b`), NOT the NeMo config ID (`claims-guardrails`). NeMo passes this model name to LiteMaaS — if it doesn't match an allowed model, LiteMaaS returns 401.
+- **Wrong port**: NeMo service listens on port **80** (service port) → targetPort 8000. Use `http://claims-guardrails:80`, not `:8000` or `:8080`.
+- **Wrong endpoint**: The guardrail check endpoint is `/v1/guardrail/checks` (singular), not `/v1/guardrails/checks` (plural).
 - **Pod not starting**: TrustyAI operator must be installed (`oc get csv -n redhat-ods-applications | grep trustyai`)
 
 ### MLflow Traces Not Appearing
@@ -987,7 +989,9 @@ curl -k -H "Authorization: Bearer $SA_TOKEN" \
 
 Common issues:
 - **403 Forbidden**: Missing `mlflow-operator-mlflow-integration` RoleBinding — set `mlflow.enabled=true` in Helm values
-- **RESOURCE_DOES_NOT_EXIST**: Experiment not created — create it via MLflow API before deploying
+- **RESOURCE_DOES_NOT_EXIST**: Experiment not created — the backend auto-creates it at startup, but if that fails check LiteMaaS/MLflow connectivity
+- **Connection refused at startup**: MLflow not ready when backend starts — the retry logic (5 attempts, 3s delay) handles this automatically. Check logs for `Resolved experiment → ID X`
+- **Traces lost on shutdown**: Fixed — the backend now calls `TracerProvider.force_flush()` before exit
 
 ### Data Init Service Fails
 
@@ -1013,7 +1017,9 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **RHOAI 3.4 / llama-stack 0.7.x compatibility**: Full migration from llama-stack 0.4.x (RHOAI 3.3) to 0.7.1 (RHOAI 3.4)
 - **Responses API**: Replaced deprecated `agents` API with `responses` API — new `inline::builtin` provider replaces `inline::meta-reference`
 - **NeMo Guardrails**: Replaced TrustyAI FMS guardrails (`remote::trustyai_fms`) with NeMo Guardrails (GA in RHOAI 3.4) — input/output safety rails + PII masking via Presidio
+- **Guardrails input check in chat**: NeMo now validates user input in the orchestrator chat flow (both sync and streaming) before calling the LLM. Blocked messages return a localized refusal (FR/EN). Fail-open with 5s timeout.
 - **MLflow RBAC**: Helm chart auto-creates `mlflow-operator-mlflow-integration` RoleBinding for trace export access to MLflow pseudo-resources (`mlflow.kubeflow.org` API group)
+- **Resilient tracing**: Experiment ID resolution with retry logic (5 attempts, 3s delay), auto-create experiment if missing, graceful flush on shutdown
 - **Enhanced tracing**: `response.id` and agent decision metadata (decision, recommendation, entity info) added to OTel spans
 - **Harmonized truncation**: All trace output fields truncated at 2000 chars (was 500)
 - **All images bumped to v3.4**: backend, frontend, data-init, and all 6 MCP servers

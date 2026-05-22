@@ -183,8 +183,9 @@ class ClaimService(BaseAgentService):
 
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
-                    f"{guardrails_url}/v1/guardrails/checks",
+                    f"{guardrails_url}/v1/guardrail/checks",
                     json={
+                        "model": settings.guardrails_model_name,
                         "messages": [{"role": "user", "content": text}],
                     },
                     timeout=30.0,

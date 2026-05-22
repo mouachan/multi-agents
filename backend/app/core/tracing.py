@@ -16,6 +16,7 @@ Span hierarchy visible in MLflow "GenAI apps & agents":
 import json
 import logging
 import os
+import time
 from typing import Dict, List, Optional
 
 import httpx
@@ -26,42 +27,72 @@ logger = logging.getLogger(__name__)
 
 _enabled = False
 _tracer = None
+_provider = None
 
 SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 SERVICE_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
 
 
-def _resolve_experiment_id() -> str:
-    """Resolve MLflow experiment ID from name via REST API."""
+def _build_auth_headers() -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+    if os.path.exists(SA_TOKEN_PATH):
+        with open(SA_TOKEN_PATH) as f:
+            headers["Authorization"] = f"Bearer {f.read().strip()}"
+    if settings.mlflow_rhoai_workspace:
+        headers["X-Mlflow-Workspace"] = settings.mlflow_rhoai_workspace
+    return headers
+
+
+def _resolve_experiment_id(retries: int = 5, delay: float = 3.0) -> str:
+    """Resolve MLflow experiment ID from name via REST API, with retries."""
+    verify = SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else False
+    url = (
+        f"{settings.mlflow_tracking_uri.rstrip('/')}"
+        f"/api/2.0/mlflow/experiments/get-by-name"
+        f"?experiment_name={settings.mlflow_experiment_name}"
+    )
+    headers = _build_auth_headers()
+
+    for attempt in range(1, retries + 1):
+        try:
+            resp = httpx.get(url, headers=headers, verify=verify, timeout=10)
+            if resp.status_code == 200:
+                eid = resp.json()["experiment"]["experiment_id"]
+                logger.info(f"Resolved experiment '{settings.mlflow_experiment_name}' → ID {eid}")
+                return eid
+            if resp.status_code == 404:
+                logger.warning(f"Experiment '{settings.mlflow_experiment_name}' not found, creating it")
+                return _create_experiment(headers, verify)
+        except Exception as e:
+            logger.warning(f"Experiment resolution attempt {attempt}/{retries}: {e}")
+        if attempt < retries:
+            time.sleep(delay)
+
+    logger.error("All experiment resolution attempts failed — tracing will be disabled")
+    return ""
+
+
+def _create_experiment(headers: Dict[str, str], verify) -> str:
+    """Create the MLflow experiment if it doesn't exist."""
+    url = f"{settings.mlflow_tracking_uri.rstrip('/')}/api/2.0/mlflow/experiments/create"
     try:
-        token = ""
-        if os.path.exists(SA_TOKEN_PATH):
-            with open(SA_TOKEN_PATH) as f:
-                token = f.read().strip()
-
-        headers = {"Authorization": f"Bearer {token}"}
-        if settings.mlflow_rhoai_workspace:
-            headers["X-Mlflow-Workspace"] = settings.mlflow_rhoai_workspace
-
-        verify = SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else False
-        url = (
-            f"{settings.mlflow_tracking_uri.rstrip('/')}"
-            f"/api/2.0/mlflow/experiments/get-by-name"
-            f"?experiment_name={settings.mlflow_experiment_name}"
+        resp = httpx.post(
+            url, headers={**headers, "Content-Type": "application/json"},
+            json={"name": settings.mlflow_experiment_name},
+            verify=verify, timeout=10,
         )
-        resp = httpx.get(url, headers=headers, verify=verify, timeout=10)
         if resp.status_code == 200:
-            eid = resp.json()["experiment"]["experiment_id"]
-            logger.info(f"Resolved experiment '{settings.mlflow_experiment_name}' → ID {eid}")
+            eid = resp.json()["experiment_id"]
+            logger.info(f"Created experiment '{settings.mlflow_experiment_name}' → ID {eid}")
             return eid
     except Exception as e:
-        logger.warning(f"Could not resolve experiment ID: {e}")
-    return "0"
+        logger.warning(f"Could not create experiment: {e}")
+    return ""
 
 
 def init_mlflow():
     """Initialize OpenTelemetry tracing with OTLP exporter → MLflow."""
-    global _enabled, _tracer
+    global _enabled, _tracer, _provider
 
     if not settings.mlflow_tracking_uri:
         logger.info("Tracing disabled (MLFLOW_TRACKING_URI not set)")
@@ -76,22 +107,16 @@ def init_mlflow():
             OTLPSpanExporter,
         )
 
+        experiment_id = _resolve_experiment_id()
+        if not experiment_id:
+            logger.warning("Tracing disabled: could not resolve or create MLflow experiment")
+            return
+
         endpoint = f"{settings.mlflow_tracking_uri.rstrip('/')}/v1/traces"
 
-        # Auth + workspace headers
-        otlp_headers: Dict[str, str] = {}
-
-        if os.path.exists(SA_TOKEN_PATH):
-            with open(SA_TOKEN_PATH) as f:
-                otlp_headers["Authorization"] = f"Bearer {f.read().strip()}"
-
-        if settings.mlflow_rhoai_workspace:
-            otlp_headers["X-Mlflow-Workspace"] = settings.mlflow_rhoai_workspace
-
-        experiment_id = _resolve_experiment_id()
+        otlp_headers = _build_auth_headers()
         otlp_headers["x-mlflow-experiment-id"] = experiment_id
 
-        # TLS: use OpenShift service-ca.crt for internal services
         cert_file = SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else None
 
         exporter = OTLPSpanExporter(
@@ -102,9 +127,9 @@ def init_mlflow():
         )
 
         resource = Resource.create({"service.name": "multi-agent-orchestrator"})
-        provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(provider)
+        _provider = TracerProvider(resource=resource)
+        _provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(_provider)
 
         _tracer = trace.get_tracer("multi-agent-orchestrator")
         _enabled = True
@@ -115,6 +140,18 @@ def init_mlflow():
         logger.warning(f"OpenTelemetry packages not installed: {e}")
     except Exception as e:
         logger.warning(f"Failed to initialize tracing: {e}", exc_info=True)
+
+
+def shutdown_tracing():
+    """Flush pending spans and shut down the TracerProvider."""
+    global _provider
+    if _provider:
+        try:
+            _provider.force_flush(timeout_millis=5000)
+            _provider.shutdown()
+            logger.info("OTel TracerProvider shut down, pending spans flushed")
+        except Exception as e:
+            logger.warning(f"Error shutting down tracing: {e}")
 
 
 def is_enabled() -> bool:

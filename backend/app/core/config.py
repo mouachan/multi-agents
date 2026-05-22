@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     postal_server_url: str = ""  # POSTAL_SERVER_URL
     tracking_server_url: str = ""  # TRACKING_SERVER_URL
     guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional)
+    guardrails_model_name: str = "llama-scout-17b"  # GUARDRAILS_MODEL_NAME
 
     # MLflow tracing (RHOAI)
     mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI

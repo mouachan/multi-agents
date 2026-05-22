@@ -204,7 +204,7 @@ async def lifespan(app: FastAPI):
     register_agents()
 
     # Initialize MLflow tracing
-    from app.core.tracing import init_mlflow
+    from app.core.tracing import init_mlflow, shutdown_tracing
     init_mlflow()
 
     # Check database connection
@@ -217,6 +217,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down application")
+    shutdown_tracing()
     await dispose_engine()
     logger.info("Application shutdown complete")
 
