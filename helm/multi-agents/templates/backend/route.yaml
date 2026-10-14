@@ -4,7 +4,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   annotations:
-    argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+    argocd.argoproj.io/sync-wave: "4" # after OGXServer
     haproxy.router.openshift.io/timeout: 300s
   name: backend
   namespace: {{ include "multi-agents.namespace" . }}

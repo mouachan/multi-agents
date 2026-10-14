@@ -1,0 +1,34 @@
+{{- if and .Values.mcpGateway.enabled .Values.mcpGateway.auth.enabled .Values.mcpGateway.auth.issuerUrl }}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: mcp-gateway-auth
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: mcp-gateway
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.mcpGateway.gatewayName }}
+    sectionName: mcp
+  defaults:
+    when:
+      - predicate: "!request.path.contains('/.well-known')"
+    rules:
+      authentication:
+        "jwt-auth":
+          jwt:
+            issuerUrl: {{ .Values.mcpGateway.auth.issuerUrl | quote }}
+      response:
+        unauthenticated:
+          code: 401
+          headers:
+            "WWW-Authenticate":
+              value: Bearer
+          body:
+            value: |
+              {"error": "Unauthorized", "message": "Valid JWT required to access MCP tools."}
+{{- end }}

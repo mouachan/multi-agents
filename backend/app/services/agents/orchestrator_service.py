@@ -22,13 +22,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.llamastack.orchestrator_prompts import (
+from app.prompts.orchestrator_prompts import (
     CHAT_AGENT_WRAPPER,
     LANGUAGE_RULE_TEMPLATE,
     ORCHESTRATOR_CONFIG,
     ORCHESTRATOR_SYSTEM_INSTRUCTIONS,
 )
 from app.core import tracing
+from app.services.agent.a2a_client import get_a2a_client
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
 from .conversation_utils import ConversationHelper
 from .registry import AgentRegistry
@@ -41,6 +42,7 @@ class OrchestratorService:
 
     def __init__(self, orchestrator: Optional[ResponsesOrchestrator] = None):
         self.orchestrator = orchestrator or ResponsesOrchestrator()
+        self.a2a = get_a2a_client()
         self.conv = ConversationHelper(ORCHESTRATOR_CONFIG.get("conversation"))
 
     async def create_session(
@@ -165,8 +167,12 @@ class OrchestratorService:
             previous_response_id = None  # New agent = new conversation context
             await db.commit()
 
-        # Input guardrails check — before any LLM call
-        blocked_msg = await self._check_input_guardrails(message)
+        # Input guardrails check — before any LLM call. Decoupled A2A agents run their own
+        # NeMo input/output rails (PII masking), so only the legacy in-process path checks here.
+        routed_def = AgentRegistry.get(agent_id) if agent_id else None
+        blocked_msg = None
+        if not (routed_def and routed_def.a2a_url):
+            blocked_msg = await self._check_input_guardrails(message)
         if blocked_msg:
             from app.models.conversation import ChatMessage
             assistant_msg = ChatMessage(
@@ -189,56 +195,27 @@ class OrchestratorService:
                 "model_id": None,
             }
 
-        # Single LLM call — one model, all tools, the LLM decides everything
+        # Route to agent — A2A (remote) or direct OGX (legacy)
         if agent_id:
             agent_def = AgentRegistry.get(agent_id)
-            if agent_def and agent_def.tools:
+            if agent_def:
                 try:
                     user_lang = self._detect_language(message)
-                    lang_name = "English" if user_lang == "en" else "French"
-                    lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
 
-                    custom_prompt = (session.session_metadata or {}).get("custom_prompt")
-                    agent_instructions = custom_prompt or agent_def.instructions
-                    tools = agent_def.tools
-                    instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
-                    model = agent_def.model or settings.llamastack_default_model
-
-                    logger.info(f"Calling agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
-
-                    result = await self.orchestrator.process_with_agent(
-                        agent_config={"model": model, "instructions": instructions},
-                        input_message=message,
-                        tools=tools,
-                        previous_response_id=previous_response_id,
-                    )
+                    if agent_def.a2a_url:
+                        result = await self._call_via_a2a(
+                            agent_def, message, session_id, user_lang, session, previous_response_id,
+                        )
+                    elif agent_def.tools:
+                        result = await self._call_via_ogx(
+                            agent_def, message, user_lang, session, previous_response_id,
+                        )
+                    else:
+                        result = {}
 
                     agent_response = result.get("output", "")
                     tool_calls = result.get("tool_calls", [])
                     token_usage = ConversationHelper.normalize_token_usage(result.get("usage", {}))
-
-                    # Retry if LLM wrote tool calls as text instead of function calling
-                    last_response_id = result.get("response_id")
-                    if (
-                        not tool_calls
-                        and self.conv.contains_text_tool_calls(agent_response)
-                        and self.conv.max_tool_call_retries > 0
-                    ):
-                        logger.warning("LLM wrote tool calls as text — retrying")
-                        result = await self.orchestrator.process_with_agent(
-                            agent_config={"model": model, "instructions": instructions},
-                            input_message="You wrote tool calls as text instead of calling them. "
-                                          "Use the function calling mechanism to actually execute the tools now.",
-                            tools=tools,
-                            previous_response_id=last_response_id,
-                        )
-                        agent_response = result.get("output", "")
-                        tool_calls = result.get("tool_calls", [])
-                        retry_usage = ConversationHelper.normalize_token_usage(result.get("usage", {}))
-                        if token_usage and retry_usage:
-                            token_usage = {k: token_usage[k] + retry_usage[k] for k in token_usage}
-                        elif retry_usage:
-                            token_usage = retry_usage
 
                     if agent_response and agent_response.strip():
                         if not tool_calls and self.conv.contains_text_tool_calls(agent_response):
@@ -253,7 +230,6 @@ class OrchestratorService:
                             response_text, agent_id, user_lang
                         )
 
-                    # Log to MLflow (non-streaming)
                     tracing.log_agent_trace(
                         agent_id=agent_id,
                         model=result.get("model", ""),
@@ -268,7 +244,7 @@ class OrchestratorService:
                     )
 
                 except Exception as e:
-                    logger.error(f"Agent {agent_id} MCP call failed: {e}", exc_info=True)
+                    logger.error(f"Agent {agent_id} call failed: {e}", exc_info=True)
                     response_text = f"Erreur lors du traitement: {str(e)}"
 
         # Build enriched tool_calls with full metadata
@@ -293,7 +269,7 @@ class OrchestratorService:
         # Determine which model was used (short name for display)
         model_id = None
         if agent_id and AgentRegistry.get(agent_id):
-            full_model = model if isinstance(model, str) else settings.llamastack_default_model
+            full_model = model if isinstance(model, str) else settings.ogx_default_model
             short = full_model.split("/")[-1] if "/" in full_model else full_model
             short = re.sub(r'-W\d+A\d+$', '', short)
             model_id = short
@@ -376,12 +352,12 @@ class OrchestratorService:
             return
 
         agent_def = AgentRegistry.get(agent_id)
-        if not agent_def or not agent_def.tools:
+        if not agent_def or not (agent_def.tools or agent_def.a2a_url):
             yield {"type": "error", "message": f"Agent {agent_id} not found or has no tools"}
             return
 
-        # Input guardrails check — before any LLM call
-        blocked_msg = await self._check_input_guardrails(message)
+        # Input guardrails check — A2A agents apply their own NeMo rails
+        blocked_msg = None if agent_def.a2a_url else await self._check_input_guardrails(message)
         if blocked_msg:
             from app.models.conversation import ChatMessage
             assistant_msg = ChatMessage(
@@ -408,73 +384,91 @@ class OrchestratorService:
         yield {"type": "agent_resolved", "agent_id": agent_id}
 
         user_lang = self._detect_language(message)
-        lang_name = "English" if user_lang == "en" else "French"
-        lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
-
-        custom_prompt = (session.session_metadata or {}).get("custom_prompt")
-        agent_instructions = custom_prompt or agent_def.instructions
-        tools = agent_def.tools
-        instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
-        model = agent_def.model or settings.llamastack_streaming_model or settings.llamastack_default_model
-
-        logger.info(f"Streaming agent '{agent_id}': model={model}, tools={len(tools)}, lang={user_lang}")
 
         tool_calls = []
         full_text = ""
         response_id = None
         token_usage = None
+        model = agent_def.model or settings.ogx_streaming_model or settings.ogx_default_model
 
         try:
-            async for event in self.orchestrator.process_with_agent_stream(
-                agent_config={"model": model, "instructions": instructions},
-                input_message=message,
-                tools=tools,
-                previous_response_id=previous_response_id,
-            ):
-                event_type = event.get("type")
+            if agent_def.a2a_url:
+                # A2A path — the agent streams OGX deltas and tool activity as A2A events
+                logger.info("A2A stream to '%s' at %s", agent_id, agent_def.a2a_url)
+                async for event in self.a2a.stream(
+                    base_url=agent_def.a2a_url,
+                    message=message,
+                    context_id=str(session_id),
+                    metadata=self._a2a_metadata(agent_def, user_lang, session, previous_response_id),
+                ):
+                    event_type = event.get("type")
+                    if event_type in ("tool_call", "tool_result", "text_delta", "text_replace"):
+                        yield event
+                    elif event_type == "done":
+                        full_text = event.get("output", "")
+                        response_id = event.get("response_id")
+                        model = event.get("model") or model
+                        token_usage = ConversationHelper.normalize_token_usage(event.get("usage", {}))
+                        tool_calls = [
+                            {
+                                "name": tc.get("name", "unknown"),
+                                "status": "error" if tc.get("error") else "completed",
+                                "server_label": tc.get("server"),
+                            }
+                            for tc in event.get("tool_calls", [])
+                            if isinstance(tc, dict) and tc.get("name")
+                        ]
 
-                if event_type == "tool_call":
-                    yield event
+            else:
+                # Legacy OGX streaming path
+                lang_name = "English" if user_lang == "en" else "French"
+                lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
+                custom_prompt = (session.session_metadata or {}).get("custom_prompt")
+                agent_instructions = custom_prompt or agent_def.instructions
+                instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
 
-                elif event_type == "tool_result":
-                    tool_calls.append({
-                        "name": event.get("name"),
-                        "status": event.get("status"),
-                    })
-                    yield event
+                logger.info("Streaming agent '%s': model=%s, tools=%d", agent_id, model, len(agent_def.tools))
 
-                elif event_type == "text_delta":
-                    yield event
+                async for event in self.orchestrator.process_with_agent_stream(
+                    agent_config={"model": model, "instructions": instructions},
+                    input_message=message,
+                    tools=agent_def.tools,
+                    previous_response_id=previous_response_id,
+                ):
+                    event_type = event.get("type")
 
-                elif event_type == "done":
-                    full_text = event.get("output", "")
-                    response_id = event.get("response_id")
-                    token_usage = ConversationHelper.normalize_token_usage(event.get("usage", {}))
-                    tool_calls = [
-                        {
-                            "name": tc.get("name", "unknown"),
-                            "status": "error" if tc.get("error") else "completed",
-                            "server_label": tc.get("server"),
-                            "output": tc.get("output"),
-                            "error": tc.get("error"),
-                        }
-                        for tc in event.get("tool_calls", [])
-                        if isinstance(tc, dict) and tc.get("name")
-                    ]
+                    if event_type == "tool_call":
+                        yield event
+                    elif event_type == "tool_result":
+                        tool_calls.append({"name": event.get("name"), "status": event.get("status")})
+                        yield event
+                    elif event_type == "text_delta":
+                        yield event
+                    elif event_type == "done":
+                        full_text = event.get("output", "")
+                        response_id = event.get("response_id")
+                        token_usage = ConversationHelper.normalize_token_usage(event.get("usage", {}))
+                        tool_calls = [
+                            {
+                                "name": tc.get("name", "unknown"),
+                                "status": "error" if tc.get("error") else "completed",
+                                "server_label": tc.get("server"),
+                            }
+                            for tc in event.get("tool_calls", [])
+                            if isinstance(tc, dict) and tc.get("name")
+                        ]
 
         except Exception as e:
             logger.error(f"Stream error for agent {agent_id}: {e}", exc_info=True)
             yield {"type": "error", "message": str(e)}
             return
 
-        # Post-processing: PII redaction on complete text
         if full_text:
             full_text = ConversationHelper.clean_response_for_chat(full_text)
             redacted = redact_text_pii(full_text)
             if redacted != full_text:
                 logger.info("PII detected and redacted in streamed response")
                 full_text = redacted
-                # Send replacement so frontend swaps the unredacted deltas
                 yield {"type": "text_replace", "text": full_text}
 
         suggested_actions = self._generate_post_response_actions(full_text, agent_id, user_lang)
@@ -500,7 +494,7 @@ class OrchestratorService:
 
         # Model short name
         model_id = None
-        full_model = model if isinstance(model, str) else settings.llamastack_default_model
+        full_model = model if isinstance(model, str) else settings.ogx_default_model
         short = full_model.split("/")[-1] if "/" in full_model else full_model
         short = re.sub(r'-W\d+A\d+$', '', short)
         model_id = short
@@ -721,6 +715,72 @@ class OrchestratorService:
 
         # Return default prompt
         return await self.get_session_prompt(db, session_id)
+
+    @staticmethod
+    def _a2a_metadata(agent_def, user_lang: str, session, previous_response_id: Optional[str]) -> Dict[str, Any]:
+        """A2A message metadata understood by the agents' executor (see agents/shared/executor.py)."""
+        return {
+            "profile": agent_def.id,
+            "mode": "chat",
+            "language": user_lang,
+            "previous_response_id": previous_response_id,
+            "instructions_override": (session.session_metadata or {}).get("custom_prompt"),
+        }
+
+    async def _call_via_a2a(
+        self, agent_def, message: str, session_id: str, user_lang: str,
+        session, previous_response_id: Optional[str],
+    ) -> Dict[str, Any]:
+        """Route a message to a remote A2A agent."""
+        logger.info("A2A call to '%s' at %s", agent_def.id, agent_def.a2a_url)
+        return await self.a2a.send(
+            base_url=agent_def.a2a_url,
+            message=message,
+            context_id=str(session_id),
+            metadata=self._a2a_metadata(agent_def, user_lang, session, previous_response_id),
+        )
+
+    async def _call_via_ogx(
+        self, agent_def, message: str, user_lang: str,
+        session, previous_response_id: Optional[str],
+    ) -> Dict[str, Any]:
+        """Route a message directly to OGX (legacy path)."""
+        lang_name = "English" if user_lang == "en" else "French"
+        lang_suffix = LANGUAGE_RULE_TEMPLATE.format(lang_name=lang_name)
+
+        custom_prompt = (session.session_metadata or {}).get("custom_prompt")
+        agent_instructions = custom_prompt or agent_def.instructions
+        instructions = self._wrap_instructions_for_chat(agent_instructions) + lang_suffix
+        model = agent_def.model or settings.ogx_default_model
+
+        logger.info("OGX call to '%s': model=%s, tools=%d", agent_def.id, model, len(agent_def.tools))
+
+        result = await self.orchestrator.process_with_agent(
+            agent_config={"model": model, "instructions": instructions},
+            input_message=message,
+            tools=agent_def.tools,
+            previous_response_id=previous_response_id,
+        )
+
+        agent_response = result.get("output", "")
+        tool_calls = result.get("tool_calls", [])
+        last_response_id = result.get("response_id")
+
+        if (
+            not tool_calls
+            and self.conv.contains_text_tool_calls(agent_response)
+            and self.conv.max_tool_call_retries > 0
+        ):
+            logger.warning("LLM wrote tool calls as text — retrying")
+            result = await self.orchestrator.process_with_agent(
+                agent_config={"model": model, "instructions": instructions},
+                input_message="You wrote tool calls as text instead of calling them. "
+                              "Use the function calling mechanism to actually execute the tools now.",
+                tools=agent_def.tools,
+                previous_response_id=last_response_id,
+            )
+
+        return result
 
     _GUARDRAILS_BLOCKED_FR = (
         "Désolé, cette requête a été bloquée par notre système de sécurité (NeMo Guardrails). "

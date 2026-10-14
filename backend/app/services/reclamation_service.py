@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import reclamation as models
 from app.core.config import settings
-from app.llamastack.courrier_prompts import (
+from app.prompts.courrier_prompts import (
     COURRIER_RECLAMATION_INSTRUCTIONS,
     COURRIER_RECLAMATION_USER_TEMPLATE,
 )
@@ -169,7 +169,7 @@ class ReclamationService(BaseAgentService):
             await db.delete(old)
         await db.flush()
 
-        model_name = self.clean_model_name(settings.llamastack_default_model)
+        model_name = self.clean_model_name(settings.ogx_default_model)
 
         # Build decision metadata (bilingual reasoning, etc.)
         decision_metadata = {}

@@ -2,23 +2,21 @@
 MCP Tracking Server - Parcel tracking timeline and status queries via PostgreSQL.
 
 Simple CRUD operations on tracking_events and reclamations tables.
-FastMCP implementation with Streamable HTTP transport (SSE).
+FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
 """
 
 import json
 import logging
 import os
 
-from mcp.server.fastmcp import FastMCP
 from sqlalchemy import text
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
 
 from shared.db import (
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     check_database_connection, run_db_query, run_db_query_one, run_db_execute,
 )
+from shared.mcp_app import build_app, create_mcp
 
 # Configure logging
 logging.basicConfig(
@@ -28,11 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastMCP server
-mcp = FastMCP(
-    "tracking-server",
-    stateless_http=True,
-    json_response=True
-)
+mcp = create_mcp("tracking-server")
 
 
 # =============================================================================
@@ -234,30 +228,11 @@ async def health_check(request):
     return JSONResponse(health_status)
 
 
-async def sse_options(request):
-    """Handle OPTIONS requests for MCP SSE endpoint discovery."""
-    return JSONResponse({
-        "methods": ["GET", "POST", "OPTIONS"],
-        "mcp_version": "0.1.0",
-        "server_name": "tracking-server",
-        "capabilities": {"tools": True, "streaming": True}
-    })
-
-
 # =============================================================================
-# Starlette App
+# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health
 # =============================================================================
 
-mcp_sse_app = mcp.sse_app()
-
-app = Starlette(
-    routes=[
-        Route("/health", health_check),
-        Route("/sse", sse_options, methods=["OPTIONS"]),
-        Route("/", sse_options, methods=["OPTIONS"]),
-        Mount("/", app=mcp_sse_app),
-    ]
-)
+app = build_app(mcp, "tracking-server", health_check)
 
 
 if __name__ == "__main__":

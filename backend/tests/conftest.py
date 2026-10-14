@@ -143,8 +143,8 @@ async def test_claim_with_decision(db_session: AsyncSession, test_claim: Claim):
 # ============================================================================
 
 @pytest.fixture
-def mock_llamastack_response():
-    """Mock LlamaStack API response."""
+def mock_ogx_response():
+    """Mock OGX API response."""
     return {
         "agent_id": "test-agent-123",
         "session_id": "test-session-456",

@@ -1,15 +1,14 @@
 # MCP Claims Server Dependencies
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-starlette
-pydantic>=2.7.2
+uvicorn[standard]>=0.31.1
+starlette>=0.27
+pydantic>=2.11.0
 
-# HTTP client (for LlamaStack embedding API)
-httpx>=0.27.0
+# HTTP client (OGX embeddings API)
+httpx>=0.27.1,<1.0.0
 
 # Database
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9
 
-# MCP SDK (official from Anthropic)
-mcp[cli]>=1.8.0
+# MCP SDK — 1.x line (mcp.server.fastmcp API); Streamable HTTP at /mcp + legacy SSE
+mcp>=1.30.0,<2

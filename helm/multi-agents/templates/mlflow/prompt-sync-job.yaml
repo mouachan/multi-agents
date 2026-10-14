@@ -1,0 +1,65 @@
+{{- if and .Values.mlflow.enabled .Values.agents.enabled }}
+{{- /*
+Versions the chart prompt files (files/cm.*-prompts/*.txt) in the MLflow Prompt
+Registry: a new version when the text changed, alias mlflow.prompts.alias moved to it
+when promoteOnSync is true (or when the alias does not exist yet).
+Runs the agents' shared library (shared/prompt_sync.py) from the claims-agent image.
+*/}}
+{{- $ns := include "multi-agents.namespace" . }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prompt-sync
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prompt-sync
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    component: mlflow
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "argocd.argoproj.io/hook": PostSync
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: prompt-sync
+      containers:
+      - name: prompt-sync
+        image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.agents.claims.image.repository }}:{{ .Values.agents.claims.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        command: ["python", "-m", "shared.prompt_sync"]
+        env:
+        - name: AGENT_ID
+          value: prompt-sync
+        {{- include "multi-agents.mlflow.env" (dict "root" . "experiment" "prompt-sync") | nindent 8 }}
+        - name: PROMPT_PROMOTE
+          value: {{ .Values.mlflow.prompts.promoteOnSync | quote }}
+        - name: HELM_RELEASE_REVISION
+          value: {{ .Release.Revision | quote }}
+        - name: PROMPTS_DIRS
+          value: "/opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator"
+        volumeMounts:
+        - {name: claims-prompts, mountPath: /opt/app-root/prompts/claims}
+        - {name: ao-prompts, mountPath: /opt/app-root/prompts/ao}
+        - {name: courrier-prompts, mountPath: /opt/app-root/prompts/courrier}
+        - {name: orchestrator-prompts, mountPath: /opt/app-root/prompts/orchestrator}
+        resources:
+          requests: {cpu: 100m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+      - {name: claims-prompts, configMap: {name: claims-prompts}}
+      - {name: ao-prompts, configMap: {name: ao-prompts}}
+      - {name: courrier-prompts, configMap: {name: courrier-prompts}}
+      - {name: orchestrator-prompts, configMap: {name: orchestrator-prompts}}
+{{- end }}

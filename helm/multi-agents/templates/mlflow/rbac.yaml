@@ -1,0 +1,38 @@
+{{- if .Values.mlflow.enabled }}
+{{- /*
+RHOAI 3.5 MLflow authorizes each request with a SelfSubjectAccessReview on
+mlflow.kubeflow.org resources in the workspace (= namespace):
+  experiments      -> traces
+  registeredmodels -> Prompt Registry (get: load_prompt, create/update: register/alias)
+*/}}
+{{- $ns := include "multi-agents.namespace" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mlflow-integration
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    component: mlflow
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mlflow-operator-mlflow-integration
+subjects:
+- kind: ServiceAccount
+  name: backend
+  namespace: {{ $ns }}
+- kind: ServiceAccount
+  name: prompt-sync
+  namespace: {{ $ns }}
+{{- range $name := list "claims" "tenders" "postal" }}
+{{- if (index $.Values.agents $name).enabled }}
+- kind: ServiceAccount
+  name: {{ $name }}-agent
+  namespace: {{ $ns }}
+{{- end }}
+{{- end }}
+{{- end }}

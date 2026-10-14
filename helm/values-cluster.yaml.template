@@ -109,15 +109,10 @@ postgresql:
     tag: latest
 
 # =============================================================================
-# LlamaStack
+# OGX (formerly LlamaStack) — RHOAI 3.5 OGXServer
 # =============================================================================
-llamastack:
+ogx:
   enabled: true
-
-  route:
-    enabled: true
-    tls:
-      enabled: false
 
   resources:
     requests:

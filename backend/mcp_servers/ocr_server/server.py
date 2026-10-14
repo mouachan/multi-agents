@@ -1,19 +1,21 @@
 """
-MCP OCR Server - Extract text from documents using Qwen2.5-VL-7B vision model
-FastMCP implementation with Streamable HTTP transport
+MCP OCR Server - Extract text from documents using a vision model served by OGX
+(default: llama-scout-17b via MaaS).
+FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
 
 SIMPLE TOOL: Returns raw OCR text only.
-The LlamaStack agent handles all LLM analysis and structuring.
+The calling agent handles all LLM analysis and structuring.
 
-Document retrieval: accepts claim/tender number, resolves the LlamaStack file ID
+Document retrieval: accepts claim/tender number, resolves the OGX file ID
 via a DB lookup (document_path stores file-xxx), then fetches content from
-LlamaStack Files API.
+the OGX Files API.
 
-OCR: converts PDF pages to images, sends to Qwen2.5-VL-7B via LlamaStack
-inference API for text extraction. Zero local GPU/memory overhead.
+OCR: converts PDF pages to images, sends them to the vision model via the OGX
+/v1/chat/completions API for text extraction. Zero local GPU/memory overhead.
 """
 
 import asyncio
+import contextlib
 import base64
 import io
 import json
@@ -26,6 +28,7 @@ from typing import Tuple
 import httpx
 import psycopg2
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pdf2image import convert_from_bytes
 from PIL import Image
 from starlette.applications import Starlette
@@ -39,23 +42,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# LlamaStack / inference config
-LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "")
-VISION_MODEL = os.getenv("VISION_MODEL", "litemaas/Qwen2.5-VL-7B-Instruct")
+# OGX / inference config
+OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "").rstrip("/")
+VISION_MODEL = os.getenv("OGX_VISION_MODEL", "llama-scout-17b")
 VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "2048"))
 
-# PostgreSQL configuration (for resolving claim/tender number → LlamaStack file ID)
+# PostgreSQL configuration (for resolving claim/tender number → OGX file ID)
 PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
+PG_PASS = os.getenv("POSTGRES_PASSWORD", "")
 
 # Create FastMCP server
+# DNS-rebinding protection disabled explicitly: requests arrive through the
+# Service name or the MCP Gateway internal hostname (FastMCP would answer 421).
 mcp = FastMCP(
     "ocr-server",
     stateless_http=True,
-    json_response=True
+    json_response=True,
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 
 # Health check endpoint for Kubernetes probes
@@ -68,13 +74,13 @@ async def health_check(request):
     })
 
 
-# OPTIONS endpoint for MCP discovery (required by LlamaStack)
+# OPTIONS endpoint for MCP transport discovery
 async def sse_options(request):
-    """Handle OPTIONS requests for MCP SSE endpoint discovery"""
+    """Handle OPTIONS requests for MCP endpoint discovery"""
     return JSONResponse({
         "methods": ["GET", "POST", "OPTIONS"],
-        "mcp_version": "0.1.0",
         "server_name": "ocr-server",
+        "transports": {"streamable_http": "/mcp", "sse": "/sse"},
         "capabilities": {
             "tools": True,
             "streaming": True
@@ -82,16 +88,24 @@ async def sse_options(request):
     })
 
 
-# Create wrapper app with health check and MCP SSE server
-mcp_sse_app = mcp.sse_app()
+# The streamable HTTP session manager must run in the parent app lifespan
+# (lifespans of mounted sub-apps are not executed).
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    async with mcp.session_manager.run():
+        yield
 
+
+# /mcp (Streamable HTTP), /sse (legacy SSE), /health
 app = Starlette(
     routes=[
         Route("/health", health_check),
+        *mcp.streamable_http_app().routes,
         Route("/sse", sse_options, methods=["OPTIONS"]),
         Route("/", sse_options, methods=["OPTIONS"]),
-        Mount("/", app=mcp_sse_app),
-    ]
+        Mount("/", app=mcp.sse_app()),
+    ],
+    lifespan=lifespan,
 )
 
 # Configuration
@@ -110,7 +124,7 @@ OCR_PROMPT = (
 
 
 async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
-    """Extract text from a PIL Image using Qwen2.5-VL via LlamaStack."""
+    """Extract text from a PIL Image using the OGX vision model."""
     # Convert image to base64 PNG
     buf = io.BytesIO()
     image.save(buf, format="PNG")
@@ -118,7 +132,7 @@ async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
 
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
-            f"{LLAMASTACK_ENDPOINT}/v1/chat/completions",
+            f"{OGX_ENDPOINT}/v1/chat/completions",
             json={
                 "model": VISION_MODEL,
                 "messages": [{
@@ -144,14 +158,14 @@ async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Document retrieval: claim/tender number → DB lookup → LlamaStack file ID
+# Document retrieval: claim/tender number → DB lookup → OGX file ID
 # ---------------------------------------------------------------------------
 
 def _resolve_file_id(document_id: str) -> str:
     """
-    Resolve a claim/tender number to its LlamaStack file ID via DB lookup.
+    Resolve a claim/tender number to its OGX file ID via DB lookup.
 
-    The upload script stores the LlamaStack-generated file ID (file-xxx) in
+    The upload script stores the OGX-generated file ID (file-xxx) in
     the document_path column. This function looks it up.
     """
     conn = psycopg2.connect(
@@ -187,22 +201,22 @@ def _resolve_file_id(document_id: str) -> str:
 
 async def fetch_file_content(document_id: str) -> bytes:
     """
-    Fetch file content from LlamaStack Files API.
+    Fetch file content from the OGX Files API.
 
-    Resolves claim/tender number → LlamaStack file ID via DB, then fetches
+    Resolves claim/tender number → OGX file ID via DB, then fetches
     the content from the Files API.
     """
-    if not LLAMASTACK_ENDPOINT:
-        raise ValueError("LLAMASTACK_ENDPOINT not configured")
+    if not OGX_ENDPOINT:
+        raise ValueError("OGX_ENDPOINT not configured")
 
-    # Resolve claim/tender number to LlamaStack file ID
+    # Resolve claim/tender number to OGX file ID
     file_id = await asyncio.to_thread(_resolve_file_id, document_id)
 
-    url = f"{LLAMASTACK_ENDPOINT}/v1/files/{file_id}/content"
+    url = f"{OGX_ENDPOINT}/v1/files/{file_id}/content"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url)
         resp.raise_for_status()
-        logger.info(f"Fetched {len(resp.content)} bytes from LlamaStack: {document_id} (file_id={file_id})")
+        logger.info(f"Fetched {len(resp.content)} bytes from OGX: {document_id} (file_id={file_id})")
         return resp.content
 
 
@@ -306,8 +320,8 @@ async def ocr_document(
     """
     Extract text from a claim or tender document using OCR.
 
-    Retrieves the document from LlamaStack by claim/tender number,
-    then extracts text using Qwen2.5-VL vision model. Supports PDF and images.
+    Retrieves the document from OGX Files by claim/tender number,
+    then extracts text using the vision model. Supports PDF and images.
 
     Args:
         document_id: The claim number (e.g. CLM-2024-0024) or tender number (e.g. AO-2026-0042).
@@ -326,7 +340,7 @@ async def ocr_document(
     document_id = document_id.strip()
 
     try:
-        # Fetch content from LlamaStack
+        # Fetch content from OGX Files API
         content = await fetch_file_content(document_id)
         fetch_time = time.time() - start_time
         logger.info(f"File fetched in {fetch_time:.2f}s ({len(content)} bytes)")
@@ -387,10 +401,11 @@ async def ocr_health_check() -> str:
     # Test vision model availability
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/models")
-            health["checks"]["llamastack"] = "ok"
+            resp = await client.get(f"{OGX_ENDPOINT}/v1/health")
+            resp.raise_for_status()
+            health["checks"]["ogx"] = "ok"
     except Exception as e:
-        health["checks"]["llamastack"] = f"error: {str(e)}"
+        health["checks"]["ogx"] = f"error: {str(e)}"
         health["status"] = "degraded"
 
     return json.dumps(health)
@@ -419,11 +434,11 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
 
     logger.info(f"Starting MCP OCR Server (Vision: {VISION_MODEL}) on {host}:{port}")
-    logger.info(f"LlamaStack endpoint: {LLAMASTACK_ENDPOINT}")
+    logger.info(f"OGX endpoint: {OGX_ENDPOINT}")
     logger.info(f"Max PDF Pages: {MAX_PDF_PAGES}")
     logger.info(f"PDF DPI: {PDF_DPI}")
 
-    logger.info(f"MCP SSE endpoint will be available at: http://{host}:{port}/sse")
+    logger.info(f"MCP endpoints: http://{host}:{port}/mcp (streamable HTTP), /sse (legacy)")
     logger.info("Tools:")
     logger.info("  - ocr_document: Extract raw text from documents by claim/tender number")
     logger.info("  - ocr_health_check: Check server health")

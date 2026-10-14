@@ -103,7 +103,7 @@ class ConversationHelper:
 
     @staticmethod
     def normalize_token_usage(raw_usage: Dict[str, Any]) -> Optional[Dict[str, int]]:
-        """Normalize LlamaStack usage response to standard token_usage dict."""
+        """Normalize OGX usage response to standard token_usage dict."""
         if not raw_usage:
             return None
         prompt = raw_usage.get("input_tokens", 0) or raw_usage.get("prompt_tokens", 0)

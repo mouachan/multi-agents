@@ -7,21 +7,21 @@ metadata:
   namespace: {{ include "multi-agents.namespace" . }}
   labels:
     {{- include "multi-agents.labels" . | nindent 4 }}
-    app: claims-processing
     component: guardrails
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 spec:
   replicas: {{ .Values.guardrails.replicas }}
   nemoConfigs:
-    - name: claims-guardrails
+    - name: {{ .Values.guardrails.configId }}
       default: true
       configMaps:
-        - nemo-guardrails-config
+        - {{ .Values.guardrails.name }}-config
   env:
-    - name: OPENAI_API_KEY
+    # Read by the main model through api_key_env_var (OPENAI_API_KEY alone is ignored)
+    - name: MAAS_API_KEY
       valueFrom:
         secretKeyRef:
-          name: litemaas-secret
-          key: LITEMAAS_API_KEY
+          name: {{ include "multi-agents.guardrails.llmKeySecret" . }}
+          key: api-key
 {{- end }}

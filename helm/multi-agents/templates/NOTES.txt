@@ -44,16 +44,28 @@
   Backend:  http://backend.{{ .Values.global.clusterDomain }}.svc.cluster.local:8080/api/v1/claims
   {{- end }}
 {{- end }}
-{{- if .Values.llamastack.enabled }}
-  LlamaStack: http://llamastack-rhoai-service.{{ .Values.global.namespace }}.svc.cluster.local:8321
+{{- if .Values.ogx.enabled }}
+  OGX:        {{ include "multi-agents.ogx.endpoint" . }}
 {{- end }}
 
 📦 Components Deployed:
 {{- if .Values.postgresql.enabled }}
   ✅ PostgreSQL Database
 {{- end }}
-{{- if .Values.llamastack.enabled }}
-  ✅ LlamaStack (OpenShift AI)
+{{- if .Values.ogx.enabled }}
+  ✅ OGX server (OpenShift AI 3.5) — chat via {{ ternary "cluster MaaS" "external MaaS" .Values.models.maas.enabled }}: {{ .Values.models.reasoning }}, {{ .Values.models.vision }}; embeddings: {{ .Values.models.embedding }}
+{{- end }}
+{{- if .Values.agents.enabled }}
+  ✅ A2A agents: claims-agent, tenders-agent, postal-agent{{ if .Values.spiffe.enabled }} (SPIFFE JWT-SVID auth){{ end }}
+{{- end }}
+{{- if .Values.guardrails.enabled }}
+  ✅ NeMo Guardrails ({{ .Values.guardrails.name }}) — PII masking on agent input/output
+{{- end }}
+{{- if .Values.mlflow.enabled }}
+  ✅ MLflow tracing + Prompt Registry (alias @{{ .Values.mlflow.prompts.alias }}, workspace {{ include "multi-agents.mlflow.workspace" . }})
+{{- end }}
+{{- if .Values.mcpGateway.enabled }}
+  ✅ MCP Gateway: {{ include "multi-agents.mcpGateway.url" . }}
 {{- end }}
 {{- if .Values.inference.enabled }}
   ✅ Llama 3 Reasoning InferenceService (OpenShift AI)
@@ -77,7 +89,7 @@
 🚀 Next Steps:
 
  * Wait for all pods to be ready.
-   kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Values.global.namespace }} --timeout=300s
+   oc wait --for=condition=ready pod -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Values.global.namespace }} --timeout=300s
 {{- if .Values.backend.enabled }}
 
  * Optional: create more demo claims
@@ -117,8 +129,9 @@
   helm status {{ .Release.Name }} -n {{ .Values.global.namespace }}
 
   # View logs
-  kubectl logs -l app=backend -n {{ .Values.global.namespace }}
-  kubectl logs -l app=llama-stack -n {{ .Values.global.namespace }}
+  oc logs -l app=backend -n {{ .Values.global.namespace }}
+  oc logs -l app.kubernetes.io/instance={{ .Values.ogx.name }} -n {{ .Values.global.namespace }}
+  oc logs -l component=a2a-agent -n {{ .Values.global.namespace }}
 
   # Upgrade release
   helm upgrade {{ .Release.Name }} ./helm/multi-agents -n {{ .Values.global.namespace }}

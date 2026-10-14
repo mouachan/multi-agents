@@ -1,0 +1,17 @@
+{{- if and .Values.spiffe.enabled .Values.spiffe.clusterSPIFFEID.create }}
+---
+# SPIFFE IDs for the namespace workloads: spiffe://<trust-domain>/ns/<ns>/sa/<serviceaccount>
+# className is required — without it ZTWIM's SPIRE controller manager ignores the resource.
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  className: {{ .Values.spiffe.clusterSPIFFEID.className }}
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ include "multi-agents.namespace" . }}
+  spiffeIDTemplate: {{ "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}" | quote }}
+{{- end }}

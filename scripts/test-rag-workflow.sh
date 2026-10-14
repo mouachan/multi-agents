@@ -18,8 +18,8 @@ echo "RAG Server:"
 oc get pods -n ${NAMESPACE} -l app=rag-server
 echo -e "\nBackend:"
 oc get pods -n ${NAMESPACE} -l app=backend
-echo -e "\nLlamaStack:"
-oc get pods -n ${NAMESPACE} -l app=claims-llamastack
+echo -e "\nOGX:"
+oc get pods -n ${NAMESPACE} -l app.kubernetes.io/instance=ogx
 
 RAG_POD=$(oc get pod -n ${NAMESPACE} -l app=rag-server -o jsonpath='{.items[0].metadata.name}')
 BACKEND_POD=$(oc get pod -n ${NAMESPACE} -l app=backend -o jsonpath='{.items[0].metadata.name}')
@@ -63,4 +63,4 @@ echo "==========================================${NC}"
 echo -e "\n${YELLOW}Pour voir les logs détaillés:${NC}"
 echo "Backend:     oc logs -f -n ${NAMESPACE} ${BACKEND_POD}"
 echo "RAG Server:  oc logs -f -n ${NAMESPACE} ${RAG_POD}"
-echo "LlamaStack:  oc logs -f -n ${NAMESPACE} -l app=claims-llamastack"
+echo "OGX:  oc logs -f -n ${NAMESPACE} -l app.kubernetes.io/instance=ogx"

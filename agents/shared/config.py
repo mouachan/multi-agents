@@ -1,0 +1,58 @@
+from typing import List
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AgentSettings(BaseSettings):
+    agent_id: str
+    agent_port: int = 8090
+    # Public URL advertised in the AgentCard (in-cluster Service URL by default)
+    agent_public_url: str = ""
+
+    # OGX (Responses API, OpenAI-compatible) — RHOAI 3.5
+    ogx_endpoint: str = ""
+    ogx_default_model: str = "gpt-oss-120b"
+    ogx_timeout: int = 300
+    ogx_max_tokens: int = 4096
+
+    # MCP tools — either one MCP Gateway URL for all tools, or one URL per server
+    # (MCP_SERVER_URL_TEMPLATE is formatted with the server name, e.g. claims-server)
+    mcp_gateway_url: str = ""
+    mcp_server_url_template: str = "http://{server}:8080/mcp"
+
+    # NeMo Guardrails (TrustyAI) — PII masking + input/output rails
+    guardrails_endpoint: str = ""
+    guardrails_config_id: str = "multi-agents"
+    # NeMo /v1/checks requires a model name (used by LLM-based rails such as self check)
+    guardrails_model: str = "llama-scout-17b"
+    guardrails_timeout: float = 15.0
+    guardrails_fail_open: bool = True
+    # When output rails are active, hold the text until it has been masked (no unmasked
+    # PII ever reaches the UI); tool activity is still streamed live.
+    guardrails_buffer_output: bool = True
+
+    # MLflow (RHOAI) — tracing + Prompt Registry
+    mlflow_tracking_uri: str = ""
+    mlflow_experiment_name: str = ""
+    mlflow_workspace: str = ""
+    prompt_alias: str = "production"
+    prompt_cache_ttl: int = 60
+    # Colon-separated directories holding ConfigMap-mounted prompt files (fallback)
+    prompts_dirs: str = "/app/prompts"
+
+    # SPIFFE (ZTWIM): allowed caller SPIFFE ID paths, comma-separated (active when
+    # SPIFFE_ENDPOINT_SOCKET is set by the SPIFFE CSI driver mount)
+    spiffe_allowed_ids: str = ""
+
+    log_level: str = "INFO"
+
+    @property
+    def prompt_dir_list(self) -> List[str]:
+        return [d for d in self.prompts_dirs.split(":") if d]
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )

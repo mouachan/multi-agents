@@ -103,7 +103,7 @@ class ReviewService:
             # Process with Responses API using message array
             result = await self.orchestrator.process_with_agent(
                 agent_config={
-                    "model": settings.llamastack_default_model,
+                    "model": settings.ogx_default_model,
                     "instructions": f"You are a helpful {entity_label} processing assistant. Answer questions about this {entity_label} accurately and concisely based on the provided context and conversation history."
                 },
                 input_message=messages,  # Array of messages for history

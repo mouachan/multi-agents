@@ -59,16 +59,16 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
         )
 
-    # LlamaStack — all URLs configured via env vars (no hardcoded cluster addresses)
-    llamastack_endpoint: str  # LLAMASTACK_ENDPOINT (required)
-    llamastack_api_key: Optional[str] = None
-    llamastack_default_model: str  # LLAMASTACK_DEFAULT_MODEL (required)
-    llamastack_streaming_model: str = ""  # LLAMASTACK_STREAMING_MODEL (optional, defaults to default_model)
-    llamastack_embedding_model: str = "nomic-embed-text"
-    llamastack_embedding_dimension: int = 768
-    llamastack_timeout: int = 300
-    llamastack_max_retries: int = 3
-    llamastack_max_tokens: int = 4096
+    # OGX — all URLs configured via env vars (no hardcoded cluster addresses)
+    ogx_endpoint: str  # OGX_ENDPOINT (required)
+    ogx_api_key: Optional[str] = None
+    ogx_default_model: str  # OGX_DEFAULT_MODEL (required)
+    ogx_streaming_model: str = ""  # OGX_STREAMING_MODEL (optional, defaults to default_model)
+    ogx_embedding_model: str = "nomic-embed-text-v1-5"
+    ogx_embedding_dimension: int = 768
+    ogx_timeout: int = 300
+    ogx_max_retries: int = 3
+    ogx_max_tokens: int = 4096
 
     # MCP Servers — configured via env vars
     ocr_server_url: str  # OCR_SERVER_URL (required)

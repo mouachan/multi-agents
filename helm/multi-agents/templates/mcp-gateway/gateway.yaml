@@ -1,0 +1,37 @@
+{{- if .Values.mcpGateway.enabled }}
+{{- /*
+Dedicated (isolated) Gateway for this namespace's MCP Gateway instance
+(Kuadrant "isolated gateway deployment"): the shared mcp-system Gateway is left untouched.
+  - listener "mcp"  : client-facing endpoint (OGX / agents), hostname = in-cluster Service FQDN
+  - listener "mcps" : internal wildcard used by MCPServerRegistration HTTPRoutes
+*/}}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.mcpGateway.gatewayName }}
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: mcp-gateway
+  annotations:
+    # in-cluster only: avoid a LoadBalancer Service that stays <pending> without MetalLB pool
+    networking.istio.io/service-type: ClusterIP
+spec:
+  gatewayClassName: {{ .Values.mcpGateway.gatewayClassName }}
+  listeners:
+    - name: mcp
+      hostname: {{ include "multi-agents.mcpGateway.listenerHostname" . | quote }}
+      port: {{ .Values.mcpGateway.listenerPort }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: mcps
+      hostname: {{ printf "*.%s" (include "multi-agents.mcpGateway.internalDomain" .) | quote }}
+      port: {{ .Values.mcpGateway.listenerPort }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}

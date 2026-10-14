@@ -2,7 +2,7 @@
 Test script: Compare OCR approaches for document text extraction.
 
 1. EasyOCR (current) — via MCP OCR server
-2. Scout Vision (proposed) — LlamaStack Files API + multimodal inference
+2. Scout Vision (proposed) — OGX Files API + multimodal inference
 
 Measures: time (seconds), tokens consumed, text quality.
 
@@ -16,7 +16,7 @@ import time
 import sys
 from pathlib import Path
 
-LLAMASTACK = "http://localhost:8321"
+OGX = "http://localhost:8321"
 MINIO_URL = "http://localhost:9000"
 MINIO_ACCESS_KEY = "admin"
 MINIO_SECRET_KEY = "minioadmin123"
@@ -86,10 +86,10 @@ async def test_1_ocr_server():
     return None
 
 
-async def test_2_llamastack_files_upload():
-    """Test 2a: Upload document to LlamaStack Files API."""
+async def test_2_ogx_files_upload():
+    """Test 2a: Upload document to OGX Files API."""
     print("\n" + "=" * 60)
-    print("TEST 2a: Upload PDF to LlamaStack Files API")
+    print("TEST 2a: Upload PDF to OGX Files API")
     print("=" * 60)
 
     if not DOC_PATH.exists():
@@ -99,10 +99,10 @@ async def test_2_llamastack_files_upload():
     async with httpx.AsyncClient(timeout=30) as client:
         start = time.time()
 
-        # Upload file to LlamaStack Files API
+        # Upload file to OGX Files API
         with open(DOC_PATH, "rb") as f:
             resp = await client.post(
-                f"{LLAMASTACK}/v1/files",
+                f"{OGX}/v1/files",
                 files={"file": (DOC_PATH.name, f, "application/pdf")},
                 data={"purpose": "assistants"}
             )
@@ -121,10 +121,10 @@ async def test_2_llamastack_files_upload():
             return None
 
 
-async def test_2b_llamastack_files_retrieve(file_id: str):
-    """Test 2b: Retrieve file content from LlamaStack Files API."""
+async def test_2b_ogx_files_retrieve(file_id: str):
+    """Test 2b: Retrieve file content from OGX Files API."""
     print("\n" + "=" * 60)
-    print("TEST 2b: Retrieve file from LlamaStack Files API")
+    print("TEST 2b: Retrieve file from OGX Files API")
     print("=" * 60)
 
     if not file_id:
@@ -134,7 +134,7 @@ async def test_2b_llamastack_files_retrieve(file_id: str):
     async with httpx.AsyncClient(timeout=30) as client:
         start = time.time()
 
-        resp = await client.get(f"{LLAMASTACK}/v1/files/{file_id}/content")
+        resp = await client.get(f"{OGX}/v1/files/{file_id}/content")
 
         elapsed = time.time() - start
 
@@ -191,7 +191,7 @@ async def test_3_vision_direct():
         img_b64 = base64.b64encode(img_bytes).decode()
         print(f"  PDF size: {len(img_bytes)} bytes")
 
-    # Call Scout vision via LlamaStack
+    # Call Scout vision via OGX
     async with httpx.AsyncClient(timeout=120) as client:
         start = time.time()
 
@@ -220,7 +220,7 @@ async def test_3_vision_direct():
 
         print(f"  Calling Scout vision...")
         resp = await client.post(
-            f"{LLAMASTACK}/v1/chat/completions",
+            f"{OGX}/v1/chat/completions",
             json=payload
         )
 
@@ -290,7 +290,7 @@ async def main():
     print("=" * 60)
     print("OCR vs Vision Benchmark")
     print(f"Document: {DOC_PATH.name}")
-    print(f"LlamaStack: {LLAMASTACK}")
+    print(f"OGX: {OGX}")
     print(f"Model: {SCOUT_MODEL}")
     print("=" * 60)
 
@@ -303,10 +303,10 @@ async def main():
     # Test 1: EasyOCR via MCP server
     ocr_text = await test_1_ocr_server()
 
-    # Test 2: LlamaStack Files API
-    file_id = await test_2_llamastack_files_upload()
+    # Test 2: OGX Files API
+    file_id = await test_2_ogx_files_upload()
     if file_id:
-        file_content = await test_2b_llamastack_files_retrieve(file_id)
+        file_content = await test_2b_ogx_files_retrieve(file_id)
 
     # Test 3: Scout Vision
     vision_result = await test_3_vision_direct()

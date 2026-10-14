@@ -3,9 +3,9 @@
 Kubernetes Job: Generate embeddings for historical claim documents.
 
 This job:
-1. Waits for LlamaStack endpoint to be ready
+1. Waits for OGX endpoint to be ready
 2. Reads all claim_documents without embeddings
-3. Generates embeddings using LlamaStack API
+3. Generates embeddings using OGX API
 4. Updates database with embeddings
 
 Run after seed.sql has been loaded into PostgreSQL.
@@ -35,34 +35,34 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-LLAMASTACK_ENDPOINT = os.getenv(
-    "LLAMASTACK_ENDPOINT",
-    "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
+OGX_ENDPOINT = os.getenv(
+    "OGX_ENDPOINT",
+    "http://ogx-service.multi-agents.svc.cluster.local:8321"
 )
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemma-300m")
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "5"))  # Process 5 documents at a time
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "30"))  # Wait up to 5 minutes for LlamaStack
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "30"))  # Wait up to 5 minutes for OGX
 
 
 # Database connection
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 
-async def wait_for_llamastack(max_retries: int = MAX_RETRIES) -> bool:
+async def wait_for_ogx(max_retries: int = MAX_RETRIES) -> bool:
     """
-    Wait for LlamaStack to be ready.
+    Wait for OGX to be ready.
 
     Returns:
         True if ready, False if timeout
     """
-    logger.info(f"Waiting for LlamaStack at {LLAMASTACK_ENDPOINT}...")
+    logger.info(f"Waiting for OGX at {OGX_ENDPOINT}...")
 
     for attempt in range(1, max_retries + 1):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{LLAMASTACK_ENDPOINT}/health")
+                response = await client.get(f"{OGX_ENDPOINT}/health")
                 if response.status_code == 200:
-                    logger.info("✅ LlamaStack is ready")
+                    logger.info("✅ OGX is ready")
                     return True
         except Exception as e:
             logger.debug(f"Attempt {attempt}/{max_retries}: {e}")
@@ -70,13 +70,13 @@ async def wait_for_llamastack(max_retries: int = MAX_RETRIES) -> bool:
         if attempt < max_retries:
             await asyncio.sleep(10)  # Wait 10 seconds between attempts
 
-    logger.error(f"❌ LlamaStack not ready after {max_retries} attempts")
+    logger.error(f"❌ OGX not ready after {max_retries} attempts")
     return False
 
 
 async def create_embedding(text: str, client: httpx.AsyncClient) -> Optional[List[float]]:
     """
-    Create embedding for text using LlamaStack API.
+    Create embedding for text using OGX API.
 
     Args:
         text: Text to embed
@@ -87,7 +87,7 @@ async def create_embedding(text: str, client: httpx.AsyncClient) -> Optional[Lis
     """
     try:
         response = await client.post(
-            f"{LLAMASTACK_ENDPOINT}/embeddings",
+            f"{OGX_ENDPOINT}/embeddings",
             json={
                 "model": EMBEDDING_MODEL,
                 "content": text
@@ -130,9 +130,9 @@ def format_embedding_for_postgres(embedding: List[float]) -> str:
 async def process_documents():
     """Main processing function."""
 
-    # Wait for LlamaStack
-    if not await wait_for_llamastack():
-        logger.error("LlamaStack not ready. Exiting.")
+    # Wait for OGX
+    if not await wait_for_ogx():
+        logger.error("OGX not ready. Exiting.")
         sys.exit(1)
 
     # Connect to database
@@ -239,7 +239,7 @@ async def process_documents():
 
 if __name__ == "__main__":
     logger.info("Starting embedding generation job...")
-    logger.info(f"LlamaStack: {LLAMASTACK_ENDPOINT}")
+    logger.info(f"OGX: {OGX_ENDPOINT}")
     logger.info(f"Model: {EMBEDDING_MODEL}")
     logger.info(f"Database: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
     logger.info(f"Batch size: {BATCH_SIZE}")

@@ -1,5 +1,5 @@
 """
-Agent services for AI orchestration via LlamaStack Responses API.
+Agent services for AI orchestration via OGX Responses API.
 """
 
 from .responses_orchestrator import ResponsesOrchestrator

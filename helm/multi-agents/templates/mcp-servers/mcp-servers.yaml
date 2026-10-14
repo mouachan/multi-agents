@@ -1,0 +1,145 @@
+{{- /*
+MCP servers — one per key in "multi-agents.mcp.serverKeys".
+mcp.useMCPServerCR=true  -> MCPServer CR (RHOAI MCP lifecycle operator, mcp.x-k8s.io/v1alpha1);
+                            the operator creates Deployment + Service "<key>-server" on port 8080.
+mcp.useMCPServerCR=false -> plain Deployment + Service.
+Every server serves Streamable HTTP on /mcp, legacy SSE on /sse and /health.
+*/ -}}
+{{- $root := . }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- range $name := splitList " " (include "multi-agents.mcp.serverKeys" .) }}
+{{- $cfg := index $root.Values.mcp $name }}
+{{- if $cfg.enabled }}
+{{- $server := printf "%s-server" $name }}
+{{- $image := printf "%s/%s:%s" (include "multi-agents.imageRegistry" $root) $cfg.image.repository $cfg.image.tag }}
+{{- $probe := $cfg.probe | default dict }}
+{{- if $root.Values.mcp.useMCPServerCR }}
+---
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  name: {{ $server }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $root | nindent 4 }}
+    app: {{ $server }}
+    component: mcp-server
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: {{ $image }}
+  config:
+    port: 8080
+    path: /mcp
+    env:
+      {{- include "multi-agents.mcp.env" (dict "root" $root "name" $name "cfg" $cfg) | nindent 6 }}
+  mcp:
+    stateless: true
+  extraLabels:
+    app: {{ $server }}
+    component: mcp-server
+  runtime:
+    replicas: {{ $cfg.replicas }}
+    {{- with $cfg.resources }}
+    resources:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $cfg.serviceAccountName }}
+    security:
+      serviceAccountName: {{ . }}
+    {{- end }}
+    health:
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: {{ $probe.livenessInitialDelaySeconds | default 15 }}
+        periodSeconds: 15
+        timeoutSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 15
+        # default (1s) fails while long tool calls (OCR, embeddings) are running
+        timeoutSeconds: 10
+{{- else }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  name: {{ $server }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $root | nindent 4 }}
+    app: {{ $server }}
+    component: mcp-server
+spec:
+  replicas: {{ $cfg.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $server }}
+  template:
+    metadata:
+      labels:
+        app: {{ $server }}
+        component: mcp-server
+    spec:
+      {{- with $cfg.serviceAccountName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      containers:
+      - name: {{ $server }}
+        image: {{ $image }}
+        imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+          {{- include "multi-agents.mcp.env" (dict "root" $root "name" $name "cfg" $cfg) | nindent 10 }}
+        resources:
+          {{- toYaml $cfg.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: {{ $probe.livenessInitialDelaySeconds | default 15 }}
+          periodSeconds: 15
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          # default (1s) fails while long tool calls (OCR, embeddings) are running
+          timeoutSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $server }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $root | nindent 4 }}
+    app: {{ $server }}
+    component: mcp-server
+spec:
+  type: {{ $cfg.service.type }}
+  ports:
+  - port: {{ $cfg.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $server }}
+{{- end }}
+{{- end }}
+{{- end }}

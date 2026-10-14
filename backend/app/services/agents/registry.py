@@ -27,6 +27,7 @@ class AgentDefinition:
     api_prefix: str = ""
     decision_values: List[str] = field(default_factory=list)
     routing_keywords: List[str] = field(default_factory=list)
+    a2a_url: Optional[str] = None
     model: Optional[str] = None
     frontend_path: Optional[str] = None
     name_fr: Optional[str] = None

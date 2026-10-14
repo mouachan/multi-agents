@@ -29,7 +29,7 @@ from app.api.shared.decision_service import get_decision
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import tender as models
-from app.llamastack.ao_prompts import AO_PROCESSING_AGENT_INSTRUCTIONS
+from app.prompts.ao_prompts import AO_PROCESSING_AGENT_INSTRUCTIONS
 from app.services.tender_service import TenderService
 from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
@@ -160,7 +160,7 @@ async def process_tender(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Process a tender using LlamaStack ReActAgent.
+    Process a tender using OGX ReActAgent.
 
     The agent will:
     1. Extract document info via OCR
@@ -200,7 +200,7 @@ async def process_tender(
             ])
 
         agent_config = {
-            "model": settings.llamastack_default_model,
+            "model": settings.ogx_default_model,
             "instructions": AO_PROCESSING_AGENT_INSTRUCTIONS,
         }
 
@@ -348,7 +348,7 @@ async def get_tender_logs(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get processing logs for a tender from LlamaStack session history."""
+    """Get processing logs for a tender from OGX session history."""
     try:
         # Get tender to check metadata
         tender_query = select(models.Tender).where(models.Tender.id == tender_id)

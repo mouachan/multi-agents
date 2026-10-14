@@ -2,7 +2,7 @@
 MCP Postal Server - CRUD operations on postal/parcel reclamations via PostgreSQL.
 
 Includes decision persistence with automatic embedding generation.
-FastMCP implementation with Streamable HTTP transport (SSE).
+FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
 """
 
 import json
@@ -10,36 +10,15 @@ import logging
 import os
 from typing import List, Optional
 
-import httpx
-from mcp.server.fastmcp import FastMCP
 from sqlalchemy import text
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
 
 from shared.db import (
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     check_database_connection, run_db_query, run_db_query_one, run_db_execute,
 )
-
-# LlamaStack endpoint for embedding generation
-LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack:8321")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-
-# Cached LLM model name (resolved from LlamaStack at first use)
-_cached_llm_model: Optional[str] = None
-
-
-def _get_llm_model_name() -> str:
-    """Get the LLM model short name from LLAMASTACK_DEFAULT_MODEL env var."""
-    global _cached_llm_model
-    if _cached_llm_model:
-        return _cached_llm_model
-    import re
-    full_model = os.getenv("LLAMASTACK_DEFAULT_MODEL", "unknown")
-    short = full_model.split("/")[-1] if "/" in full_model else full_model
-    _cached_llm_model = re.sub(r'-W\d+A\d+$', '', short)
-    return _cached_llm_model
+from shared.mcp_app import build_app, create_mcp
+from shared.ogx import generate_embedding, get_llm_model_name
 
 # Configure logging
 logging.basicConfig(
@@ -49,11 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastMCP server
-mcp = FastMCP(
-    "postal-server",
-    stateless_http=True,
-    json_response=True
-)
+mcp = create_mcp("postal-server")
 
 
 # =============================================================================
@@ -581,25 +556,6 @@ async def analyze_reclamation(reclamation_id: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
-async def _generate_embedding(text_input: str) -> Optional[List[float]]:
-    """Generate embedding via LlamaStack /v1/embeddings API. Returns None on failure."""
-    if not text_input or not text_input.strip():
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
-                json={"model": EMBEDDING_MODEL, "input": text_input.strip()[:2000]},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            if data:
-                return data[0].get("embedding")
-    except Exception as e:
-        logger.warning(f"Embedding generation failed (non-blocking): {e}")
-    return None
-
-
 @mcp.tool()
 async def save_reclamation_decision(
     reclamation_id: str,
@@ -659,8 +615,8 @@ async def save_reclamation_decision(
             {"recl_uuid": recl_uuid},
         )
 
-        # Get model name from LlamaStack (cached)
-        llm_model = _get_llm_model_name()
+        # Reasoning model name (OGX_DEFAULT_MODEL)
+        llm_model = get_llm_model_name()
 
         # INSERT into reclamation_decisions
         await run_db_execute(
@@ -696,7 +652,7 @@ async def save_reclamation_decision(
             {"rid": recl_uuid},
         )
         if doc_result and not doc_result.has_embedding and doc_result.raw_ocr_text:
-            embedding = await _generate_embedding(doc_result.raw_ocr_text)
+            embedding = await generate_embedding(doc_result.raw_ocr_text)
             if embedding:
                 emb_str = '[' + ','.join(map(str, embedding)) + ']'
                 await run_db_execute(
@@ -764,30 +720,11 @@ async def health_check(request):
     return JSONResponse(health_status)
 
 
-async def sse_options(request):
-    """Handle OPTIONS requests for MCP SSE endpoint discovery."""
-    return JSONResponse({
-        "methods": ["GET", "POST", "OPTIONS"],
-        "mcp_version": "0.1.0",
-        "server_name": "postal-server",
-        "capabilities": {"tools": True, "streaming": True}
-    })
-
-
 # =============================================================================
-# Starlette App
+# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health
 # =============================================================================
 
-mcp_sse_app = mcp.sse_app()
-
-app = Starlette(
-    routes=[
-        Route("/health", health_check),
-        Route("/sse", sse_options, methods=["OPTIONS"]),
-        Route("/", sse_options, methods=["OPTIONS"]),
-        Mount("/", app=mcp_sse_app),
-    ]
-)
+app = build_app(mcp, "postal-server", health_check)
 
 
 if __name__ == "__main__":

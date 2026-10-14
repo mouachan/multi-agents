@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "multi-agents-backend"
 version = "0.1.0"
-description = "Agentic claims processing backend with FastAPI and LlamaStack"
+description = "Agentic multi-agent backend with FastAPI, OGX (RHOAI 3.5) and A2A agents"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [

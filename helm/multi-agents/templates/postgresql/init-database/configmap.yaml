@@ -17,16 +17,16 @@ data:
     POSTGRESQL_USER="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userNameKey }})"
     POSTGRESQL_OWNER="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userNameKey }})"
 
-    # LlamaStack database credentials
-    LLAMASTACK_DATABASE="{{ .Values.llamastack.database.name | default "llamastack" }}"
-    LLAMASTACK_USER="{{ .Values.llamastack.database.user | default "llamastack" }}"
-    LLAMASTACK_PASSWORD="$(cat /cluster-secrets/LLAMASTACK_PASSWORD)"
+    # OGX database credentials
+    OGX_DATABASE="{{ .Values.ogx.database.name | default "ogx" }}"
+    OGX_USER="{{ .Values.ogx.database.user | default "ogx" }}"
+    OGX_PASSWORD="$(cat /cluster-secrets/OGX_PASSWORD)"
 
     if test -z "$POSTGRESQL_DATABASE" \
          -o -z "$POSTGRESQL_ADMIN_PASSWORD" \
          -o -z "$POSTGRESQL_OWNER" \
          -o -z "$POSTGRESQL_USER" \
-         -o -z "$LLAMASTACK_PASSWORD"; then
+         -o -z "$OGX_PASSWORD"; then
         echo ERROR: missing postgres coordinates
         exit 1
     fi
@@ -72,49 +72,49 @@ data:
     fi
 
     # =========================================================================
-    # Initialize llamastack database (technical database for LlamaStack)
+    # Initialize ogx database (technical database for OGX)
     # =========================================================================
-    echo Checking if llamastack database exists ...
+    echo Checking if ogx database exists ...
     if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql -d "$POSTGRESQL_DATABASE" -lqt | cut -d \| -f 1 | grep -qw "$LLAMASTACK_DATABASE"; then
-        echo " => LlamaStack database already exists, skipping creation"
+            --host postgresql -d "$POSTGRESQL_DATABASE" -lqt | cut -d \| -f 1 | grep -qw "$OGX_DATABASE"; then
+        echo " => OGX database already exists, skipping creation"
     else
-        echo Creating llamastack database ...
+        echo Creating ogx database ...
         PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE DATABASE $LLAMASTACK_DATABASE;"
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE DATABASE $OGX_DATABASE;"
         echo " => Done"
     fi
 
-    echo Checking if llamastack user exists ...
+    echo Checking if ogx user exists ...
     if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql -d "$POSTGRESQL_DATABASE" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$LLAMASTACK_USER'" | grep -q 1; then
-        echo " => LlamaStack user already exists, updating password"
+            --host postgresql -d "$POSTGRESQL_DATABASE" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$OGX_USER'" | grep -q 1; then
+        echo " => OGX user already exists, updating password"
         PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql -d "$POSTGRESQL_DATABASE" -c "ALTER ROLE $LLAMASTACK_USER WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';"
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "ALTER ROLE $OGX_USER WITH LOGIN PASSWORD '$OGX_PASSWORD';"
     else
-        echo Creating llamastack user ...
+        echo Creating ogx user ...
         PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE ROLE $LLAMASTACK_USER WITH LOGIN PASSWORD '$LLAMASTACK_PASSWORD';"
+            --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE ROLE $OGX_USER WITH LOGIN PASSWORD '$OGX_PASSWORD';"
         echo " => Done"
     fi
 
-    echo Granting privileges on llamastack database ...
+    echo Granting privileges on ogx database ...
     PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-        --host postgresql -d "$POSTGRESQL_DATABASE" -c "GRANT ALL PRIVILEGES ON DATABASE $LLAMASTACK_DATABASE TO $LLAMASTACK_USER;"
+        --host postgresql -d "$POSTGRESQL_DATABASE" -c "GRANT ALL PRIVILEGES ON DATABASE $OGX_DATABASE TO $OGX_USER;"
 
     echo Granting schema privileges ...
     PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-        --host postgresql -d "$LLAMASTACK_DATABASE" -c "GRANT USAGE, CREATE ON SCHEMA public TO $LLAMASTACK_USER;"
+        --host postgresql -d "$OGX_DATABASE" -c "GRANT USAGE, CREATE ON SCHEMA public TO $OGX_USER;"
 
     echo Setting default privileges for future tables ...
     PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-        --host postgresql -d "$LLAMASTACK_DATABASE" -c \
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO $LLAMASTACK_USER;"
+        --host postgresql -d "$OGX_DATABASE" -c \
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO $OGX_USER;"
     echo " => Done"
 
-    echo Installing pgvector extension in llamastack database ...
+    echo Installing pgvector extension in ogx database ...
     PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
-        --host postgresql -d "$LLAMASTACK_DATABASE" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        --host postgresql -d "$OGX_DATABASE" -c "CREATE EXTENSION IF NOT EXISTS vector;"
     echo " => Done"
 
     exit 0

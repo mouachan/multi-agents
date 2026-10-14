@@ -68,10 +68,10 @@ services:
       POSTGRES_DATABASE: multi_agent_db
       POSTGRES_USER: multi_agent_user
       POSTGRES_PASSWORD: multi_agents_pass
-      LLAMASTACK_ENDPOINT: http://llamastack:8321
-      LLAMASTACK_DEFAULT_MODEL: litemaas/llama-scout-17b
-      LLAMASTACK_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1-5
-      LLAMASTACK_EMBEDDING_DIMENSION: 768
+      OGX_ENDPOINT: http://llamastack:8321
+      OGX_DEFAULT_MODEL: litemaas/llama-scout-17b
+      OGX_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1-5
+      OGX_EMBEDDING_DIMENSION: 768
       OCR_SERVER_URL: http://ocr-server:8080
       RAG_SERVER_URL: http://rag-server:8080
       CLAIMS_SERVER_URL: http://claims-server:8080
@@ -110,7 +110,7 @@ services:
     container_name: multi-agents-ocr-server
     environment:
       LOG_LEVEL: INFO
-      LLAMASTACK_ENDPOINT: http://llamastack:8321
+      OGX_ENDPOINT: http://llamastack:8321
       VISION_MODEL: litemaas-vision/Qwen2.5-VL-7B-Instruct
       POSTGRES_HOST: postgresql
       POSTGRES_PORT: 5432
@@ -136,8 +136,8 @@ services:
       POSTGRES_DATABASE: multi_agent_db
       POSTGRES_USER: multi_agent_user
       POSTGRES_PASSWORD: multi_agents_pass
-      LLAMASTACK_ENDPOINT: http://llamastack:8321
-      EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
+      OGX_ENDPOINT: http://llamastack:8321
+      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
       VECTOR_DIMENSION: 768
       LOG_LEVEL: INFO
     ports:
@@ -199,9 +199,9 @@ services:
       POSTGRES_DATABASE: multi_agent_db
       POSTGRES_USER: multi_agent_user
       POSTGRES_PASSWORD: multi_agents_pass
-      LLAMASTACK_ENDPOINT: http://llamastack:8321
-      LLAMASTACK_DEFAULT_MODEL: litemaas/llama-scout-17b
-      EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
+      OGX_ENDPOINT: http://llamastack:8321
+      OGX_DEFAULT_MODEL: litemaas/llama-scout-17b
+      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
       LOG_LEVEL: INFO
     ports:
       - "8085:8080"
@@ -278,8 +278,8 @@ services:
         pip install --quiet httpx psycopg2-binary mcp &&
         python /scripts/init_data.py
     environment:
-      LLAMASTACK_ENDPOINT: http://llamastack:8321
-      EMBEDDING_MODEL: ${LLAMASTACK_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
+      OGX_ENDPOINT: http://llamastack:8321
+      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
       OCR_SERVER_URL: http://ocr-server:8080
       CLAIMS_SERVER_URL: http://claims-server:8080
       TENDERS_SERVER_URL: http://tenders-server:8080

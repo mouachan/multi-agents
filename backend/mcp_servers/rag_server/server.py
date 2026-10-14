@@ -1,18 +1,18 @@
 """
 MCP RAG Server - Vector retrieval using PostgreSQL + pgvector.
-FastMCP implementation with Streamable HTTP transport (SSE).
+FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
 
 ARCHITECTURE NOTE:
 These MCP tools perform domain-specific vector search with SQL JOINs on business
 tables (company_references, historical_tenders, claim_documents, etc.) that have
 rich schemas (montant, region, resultat, note_technique...).
 
-LlamaStack's native Vector IO manages its own generic vector stores, which cannot
+OGX's native Vector IO manages its own generic vector stores, which cannot
 replicate these domain-specific JOINs and filters. The embedding generation itself
-uses LlamaStack's /v1/embeddings API — only the storage and retrieval stay in MCP
+uses OGX's /v1/embeddings API — only the storage and retrieval stay in MCP
 because they require business-table JOINs that Vector IO's query API doesn't support.
 
-LlamaStack's builtin::rag/knowledge_search is used for the generic knowledge base.
+OGX's file_search (vector stores) is used for the generic knowledge base.
 """
 
 import json
@@ -21,10 +21,7 @@ import os
 from typing import List, Optional
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 from sqlalchemy import text
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -32,6 +29,8 @@ from shared.db import (
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     check_database_connection, run_db_query, run_db_query_one, run_db_execute,
 )
+from shared.mcp_app import build_app, create_mcp
+from shared.ogx import OGX_ENDPOINT, OGX_EMBEDDING_MODEL, OGX_TIMEOUT
 
 # Configure logging
 logging.basicConfig(
@@ -41,22 +40,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastMCP server
-mcp = FastMCP(
-    "rag-server",
-    stateless_http=True,
-    json_response=True
-)
-
-# LlamaStack endpoint for embeddings
-LLAMASTACK_ENDPOINT = os.getenv(
-    "LLAMASTACK_ENDPOINT",
-    "http://llamastack-test-v035.multi-agents.svc.cluster.local:8321"
-)
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemma-300m")
+mcp = create_mcp("rag-server")
 
 
 # =============================================================================
-# Embedding Utilities (LlamaStack /v1/embeddings)
+# Embedding Utilities (OGX /v1/embeddings)
 # =============================================================================
 
 def format_embedding(embedding: List[float]) -> str:
@@ -77,14 +65,14 @@ def format_embedding(embedding: List[float]) -> str:
     )
 )
 async def create_embedding(text_input: str) -> List[float]:
-    """Create embedding via LlamaStack Embeddings API with retry logic."""
+    """Create embedding via OGX Embeddings API with retry logic."""
     if not text_input or not text_input.strip():
         raise ValueError("Cannot create embedding for empty text")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=OGX_TIMEOUT) as client:
         response = await client.post(
-            f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
-            json={"model": EMBEDDING_MODEL, "input": text_input.strip()}
+            f"{OGX_ENDPOINT}/v1/embeddings",
+            json={"model": OGX_EMBEDDING_MODEL, "input": text_input.strip()}
         )
         response.raise_for_status()
         result = response.json()
@@ -599,7 +587,7 @@ async def generate_document_embedding(
 ) -> str:
     """
     Generate and store an embedding for a claim or tender document.
-    Uses LlamaStack /v1/embeddings API for vector creation, stores in pgvector.
+    Uses OGX /v1/embeddings API for vector creation, stores in pgvector.
 
     Args:
         entity_type: Type of entity - "claim" or "tender"
@@ -682,7 +670,7 @@ async def generate_document_embedding(
         if not ocr_text or not ocr_text.strip():
             return json.dumps({"success": False, "error": f"No OCR text available for {entity_type} {entity_id}"})
 
-        # Create embedding via LlamaStack (truncate to 2000 chars for embedding model)
+        # Create embedding via OGX (truncate to 2000 chars for embedding model)
         embedding = await create_embedding(ocr_text[:2000])
         embedding_str = format_embedding(embedding)
 
@@ -978,30 +966,11 @@ async def health_check(request):
     return JSONResponse(health_status)
 
 
-async def sse_options(request):
-    """Handle OPTIONS requests for MCP SSE endpoint discovery."""
-    return JSONResponse({
-        "methods": ["GET", "POST", "OPTIONS"],
-        "mcp_version": "0.1.0",
-        "server_name": "rag-server",
-        "capabilities": {"tools": True, "streaming": True}
-    })
-
-
 # =============================================================================
-# Starlette App
+# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health
 # =============================================================================
 
-mcp_sse_app = mcp.sse_app()
-
-app = Starlette(
-    routes=[
-        Route("/health", health_check),
-        Route("/sse", sse_options, methods=["OPTIONS"]),
-        Route("/", sse_options, methods=["OPTIONS"]),
-        Mount("/", app=mcp_sse_app),
-    ]
-)
+app = build_app(mcp, "rag-server", health_check)
 
 
 if __name__ == "__main__":
@@ -1017,8 +986,8 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
 
     logger.info(f"Starting MCP RAG Server on {host}:{port}")
-    logger.info(f"Embedding model: {EMBEDDING_MODEL}")
-    logger.info(f"LlamaStack endpoint: {LLAMASTACK_ENDPOINT}")
+    logger.info(f"Embedding model: {OGX_EMBEDDING_MODEL}")
+    logger.info(f"OGX endpoint: {OGX_ENDPOINT}")
     logger.info(f"Database: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
 
     uvicorn.run(app, host=host, port=port)

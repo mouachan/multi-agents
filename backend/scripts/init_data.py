@@ -2,7 +2,7 @@
 """
 Data initialization script for multi-agents platform.
 
-Downloads PDFs from GitHub, uploads to LlamaStack Files API,
+Downloads PDFs from GitHub, uploads to OGX Files API,
 and processes 10 claims + 10 tenders via MCP server tools
 (OCR + decision saving with embeddings).
 
@@ -10,7 +10,7 @@ Usage:
     python init_data.py
 
 Environment variables:
-    LLAMASTACK_ENDPOINT: LlamaStack API URL (default: http://llamastack:8321)
+    OGX_ENDPOINT: OGX API URL (default: http://ogx-service:8321)
     OCR_SERVER_URL: OCR MCP server URL (default: http://ocr-server:8080)
     CLAIMS_SERVER_URL: Claims MCP server URL (default: http://claims-server:8080)
     TENDERS_SERVER_URL: Tenders MCP server URL (default: http://tenders-server:8080)
@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger("init_data")
 
 # Configuration
-LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack:8321")
+OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "http://ogx-service:8321")
 OCR_SERVER_URL = os.getenv("OCR_SERVER_URL", "http://ocr-server:8080")
 CLAIMS_SERVER_URL = os.getenv("CLAIMS_SERVER_URL", "http://claims-server:8080")
 TENDERS_SERVER_URL = os.getenv("TENDERS_SERVER_URL", "http://tenders-server:8080")
@@ -88,19 +88,19 @@ def wait_for_postgres():
     raise RuntimeError("PostgreSQL not available after retries")
 
 
-async def wait_for_llamastack():
-    """Wait for LlamaStack to be healthy."""
+async def wait_for_ogx():
+    """Wait for OGX to be healthy."""
     for i in range(MAX_RETRIES):
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{LLAMASTACK_ENDPOINT}/v1/health")
+                resp = await client.get(f"{OGX_ENDPOINT}/v1/health")
                 if resp.status_code == 200:
-                    logger.info("LlamaStack is ready")
+                    logger.info("OGX is ready")
                     return
         except Exception as e:
-            logger.info(f"Waiting for LlamaStack ({i + 1}/{MAX_RETRIES}): {e}")
+            logger.info(f"Waiting for OGX ({i + 1}/{MAX_RETRIES}): {e}")
         await asyncio.sleep(RETRY_INTERVAL)
-    raise RuntimeError("LlamaStack not available after retries")
+    raise RuntimeError("OGX not available after retries")
 
 
 async def wait_for_mcp_servers():
@@ -129,7 +129,7 @@ async def wait_for_mcp_servers():
 def check_already_initialized() -> bool:
     """Check if data init has already been run (idempotent).
 
-    Checks if document_path values have been replaced with LlamaStack file IDs.
+    Checks if document_path values have been replaced with OGX file IDs.
     """
     conn = get_pg_conn()
     try:
@@ -323,16 +323,16 @@ def download_documents(archive_url: str, dest_dir: str = DOCUMENTS_DIR):
 
 
 # ============================================================================
-# LlamaStack Files API upload
+# OGX Files API upload
 # ============================================================================
 
-async def upload_pdf_to_llamastack(filepath: str, purpose: str = "assistants") -> str:
-    """Upload a single PDF to LlamaStack Files API. Returns file ID."""
+async def upload_pdf_to_ogx(filepath: str, purpose: str = "assistants") -> str:
+    """Upload a single PDF to OGX Files API. Returns file ID."""
     filename = os.path.basename(filepath)
     async with httpx.AsyncClient(timeout=60) as client:
         with open(filepath, "rb") as f:
             resp = await client.post(
-                f"{LLAMASTACK_ENDPOINT}/v1/files",
+                f"{OGX_ENDPOINT}/v1/files",
                 files={"file": (filename, f, "application/pdf")},
                 data={"purpose": purpose},
             )
@@ -343,8 +343,8 @@ async def upload_pdf_to_llamastack(filepath: str, purpose: str = "assistants") -
             return file_id
 
 
-async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
-    """Upload all PDFs from documents_dir to LlamaStack and update DB with file IDs."""
+async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
+    """Upload all PDFs from documents_dir to OGX and update DB with file IDs."""
     conn = get_pg_conn()
     conn.autocommit = True
     cur = conn.cursor()
@@ -361,7 +361,7 @@ async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
             filename = os.path.basename(filepath)
             doc_path = f"claims/{filename}"
             try:
-                file_id = await upload_pdf_to_llamastack(filepath)
+                file_id = await upload_pdf_to_ogx(filepath)
                 cur.execute(
                     "UPDATE claims SET document_path = %s WHERE document_path = %s",
                     (file_id, doc_path),
@@ -377,7 +377,7 @@ async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
             filename = os.path.basename(filepath)
             doc_path = f"tenders/{filename}"
             try:
-                file_id = await upload_pdf_to_llamastack(filepath)
+                file_id = await upload_pdf_to_ogx(filepath)
                 cur.execute(
                     "UPDATE tenders SET document_path = %s WHERE document_path = %s",
                     (file_id, doc_path),
@@ -395,7 +395,7 @@ async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
             filename = os.path.basename(filepath)
             doc_path = f"reclamations/{filename}"
             try:
-                file_id = await upload_pdf_to_llamastack(filepath)
+                file_id = await upload_pdf_to_ogx(filepath)
                 cur.execute(
                     "UPDATE reclamations SET document_path = %s WHERE document_path = %s",
                     (file_id, doc_path),
@@ -408,7 +408,7 @@ async def upload_all_pdfs_to_llamastack(documents_dir: str = DOCUMENTS_DIR):
     conn.close()
     logger.info(
         f"Uploaded {claim_count} claim PDFs, {tender_count} tender PDFs, "
-        f"and {reclamation_count} reclamation PDFs to LlamaStack"
+        f"and {reclamation_count} reclamation PDFs to OGX"
     )
 
 
@@ -649,7 +649,7 @@ async def main():
     # Step 1: Wait for services
     logger.info("Step 1: Waiting for services...")
     wait_for_postgres()
-    await wait_for_llamastack()
+    await wait_for_ogx()
 
     # Step 2: Check idempotency (or force reinit)
     logger.info("Step 2: Checking if already initialized...")
@@ -668,9 +668,9 @@ async def main():
     logger.info("Step 4: Downloading PDFs...")
     download_documents(DOCUMENTS_ARCHIVE_URL)
 
-    # Step 5: Upload to LlamaStack Files API
-    logger.info("Step 5: Uploading PDFs to LlamaStack Files API...")
-    await upload_all_pdfs_to_llamastack()
+    # Step 5: Upload to OGX Files API
+    logger.info("Step 5: Uploading PDFs to OGX Files API...")
+    await upload_all_pdfs_to_ogx()
 
     # Step 6: Process 10 claims (OCR + decision)
     logger.info("Step 6: Processing 10 claims (OCR + decision)...")

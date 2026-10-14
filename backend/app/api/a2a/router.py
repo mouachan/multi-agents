@@ -167,7 +167,7 @@ async def _handle_task_send(rpc_request: A2ARequest, agent_id: str, agent_def) -
         orchestrator = _get_orchestrator()
         result = await orchestrator.process_with_agent(
             agent_config={
-                "model": settings.llamastack_default_model,
+                "model": settings.ogx_default_model,
                 "instructions": agent_def.instructions,
             },
             input_message=message_text,

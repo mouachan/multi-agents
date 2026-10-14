@@ -1,0 +1,69 @@
+{{- if .Values.ogx.enabled }}
+{{- $pg := .Values.postgresql.auth.existingSecret }}
+---
+apiVersion: ogx.io/v1beta1
+kind: OGXServer
+metadata:
+  name: {{ .Values.ogx.name }}
+  namespace: {{ include "multi-agents.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  distribution:
+    name: {{ .Values.ogx.distribution }}
+  network:
+    port: 8321
+  # Full run config (kv_postgres storage is only available through overrideConfig)
+  overrideConfig:
+    name: {{ .Values.ogx.name }}-config
+    key: config.yaml
+  workload:
+    replicas: 1
+    resources:
+      {{- toYaml .Values.ogx.resources | nindent 6 }}
+    overrides:
+      env:
+      - name: MAAS_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ include "multi-agents.maas.chatKeySecret" . }}
+            key: api-key
+      - name: MAAS_EXTERNAL_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: maas-external-credentials
+            key: api-key
+      - name: POSTGRES_HOST
+        value: postgresql.{{ include "multi-agents.namespace" . }}.svc.cluster.local
+      - name: POSTGRES_PORT
+        value: "5432"
+      - name: POSTGRES_DB
+        valueFrom:
+          secretKeyRef:
+            name: {{ $pg }}
+            key: OGX_DATABASE
+      - name: POSTGRES_USER
+        valueFrom:
+          secretKeyRef:
+            name: {{ $pg }}
+            key: OGX_USER
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: {{ $pg }}
+            key: OGX_PASSWORD
+{{- if .Values.minio.enabled }}
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: {{ include "multi-agents.fullname" . }}-minio-credentials
+            key: MINIO_ROOT_USER
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ include "multi-agents.fullname" . }}-minio-credentials
+            key: MINIO_ROOT_PASSWORD
+{{- end }}
+{{- end }}

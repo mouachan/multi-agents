@@ -4,7 +4,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   annotations:
-    argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+    argocd.argoproj.io/sync-wave: "4" # after OGXServer
   name: backend-config
   namespace: {{ include "multi-agents.namespace" . }}
   labels:
@@ -23,14 +23,14 @@ data:
   DATABASE_POOL_SIZE: "10"
   DATABASE_MAX_OVERFLOW: "20"
 
-  LLAMASTACK_ENDPOINT: {{ quote (include "llamastack.endpoint" .) }}
-  LLAMASTACK_DEFAULT_MODEL: {{ .Values.llamastack.litemaas.defaultModel | quote }}
-  LLAMASTACK_STREAMING_MODEL: {{ .Values.llamastack.litemaas.defaultModel | quote }}
-  LLAMASTACK_EMBEDDING_MODEL: {{ .Values.llamastack.litemaas.embeddingModel | quote }}
-  LLAMASTACK_EMBEDDING_DIMENSION: {{ .Values.llamastack.embedding.dimension | quote }}
-  LLAMASTACK_TIMEOUT: "300"
-  LLAMASTACK_MAX_RETRIES: "3"
-  LLAMASTACK_MAX_TOKENS: "4096"
+  OGX_ENDPOINT: {{ quote (include "multi-agents.ogx.endpoint" .) }}
+  OGX_DEFAULT_MODEL: {{ .Values.models.reasoning | quote }}
+  OGX_STREAMING_MODEL: {{ .Values.models.reasoning | quote }}
+  OGX_EMBEDDING_MODEL: {{ .Values.models.embedding | quote }}
+  OGX_EMBEDDING_DIMENSION: {{ .Values.models.embeddingDimension | quote }}
+  OGX_TIMEOUT: "300"
+  OGX_MAX_RETRIES: "3"
+  OGX_MAX_TOKENS: {{ .Values.agents.maxTokens | quote }}
 
   OCR_SERVER_URL: "http://ocr-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
   RAG_SERVER_URL: "http://rag-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
@@ -81,11 +81,19 @@ data:
   # Format: tool_name:agent_name,tool_name:agent_name,...
   TOOL_AGENT_MAPPING: "ocr_extract_claim_info:ocr-agent,ocr_document:ocr-agent,retrieve_user_info:rag-agent,retrieve_similar_claims:rag-agent,search_knowledge_base:rag-agent,retrieve_similar_references:rag-agent,retrieve_historical_tenders:rag-agent,retrieve_capabilities:rag-agent,get_reclamation:courrier-reclamation,list_reclamations:courrier-reclamation,get_reclamation_documents:courrier-reclamation,save_reclamation_decision:courrier-reclamation,get_tracking:courrier-suivi,search_courrier_knowledge:courrier-info,retrieve_similar_reclamations:courrier-reclamation"
 
+{{- if .Values.agents.enabled }}
+{{- range $name := list "claims" "tenders" "postal" }}
+{{- if (index $.Values.agents $name).enabled }}
+  {{ upper $name }}_AGENT_A2A_URL: "http://{{ $name }}-agent.{{ include "multi-agents.namespace" $ }}.svc.cluster.local:8090"
+{{- end }}
+{{- end }}
+{{- end }}
+
   # Admin & Database Reset
   SEED_DATA_URL: {{ .Values.backend.seedDataUrl | quote }}
 {{- if .Values.mlflow.enabled }}
   MLFLOW_TRACKING_URI: {{ .Values.mlflow.trackingUri | quote }}
   MLFLOW_EXPERIMENT_NAME: {{ .Values.mlflow.experimentName | quote }}
-  MLFLOW_RHOAI_WORKSPACE: {{ .Values.mlflow.workspace | quote }}
+  MLFLOW_RHOAI_WORKSPACE: {{ include "multi-agents.mlflow.workspace" . | quote }}
 {{- end }}
 {{- end }}

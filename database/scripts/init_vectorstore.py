@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-LlamaStack Vector Store Initialization Script.
+OGX Vector Store Initialization Script.
 
 Prerequisites:
 - PostgreSQL database must be initialized (init.sql executed)
 - Seed data must be loaded (001_sample_data.sql executed)
-- LlamaStack must be running and accessible
+- OGX must be running and accessible
 
 This script:
-1. Creates LlamaStack vector_store via API
+1. Creates OGX vector_store via API
 2. Generates embeddings for knowledge_base articles (if missing)
-3. Inserts all embeddings into LlamaStack via /v1/vector-io/insert
+3. Inserts all embeddings into OGX via /v1/vector-io/insert
 
 Run after: init.sql and 001_sample_data.sql have been executed
 """
@@ -29,16 +29,16 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "multi_agent_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
 
-LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://claims-llamastack-service.multi-agents.svc.cluster.local:8321")
+OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "http://ogx-service.multi-agents.svc.cluster.local:8321")
 VECTOR_STORE_NAME = "claims_vector_db"
 EMBEDDING_MODEL = "gemma-300m"
 EMBEDDING_DIMENSION = 768
 
 
 async def create_embedding(text: str, http_client: httpx.AsyncClient) -> List[float]:
-    """Generate embedding using LlamaStack with gemma-300m model."""
+    """Generate embedding using OGX with nomic-embed-text-v1-5 model."""
     response = await http_client.post(
-        f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
+        f"{OGX_ENDPOINT}/v1/embeddings",
         json={
             "model": EMBEDDING_MODEL,
             "input": text
@@ -61,12 +61,12 @@ async def create_embedding(text: str, http_client: httpx.AsyncClient) -> List[fl
 
 
 async def create_vector_store(http_client: httpx.AsyncClient) -> str:
-    """Create vector_store in LlamaStack and return its ID."""
+    """Create vector_store in OGX and return its ID."""
     print(f"🔍 Checking if vector_store '{VECTOR_STORE_NAME}' exists...")
 
     # Check if vector_store already exists
     response = await http_client.get(
-        f"{LLAMASTACK_ENDPOINT}/v1/vector_stores",
+        f"{OGX_ENDPOINT}/v1/vector_stores",
         params={"name": VECTOR_STORE_NAME}
     )
 
@@ -80,7 +80,7 @@ async def create_vector_store(http_client: httpx.AsyncClient) -> str:
     # Create new vector_store
     print(f"📦 Creating vector_store '{VECTOR_STORE_NAME}'...")
     response = await http_client.post(
-        f"{LLAMASTACK_ENDPOINT}/v1/vector_stores",
+        f"{OGX_ENDPOINT}/v1/vector_stores",
         json={
             "name": VECTOR_STORE_NAME,
             "embedding_model": EMBEDDING_MODEL,
@@ -103,14 +103,14 @@ async def insert_chunks_to_vectorstore(
     chunks: List[Dict[str, Any]],
     http_client: httpx.AsyncClient
 ):
-    """Insert chunks into LlamaStack vector_store."""
+    """Insert chunks into OGX vector_store."""
     if not chunks:
         return
 
     print(f"📤 Inserting {len(chunks)} chunks into vector_store...")
 
     response = await http_client.post(
-        f"{LLAMASTACK_ENDPOINT}/v1/vector-io/insert",
+        f"{OGX_ENDPOINT}/v1/vector-io/insert",
         json={
             "vector_db_id": vector_store_id,
             "chunks": chunks
@@ -129,7 +129,7 @@ async def main():
     print("LLAMASTACK VECTOR STORE INITIALIZATION")
     print("=" * 80)
     print(f"PostgreSQL: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
-    print(f"LlamaStack: {LLAMASTACK_ENDPOINT}")
+    print(f"OGX: {OGX_ENDPOINT}")
     print("=" * 80)
 
     try:
@@ -177,7 +177,7 @@ async def main():
                 chunk = {
                     "content": contract["full_text"],
                     "token_count": len(contract["full_text"].split()),
-                    "embedding": embedding,  # Include embedding for LlamaStack
+                    "embedding": embedding,  # Include embedding for OGX
                     "metadata": {
                         "collection": "user_contracts",
                         "id": str(contract["id"]),
@@ -222,7 +222,7 @@ async def main():
                 chunk = {
                     "content": article["content"],
                     "token_count": len(article["content"].split()),
-                    "embedding": embedding,  # Include embedding for LlamaStack
+                    "embedding": embedding,  # Include embedding for OGX
                     "metadata": {
                         "collection": "knowledge_base",
                         "id": str(article["id"]),

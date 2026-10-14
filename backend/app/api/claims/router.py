@@ -5,7 +5,7 @@ Endpoints:
 - GET    /                        - List claims with pagination
 - GET    /{claim_id}              - Get a specific claim
 - POST   /                        - Create a new claim
-- POST   /{claim_id}/process      - Process a claim with LlamaStack agent
+- POST   /{claim_id}/process      - Process a claim with OGX agent
 - GET    /{claim_id}/status       - Get claim processing status
 - GET    /{claim_id}/decision     - Get claim decision
 - GET    /{claim_id}/logs         - Get processing logs
@@ -33,7 +33,7 @@ from app.api.shared.decision_service import get_decision
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import claim as models
-from app.llamastack.prompts import (
+from app.prompts.prompts import (
     CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
     USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
     AGENT_CONFIG,
@@ -185,7 +185,7 @@ async def create_claim(
 
 
 # =============================================================================
-# POST /{claim_id}/process - Process Claim with LlamaStack Agent
+# POST /{claim_id}/process - Process Claim with OGX Agent
 # =============================================================================
 
 @router.post("/{claim_id}/process", response_model=schemas.ProcessClaimResponse)
@@ -195,7 +195,7 @@ async def process_claim(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Process a claim using LlamaStack ReActAgent.
+    Process a claim using OGX ReActAgent.
 
     The agent will:
     1. Extract document info via OCR
@@ -234,7 +234,7 @@ async def process_claim(
             ])
 
         agent_config = {
-            "model": settings.llamastack_default_model,
+            "model": settings.ogx_default_model,
             "instructions": CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         }
         # Note: We don't add shield_ids here because that would block processing
@@ -446,7 +446,7 @@ async def get_claim_logs(
     claim_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get processing logs for a claim from LlamaStack session history."""
+    """Get processing logs for a claim from OGX session history."""
     try:
         # Get claim to check metadata
         claim_query = select(models.Claim).where(models.Claim.id == claim_id)

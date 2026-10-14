@@ -1,7 +1,7 @@
 """
-Document storage service — LlamaStack Files API with local filesystem fallback.
+Document storage service — OGX Files API with local filesystem fallback.
 
-Primary: LlamaStack Files API (file ID = claim/tender number).
+Primary: OGX Files API (file ID = claim/tender number).
 Fallback: local filesystem (document_path like "claims/file.pdf").
 """
 
@@ -16,9 +16,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _get_from_llamastack(file_id: str) -> Optional[tuple[bytes, str]]:
-    """Fetch document content from LlamaStack Files API."""
-    url = f"{settings.llamastack_endpoint}/v1/files/{file_id}/content"
+def _get_from_ogx(file_id: str) -> Optional[tuple[bytes, str]]:
+    """Fetch document content from OGX Files API."""
+    url = f"{settings.ogx_endpoint}/v1/files/{file_id}/content"
     try:
         resp = httpx.get(url, timeout=30)
         if resp.status_code == 200:
@@ -27,13 +27,13 @@ def _get_from_llamastack(file_id: str) -> Optional[tuple[bytes, str]]:
                 filename = cd.split("filename=")[-1].strip('" ')
             else:
                 filename = f"{file_id}.pdf"
-            logger.info(f"Document served from LlamaStack: {file_id} ({len(resp.content)} bytes)")
+            logger.info(f"Document served from OGX: {file_id} ({len(resp.content)} bytes)")
             return resp.content, filename
         else:
-            logger.debug(f"LlamaStack file not found: {file_id} (HTTP {resp.status_code})")
+            logger.debug(f"OGX file not found: {file_id} (HTTP {resp.status_code})")
             return None
     except Exception as e:
-        logger.debug(f"LlamaStack fetch error for {file_id}: {e}")
+        logger.debug(f"OGX fetch error for {file_id}: {e}")
         return None
 
 
@@ -53,21 +53,21 @@ def get_document(file_id: str, fallback_path: Optional[str] = None) -> Optional[
     """Fetch a document by its file ID (claim/tender number).
 
     Resolution order:
-    1. LlamaStack Files API using fallback_path (the actual file-xxx ID stored in DB)
-    2. LlamaStack Files API using file_id (claim/tender number)
+    1. OGX Files API using fallback_path (the actual file-xxx ID stored in DB)
+    2. OGX Files API using file_id (claim/tender number)
     3. Local filesystem fallback
 
     Returns (file_bytes, filename) or None if not found.
     """
-    # Try LlamaStack with the actual file ID (document_path = file-xxx)
+    # Try OGX with the actual file ID (document_path = file-xxx)
     if fallback_path and fallback_path != file_id:
-        result = _get_from_llamastack(fallback_path)
+        result = _get_from_ogx(fallback_path)
         if result:
             # Override filename with the claim/tender number
             return result[0], f"{file_id}.pdf"
 
-    # Try LlamaStack with claim/tender number
-    result = _get_from_llamastack(file_id)
+    # Try OGX with claim/tender number
+    result = _get_from_ogx(file_id)
     if result:
         return result
 

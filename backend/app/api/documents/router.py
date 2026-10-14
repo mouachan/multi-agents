@@ -1,7 +1,7 @@
 """
 Documents API endpoints.
 
-Serves claim/tender PDFs from LlamaStack Files API (file ID = claim/tender number)
+Serves claim/tender PDFs from OGX Files API (file ID = claim/tender number)
 with local filesystem fallback.
 """
 
@@ -54,7 +54,7 @@ async def view_claim_document(
         else:
             fallback = claim.document_path
 
-        # Use claim_number as LlamaStack file ID, fallback to document_path for local
+        # Use claim_number as OGX file ID, fallback to document_path for local
         doc = get_document(claim.claim_number, fallback_path=fallback)
         if not doc:
             logger.error(f"Document not found for claim {claim_id}")

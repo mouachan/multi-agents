@@ -1,5 +1,5 @@
 """
-LlamaStack Responses API orchestrator.
+OGX Responses API orchestrator.
 
 Handles stateful multi-turn conversations via previous_response_id
 with automatic MCP tool execution.
@@ -24,30 +24,30 @@ class ResponsesOrchestrator:
         servers = {
             "ocr-server": {
                 "server_label": "ocr-server",
-                "server_url": f"{settings.ocr_server_url}/sse"
+                "server_url": f"{settings.ocr_server_url}/mcp"
             },
             "rag-server": {
                 "server_label": "rag-server",
-                "server_url": f"{settings.rag_server_url}/sse"
+                "server_url": f"{settings.rag_server_url}/mcp"
             },
             "claims-server": {
                 "server_label": "claims-server",
-                "server_url": f"{settings.claims_server_url}/sse"
+                "server_url": f"{settings.claims_server_url}/mcp"
             },
             "tenders-server": {
                 "server_label": "tenders-server",
-                "server_url": f"{settings.tenders_server_url}/sse"
+                "server_url": f"{settings.tenders_server_url}/mcp"
             },
         }
         if settings.postal_server_url:
             servers["postal-server"] = {
                 "server_label": "postal-server",
-                "server_url": f"{settings.postal_server_url}/sse"
+                "server_url": f"{settings.postal_server_url}/mcp"
             }
         if settings.tracking_server_url:
             servers["tracking-server"] = {
                 "server_label": "tracking-server",
-                "server_url": f"{settings.tracking_server_url}/sse"
+                "server_url": f"{settings.tracking_server_url}/mcp"
             }
         return servers
 
@@ -106,14 +106,14 @@ class ResponsesOrchestrator:
         Initialize orchestrator.
 
         Args:
-            base_url: LlamaStack endpoint URL
+            base_url: OGX endpoint URL
             timeout: Request timeout in seconds
             mcp_servers: Custom MCP server configurations (defaults to built-in servers)
             tool_to_server: Custom tool-to-server mapping (defaults to built-in mapping)
         """
-        self.base_url = base_url or settings.llamastack_endpoint
+        self.base_url = base_url or settings.ogx_endpoint
         self.timeout = timeout
-        self.model = settings.llamastack_default_model
+        self.model = settings.ogx_default_model
 
         # MCP server configurations - configurable per agent
         self.mcp_servers = mcp_servers or self._default_mcp_servers()
@@ -161,7 +161,7 @@ class ResponsesOrchestrator:
         """
         Process a task using the Responses API.
 
-        When previous_response_id is provided, LlamaStack manages conversation
+        When previous_response_id is provided, OGX manages conversation
         context server-side — no need to send full history.
 
         Args:
@@ -180,7 +180,7 @@ class ResponsesOrchestrator:
                 "input": input_message,
                 "stream": False,
                 "store": True,
-                "max_tokens": settings.llamastack_max_tokens,
+                "max_tokens": settings.ogx_max_tokens,
             }
 
             # Chain conversation via previous_response_id
@@ -278,7 +278,7 @@ class ResponsesOrchestrator:
                 "input": input_message,
                 "stream": True,
                 "store": True,
-                "max_tokens": settings.llamastack_max_tokens,
+                "max_tokens": settings.ogx_max_tokens,
             }
 
             if previous_response_id:

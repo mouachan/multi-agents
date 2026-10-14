@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import tender as models
 from app.core.config import settings
-from app.llamastack.ao_prompts import (
+from app.prompts.ao_prompts import (
     AO_PROCESSING_AGENT_INSTRUCTIONS,
     AO_USER_MESSAGE_TEMPLATE,
 )
@@ -166,7 +166,7 @@ class TenderService(BaseAgentService):
         await db.flush()
 
         # Clean model name like orchestrator does (strip prefix/quantization suffix)
-        full_model = settings.llamastack_default_model
+        full_model = settings.ogx_default_model
         short = full_model.split("/")[-1] if "/" in full_model else full_model
         import re
         model_name = re.sub(r'-W\d+A\d+$', '', short)

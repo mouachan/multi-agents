@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import claim as models
 from app.core.config import settings
-from app.llamastack.prompts import (
+from app.prompts.prompts import (
     CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
     USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
 )
@@ -146,7 +146,7 @@ class ClaimService(BaseAgentService):
     ) -> models.ClaimDecision:
         recommendation = decision_data.get("recommendation", "manual_review")
 
-        model_name = self.clean_model_name(settings.llamastack_default_model)
+        model_name = self.clean_model_name(settings.ogx_default_model)
 
         decision = models.ClaimDecision(
             claim_id=claim_id,

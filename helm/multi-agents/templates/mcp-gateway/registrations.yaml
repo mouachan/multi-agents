@@ -1,0 +1,62 @@
+{{- if .Values.mcpGateway.enabled }}
+{{- /*
+One HTTPRoute (on the internal "mcps" listener) + MCPServerRegistration per enabled MCP server.
+No prefix by default: tool names are unique across servers, so agents keep the original names.
+*/}}
+{{- $root := . }}
+{{- $namespace := include "multi-agents.namespace" . }}
+{{- $domain := include "multi-agents.mcpGateway.internalDomain" . }}
+{{- $labels := include "multi-agents.labels" . }}
+{{- range $name, $reg := .Values.mcpGateway.registrations }}
+{{- $server := index $root.Values.mcp $name | default dict }}
+{{- if and $reg.enabled ($server.enabled | default false) }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}-mcp-route
+  namespace: {{ $namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: mcp-gateway
+    mcp-server: {{ $name }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $root.Values.mcpGateway.gatewayName }}
+      namespace: {{ $namespace }}
+      sectionName: mcps
+  hostnames:
+    - {{ printf "%s.%s" $name $domain | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $reg.serviceName | default (printf "%s-server" $name) }}
+          port: {{ $reg.servicePort | default 8080 }}
+---
+apiVersion: mcp.kuadrant.io/v1alpha1
+kind: MCPServerRegistration
+metadata:
+  name: {{ $name }}-mcp-server
+  namespace: {{ $namespace }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app: mcp-gateway
+    mcp-server: {{ $name }}
+spec:
+  {{- with $reg.prefix }}
+  prefix: {{ . | quote }}
+  {{- end }}
+  path: {{ $reg.path | default "/mcp" }}
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ $name }}-mcp-route
+    namespace: {{ $namespace }}
+{{- end }}
+{{- end }}
+{{- end }}

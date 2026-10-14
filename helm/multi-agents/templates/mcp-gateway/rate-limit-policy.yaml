@@ -1,0 +1,30 @@
+{{- if and .Values.mcpGateway.enabled .Values.mcpGateway.rateLimit.enabled }}
+---
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: mcp-gateway-ratelimit
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: mcp-gateway
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.mcpGateway.gatewayName }}
+    sectionName: mcp
+  limits:
+    "mcp-tools":
+      rates:
+        {{- range .Values.mcpGateway.rateLimit.rates }}
+        - limit: {{ .limit }}
+          window: {{ .window | quote }}
+        {{- end }}
+      {{- with .Values.mcpGateway.rateLimit.counters }}
+      counters:
+        {{- range . }}
+        - expression: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+{{- end }}

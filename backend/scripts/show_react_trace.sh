@@ -3,7 +3,7 @@
 # Show ReAct Agent HTTP Trace for a Claim
 #
 # Extracts raw HTTP calls showing:
-# - HTTP requests to LlamaStack /v1/responses with payload
+# - HTTP requests to OGX /v1/responses with payload
 # - MCP tool calls with input/output
 # - HTTP responses with complete JSON
 #
@@ -118,19 +118,19 @@ try:
     print('Processed:', format_timestamp(claim.processed_at))
     print()
 
-    # Reconstruct HTTP request to LlamaStack
-    print_http_section('HTTP REQUEST #1: Backend -> LlamaStack /v1/responses')
+    # Reconstruct HTTP request to OGX
+    print_http_section('HTTP REQUEST #1: Backend -> OGX /v1/responses')
 
-    print('POST http://claims-llamastack-service.multi-agents.svc.cluster.local:8321/v1/responses')
+    print('POST http://ogx-service.multi-agents.svc.cluster.local:8321/v1/responses')
     print('Content-Type: application/json')
     print()
 
     # Build the request payload as it was sent
     request_payload = {
-        'model': decision.llm_model if decision else settings.llamastack_default_model,
+        'model': decision.llm_model if decision else settings.ogx_default_model,
         'stream': False,
         'max_infer_iters': 10,
-        'max_tokens': settings.llamastack_max_tokens
+        'max_tokens': settings.ogx_max_tokens
     }
 
     # Add instructions (agent prompt)
@@ -176,7 +176,7 @@ try:
 
     # Show each tool call as HTTP-like trace
     if processing_steps:
-        print_http_section('MCP TOOL EXECUTIONS (via LlamaStack)')
+        print_http_section('MCP TOOL EXECUTIONS (via OGX)')
 
         for i, step in enumerate(processing_steps, 1):
             step_name = step.get('step_name', 'unknown')
@@ -225,22 +225,22 @@ try:
             print('-'*80)
             print()
 
-    # Show LlamaStack response
-    print_http_section('HTTP RESPONSE #1: LlamaStack -> Backend')
+    # Show OGX response
+    print_http_section('HTTP RESPONSE #1: OGX -> Backend')
 
     print('HTTP/1.1 200 OK')
     print('Content-Type: application/json')
     print()
 
     # Reconstruct response as it was received
-    llamastack_response = {
+    ogx_response = {
         'id': metadata.get('response_id', 'unknown'),
         'output': []
     }
 
     # Add MCP call outputs
     for step in processing_steps:
-        llamastack_response['output'].append({
+        ogx_response['output'].append({
             'type': 'mcp_call',
             'name': step.get('step_name'),
             'server_label': step.get('agent_name'),
@@ -250,7 +250,7 @@ try:
 
     # Add final message
     if decision and decision.llm_response:
-        llamastack_response['output'].append({
+        ogx_response['output'].append({
             'type': 'message',
             'role': 'assistant',
             'content': [
@@ -264,10 +264,10 @@ try:
     # Add usage
     usage = metadata.get('usage', {})
     if usage:
-        llamastack_response['usage'] = usage
+        ogx_response['usage'] = usage
 
     print('RESPONSE PAYLOAD:')
-    print(json.dumps(llamastack_response, indent=2))
+    print(json.dumps(ogx_response, indent=2))
 
     # Show final decision
     if decision:

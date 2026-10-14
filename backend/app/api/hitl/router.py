@@ -511,7 +511,7 @@ async def ask_agent(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Ask the LlamaStack agent a question about an entity in manual review.
+    Ask the OGX agent a question about an entity in manual review.
 
     This enables conversational HITL where reviewers can ask for clarifications
     before making a decision. Each Q&A is logged in agent_logs for audit trail.
@@ -548,7 +548,7 @@ async def ask_agent(
         answer = await review_service.ask_agent_standalone(
             question=full_question,
             agent_config={
-                "model": settings.llamastack_default_model,
+                "model": settings.ogx_default_model,
                 "instructions": agent_def.instructions,
                 "enable_session_persistence": False,
                 "sampling_params": {

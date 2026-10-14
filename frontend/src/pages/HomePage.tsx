@@ -125,8 +125,8 @@ export default function HomePage() {
         <h3 className="text-lg font-medium text-gray-900 mb-4">{t('home.infrastructure')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-semibold text-gray-900 mb-2">{t('home.llamastack')}</h4>
-            <p className="text-sm text-gray-600">{t('home.llamastackDesc')}</p>
+            <h4 className="font-semibold text-gray-900 mb-2">{t('home.ogx')}</h4>
+            <p className="text-sm text-gray-600">{t('home.ogxDesc')}</p>
           </div>
           <div className="border border-gray-200 rounded-lg p-4">
             <h4 className="font-semibold text-gray-900 mb-2">{t('home.ocrServer')}</h4>

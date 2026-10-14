@@ -34,15 +34,15 @@ def register_agents():
     from app.services.reclamation_service import ReclamationService, RECLAMATION_TOOLS
     from app.models.claim import Claim, ClaimDocument
     from app.models.tender import Tender, TenderDocument
-    from app.llamastack.prompts import (
+    from app.prompts.prompts import (
         CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
     )
-    from app.llamastack.ao_prompts import (
+    from app.prompts.ao_prompts import (
         AO_PROCESSING_AGENT_INSTRUCTIONS,
         AO_USER_MESSAGE_TEMPLATE,
     )
-    from app.llamastack.courrier_prompts import (
+    from app.prompts.courrier_prompts import (
         COURRIER_RECLAMATION_INSTRUCTIONS,
         COURRIER_RECLAMATION_USER_TEMPLATE,
         COURRIER_INFO_INSTRUCTIONS,
@@ -50,6 +50,13 @@ def register_agents():
         COURRIER_SUIVI_INSTRUCTIONS,
         COURRIER_SUIVI_USER_TEMPLATE,
     )
+
+    # Decoupled A2A agents — enabled only when their URL is set (Helm: agents.enabled);
+    # otherwise the backend falls back to the in-process Responses API path.
+    import os
+    claims_a2a = os.environ.get("CLAIMS_AGENT_A2A_URL") or None
+    tenders_a2a = os.environ.get("TENDERS_AGENT_A2A_URL") or None
+    postal_a2a = os.environ.get("POSTAL_AGENT_A2A_URL") or None
 
     AgentRegistry.register(AgentDefinition(
         id="claims",
@@ -59,6 +66,7 @@ def register_agents():
         description_fr="Analyse automatisee des sinistres assurance avec OCR, RAG et prise de decision",
         entity_type="claim",
         service_class=ClaimService,
+        a2a_url=claims_a2a,
         instructions=CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
         user_message_template=USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
         tools=CLAIM_TOOLS,
@@ -86,6 +94,7 @@ def register_agents():
         description_fr="Analyse automatisee des appels d'offres BTP avec references, historique et capacites",
         entity_type="tender",
         service_class=TenderService,
+        a2a_url=tenders_a2a,
         instructions=AO_PROCESSING_AGENT_INSTRUCTIONS,
         user_message_template=AO_USER_MESSAGE_TEMPLATE,
         tools=TENDER_TOOLS,
@@ -116,6 +125,7 @@ def register_agents():
         description_fr="Analyse automatisee des reclamations postales avec OCR, suivi, RAG et prise de decision",
         entity_type="reclamation",
         service_class=ReclamationService,
+        a2a_url=postal_a2a,
         instructions=COURRIER_RECLAMATION_INSTRUCTIONS,
         user_message_template=COURRIER_RECLAMATION_USER_TEMPLATE,
         tools=RECLAMATION_TOOLS,
@@ -146,13 +156,13 @@ def register_agents():
         description_fr="Questions/reponses sur les services postaux : tarifs, delais, emballage, douane, remboursements",
         entity_type="reclamation",
         service_class=None,
+        a2a_url=postal_a2a,
         instructions=COURRIER_INFO_INSTRUCTIONS,
         user_message_template=COURRIER_INFO_USER_TEMPLATE,
         tools=COURRIER_INFO_TOOLS,
         color="blue",
         icon="info",
         frontend_path="/postal",
-        model="litemaas/deepseek-r1-distill-qwen-14b",
         routing_keywords=[
             "tarif", "tarifs", "colissimo", "chronopost",
             "affranchissement", "emballage", "douane",
@@ -174,13 +184,13 @@ def register_agents():
         description_fr="Suivre les colis et consulter le statut de livraison avec timeline",
         entity_type="reclamation",
         service_class=None,
+        a2a_url=postal_a2a,
         instructions=COURRIER_SUIVI_INSTRUCTIONS,
         user_message_template=COURRIER_SUIVI_USER_TEMPLATE,
         tools=COURRIER_SUIVI_TOOLS,
         color="green",
         icon="truck",
         frontend_path="/postal",
-        model="litemaas/deepseek-r1-distill-qwen-14b",
         routing_keywords=[
             "suivi", "suivre", "tracking", "numero suivi",
             "ou est mon colis", "ou en est", "livraison",
@@ -197,7 +207,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Environment: {settings.environment}")
-    logger.info(f"LlamaStack endpoint: {settings.llamastack_endpoint}")
+    logger.info(f"OGX endpoint: {settings.ogx_endpoint}")
     logger.info(f"Database: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_database}")
 
     # Register agents
@@ -226,7 +236,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Multi-Agent AI Platform with LlamaStack, MCP Servers & OpenShift AI",
+    description="Multi-Agent AI Platform with OGX, MCP Servers & OpenShift AI",
     lifespan=lifespan,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
@@ -342,7 +352,7 @@ _DEFAULT_TOOL_DISPLAY = {
 @app.get(f"{settings.api_v1_prefix}/config/tool-display")
 async def get_tool_display_config():
     """Return tool display configuration (labels, abbreviations, categories, servers)."""
-    from app.llamastack.orchestrator_prompts import ORCHESTRATOR_CONFIG
+    from app.prompts.orchestrator_prompts import ORCHESTRATOR_CONFIG
 
     config = ORCHESTRATOR_CONFIG.get("tool_display", {})
     # Merge: config overrides defaults per top-level key

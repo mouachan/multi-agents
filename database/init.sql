@@ -1,7 +1,7 @@
 -- Multi-Agent AI Platform Database Initialization Script
 -- PostgreSQL with pgvector extension for RAG capabilities
 
--- First, enable vector extension in postgres database (required by LlamaStack)
+-- First, enable vector extension in postgres database (required by OGX / pgvector)
 \c postgres
 CREATE EXTENSION IF NOT EXISTS vector;
 

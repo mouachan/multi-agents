@@ -4,7 +4,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   annotations:
-    argocd.argoproj.io/sync-wave: "4" # after llamastackdistribution
+    argocd.argoproj.io/sync-wave: "4" # after OGXServer
   name: ao-prompts
   namespace: {{ include "multi-agents.namespace" . }}
   labels:

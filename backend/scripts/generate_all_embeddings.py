@@ -25,7 +25,7 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-LLAMASTACK_ENDPOINT = os.getenv("LLAMASTACK_ENDPOINT", "http://llamastack-rhoai-service.multi-agents.svc.cluster.local:8321")
+OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "http://ogx-service.multi-agents.svc.cluster.local:8321")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemma-300m")
 
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
@@ -53,10 +53,10 @@ OCR_TEMPLATES = {
 SHORT_OCR_TEMPLATE = "Claim document for {name}. Date: {date}. Damage noted."
 
 async def create_embedding(text: str, client: httpx.AsyncClient) -> Optional[List[float]]:
-    """Create embedding using LlamaStack API."""
+    """Create embedding using OGX API."""
     try:
         response = await client.post(
-            f"{LLAMASTACK_ENDPOINT}/v1/embeddings",
+            f"{OGX_ENDPOINT}/v1/embeddings",
             json={"model": EMBEDDING_MODEL, "input": text.strip()},
             timeout=60.0
         )
@@ -217,7 +217,7 @@ async def generate_claim_documents(session_maker):
 
 async def main():
     logger.info("Starting embedding generation...")
-    logger.info(f"LlamaStack: {LLAMASTACK_ENDPOINT}")
+    logger.info(f"OGX: {OGX_ENDPOINT}")
     logger.info(f"Model: {EMBEDDING_MODEL}")
     logger.info(f"Database: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
 

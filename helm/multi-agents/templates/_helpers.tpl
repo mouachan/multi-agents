@@ -112,16 +112,6 @@ nodeAffinity:
               - arm64
 {{- end -}}
 
-{{/* route prefix */}}
-{{- define "llamastack_route_prefix_full" -}}
-llamastack-rhoai-{{ .Values.global.namespace }}
-{{- end -}}
-
-{{/* truncated route prefix, complying with 63 chars limit */}}
-{{- define "llamastack_route_prefix" -}}
-{{- include "llamastack_route_prefix_full" . | trunc 63 -}}
-{{- end -}}
-
 {{/* WARNING: valueFrom secrets isn't CIS compliant */}}
 {{/* should export env vars from a script within container, as done with postgres */}}
 {{- define "postgres.env" -}}
@@ -146,22 +136,117 @@ llamastack-rhoai-{{ .Values.global.namespace }}
       key: {{ quote .Values.postgresql.auth.secretKeys.userNameKey }}
 {{- end }}
 
-{{- define "llamastack.endpoint" -}}
-http://llamastack-rhoai-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8321
+{{/* =========================================================================
+OGX (RHOAI 3.5, formerly LlamaStack) — OGXServer Service is <name>-service:8321
+========================================================================= */}}
+{{- define "multi-agents.ogx.endpoint" -}}
+http://{{ .Values.ogx.name }}-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8321
 {{- end -}}
 
-{{- define "llamastack.model" -}}
-{{ .Values.inference.model.name }}
+{{/* Cluster MaaS gateway (OpenAI-compatible, body-based routing on "model") */}}
+{{- define "multi-agents.maas.gatewayUrl" -}}
+{{- .Values.models.maas.gatewayUrl | default (printf "https://maas.%s/v1" (include "multi-agents.clusterDomain" .)) -}}
 {{- end -}}
 
-{{- define "llamastack.inferenceEndpoint" -}}
-https://llama-llama-3-3-70b.{{ .Values.global.clusterDomain }}/v1
+{{/* External MaaS (direct) */}}
+{{- define "multi-agents.maas.externalUrl" -}}
+https://{{ .Values.models.external.host }}/v1
 {{- end -}}
 
-{{- define "llamastack.embeddingModel" -}}
-{{ .Values.embedding.model.name }}
+{{/* Base URL used for chat models (cluster MaaS when enabled, external otherwise) */}}
+{{- define "multi-agents.maas.chatUrl" -}}
+{{- if .Values.models.maas.enabled -}}
+{{ include "multi-agents.maas.gatewayUrl" . }}
+{{- else -}}
+{{ include "multi-agents.maas.externalUrl" . }}
+{{- end -}}
 {{- end -}}
 
-{{- define "llamastack.embeddingEndpoint" -}}
-https://gemma-embeddinggemma-300m.{{ .Values.global.clusterDomain }}/v1
+{{/* Secret holding the API key for chat models (key: api-key) */}}
+{{- define "multi-agents.maas.chatKeySecret" -}}
+{{- if .Values.models.maas.enabled -}}maas-api-key{{- else -}}maas-external-credentials{{- end -}}
+{{- end -}}
+
+{{/* =========================================================================
+NeMo Guardrails (TrustyAI) — Service <cr-name>:80
+========================================================================= */}}
+{{/* NeMo LLM rails endpoint: the cluster MaaS only when its certificate is trusted
+     (NeMo's OpenAI client cannot skip TLS verification), else the external MaaS */}}
+{{- define "multi-agents.guardrails.llmUrl" -}}
+{{- if and .Values.models.maas.enabled .Values.models.maas.tlsVerify -}}
+{{ include "multi-agents.maas.gatewayUrl" . }}
+{{- else -}}
+{{ include "multi-agents.maas.externalUrl" . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "multi-agents.guardrails.llmKeySecret" -}}
+{{- if and .Values.models.maas.enabled .Values.models.maas.tlsVerify -}}maas-api-key{{- else -}}maas-external-credentials{{- end -}}
+{{- end -}}
+
+{{- define "multi-agents.guardrails.endpoint" -}}
+http://{{ .Values.guardrails.name }}.{{ include "multi-agents.namespace" . }}.svc.cluster.local
+{{- end -}}
+
+{{/* =========================================================================
+MLflow (RHOAI 3.5) — workspace = namespace, auth = pod ServiceAccount token
+Usage: include "multi-agents.mlflow.env" (dict "root" $ "experiment" "<name>")
+========================================================================= */}}
+{{- define "multi-agents.mlflow.workspace" -}}
+{{- .Values.mlflow.workspace | default (include "multi-agents.namespace" .) -}}
+{{- end -}}
+
+{{- define "multi-agents.mlflow.env" -}}
+{{- $root := .root -}}
+- name: MLFLOW_TRACKING_URI
+  value: {{ $root.Values.mlflow.trackingUri | quote }}
+- name: MLFLOW_EXPERIMENT_NAME
+  value: {{ .experiment | quote }}
+- name: MLFLOW_WORKSPACE
+  value: {{ include "multi-agents.mlflow.workspace" $root | quote }}
+- name: PROMPT_ALIAS
+  value: {{ $root.Values.mlflow.prompts.alias | quote }}
+- name: PROMPT_CACHE_TTL
+  value: {{ $root.Values.mlflow.prompts.cacheTtlSeconds | quote }}
+{{- end -}}
+
+{{/* =========================================================================
+MCP tools for the A2A agents: MCP Gateway (single federated endpoint) or
+one Streamable HTTP endpoint per server
+========================================================================= */}}
+{{- define "multi-agents.mcp.agentEnv" -}}
+{{- if .Values.mcpGateway.enabled -}}
+- name: MCP_GATEWAY_URL
+  value: {{ include "multi-agents.mcpGateway.url" . | quote }}
+{{- else -}}
+- name: MCP_SERVER_URL_TEMPLATE
+  value: {{ printf "http://{server}.%s.svc.cluster.local:8080/mcp" (include "multi-agents.namespace" .) | quote }}
+{{- end -}}
+{{- end -}}
+
+{{/* =========================================================================
+SPIFFE (ZTWIM): Workload API socket from the SPIFFE CSI driver
+========================================================================= */}}
+{{- define "multi-agents.spiffe.env" -}}
+{{- if .Values.spiffe.enabled -}}
+- name: SPIFFE_ENDPOINT_SOCKET
+  value: unix:///spiffe-workload-api/spire-agent.sock
+{{- end -}}
+{{- end -}}
+
+{{- define "multi-agents.spiffe.volumeMount" -}}
+{{- if .Values.spiffe.enabled -}}
+- name: spiffe-workload-api
+  mountPath: /spiffe-workload-api
+  readOnly: true
+{{- end -}}
+{{- end -}}
+
+{{- define "multi-agents.spiffe.volume" -}}
+{{- if .Values.spiffe.enabled -}}
+- name: spiffe-workload-api
+  csi:
+    driver: {{ .Values.spiffe.csiDriver }}
+    readOnly: true
+{{- end -}}
 {{- end -}}

@@ -1,0 +1,64 @@
+# =============================================================================
+# Red Hat OpenShift AI 3.5 — all features
+#   OGX (Responses API, MCP, pgvector) · Models-as-a-Service (external models)
+#   decoupled A2A agents · MCP Gateway + MCPServer CRs · NeMo Guardrails (PII masking)
+#   MLflow tracing + Prompt Registry · SPIFFE/SPIRE agent identity (ZTWIM)
+# =============================================================================
+# Secrets are passed at install time — never commit real values:
+#   helm upgrade --install multi-agents helm/multi-agents -n multi-agents --create-namespace \
+#     -f helm/multi-agents/values-rhoai35.yaml \
+#     --set global.clusterDomain=<apps.cluster-domain> \
+#     --set models.external.host=<external-maas-host> \
+#     --set secrets.maasExternalApiKey=<external-maas-key> \
+#     --set secrets.postgresPassword=<pw> --set secrets.postgresAdminPassword=<pw> \
+#     --set secrets.ogxDbPassword=<pw> --set minio.rootPassword=<pw>
+# =============================================================================
+
+global:
+  clusterDomain: "REPLACE_WITH_CLUSTER_DOMAIN"
+  namespace: multi-agents
+
+models:
+  reasoning: gpt-oss-120b
+  vision: llama-scout-17b
+  guardrails: llama-scout-17b
+  embedding: nomic-embed-text-v1-5
+  embeddingDimension: 768
+  external:
+    host: "REPLACE_WITH_EXTERNAL_MAAS_HOST"
+  maas:
+    enabled: true
+    tlsVerify: false
+
+ogx:
+  enabled: true
+
+agents:
+  enabled: true
+
+mcp:
+  useMCPServerCR: true
+
+mcpGateway:
+  enabled: true
+
+guardrails:
+  enabled: true
+  selfCheckInput: true
+
+mlflow:
+  enabled: true
+  prompts:
+    promoteOnSync: true
+
+spiffe:
+  enabled: true
+
+gptoss:
+  enabled: false
+
+inference:
+  enabled: false
+
+embedding:
+  enabled: false

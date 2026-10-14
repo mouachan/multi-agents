@@ -6,7 +6,7 @@ Endpoints:
 - GET    /statistics/overview           - Get reclamation statistics
 - GET    /{reclamation_id}              - Get a specific reclamation
 - POST   /                             - Create a new reclamation
-- POST   /{reclamation_id}/process     - Process a reclamation with LlamaStack agent
+- POST   /{reclamation_id}/process     - Process a reclamation with OGX agent
 - GET    /{reclamation_id}/status      - Get reclamation processing status
 - GET    /{reclamation_id}/decision    - Get reclamation decision
 - GET    /{reclamation_id}/logs        - Get processing logs
@@ -31,7 +31,7 @@ from app.api.shared.schemas import ProcessingStepLog
 from app.core.config import settings
 from app.core.database import get_db
 from app.models import reclamation as models
-from app.llamastack.courrier_prompts import (
+from app.prompts.courrier_prompts import (
     COURRIER_RECLAMATION_INSTRUCTIONS,
     COURRIER_RECLAMATION_USER_TEMPLATE,
 )
@@ -220,7 +220,7 @@ async def create_reclamation(
 
 
 # =============================================================================
-# POST /{reclamation_id}/process - Process Reclamation with LlamaStack Agent
+# POST /{reclamation_id}/process - Process Reclamation with OGX Agent
 # =============================================================================
 
 @router.post("/{reclamation_id}/process", response_model=schemas.ProcessReclamationResponse)
@@ -230,7 +230,7 @@ async def process_reclamation(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Process a reclamation using LlamaStack agent.
+    Process a reclamation using OGX agent.
 
     The agent will:
     1. Extract document info via OCR
@@ -258,7 +258,7 @@ async def process_reclamation(
             )
 
         agent_config = {
-            "model": settings.llamastack_default_model,
+            "model": settings.ogx_default_model,
             "instructions": COURRIER_RECLAMATION_INSTRUCTIONS,
         }
 
@@ -537,7 +537,7 @@ async def view_reclamation_document(
                 status_code=404, detail="No document associated with this reclamation"
             )
 
-        # Fetch document from LlamaStack or local filesystem
+        # Fetch document from OGX or local filesystem
         doc = get_document(
             reclamation.reclamation_number, fallback_path=doc_path
         )

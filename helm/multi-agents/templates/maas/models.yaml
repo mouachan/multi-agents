@@ -1,0 +1,93 @@
+{{- /*
+RHOAI 3.5 Models-as-a-Service — external models published through the cluster MaaS
+gateway (token rate limiting, metering, API keys bound to a subscription).
+  ExternalProvider -> ExternalModel (inference.opendatahub.io) -> MaaSModelRef (maas.opendatahub.io)
+  MaaSSubscription + MaaSAuthPolicy for the namespace ServiceAccounts group.
+External models are Technology Preview in RHOAI 3.5 and chat-only (no embeddings).
+*/}}
+{{- if .Values.models.maas.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+---
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalProvider
+metadata:
+  name: external-maas
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  provider: openai
+  endpoint: {{ .Values.models.external.host | quote }}
+  auth:
+    type: apikey
+    secretRef:
+      name: maas-external-credentials
+{{- range $m := .Values.models.maas.chatModels }}
+---
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: {{ $m }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+spec:
+  externalProviderRefs:
+  - ref:
+      name: external-maas
+    targetModel: {{ $m }}
+    apiFormat: openai-chat
+    path: /v1/chat/completions
+    weight: 100
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: {{ $m }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: {{ $m }}
+{{- end }}
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: {{ .Values.models.maas.subscriptionName }}
+  namespace: {{ .Values.models.maas.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  priority: {{ .Values.models.maas.priority }}
+  owner:
+    groups:
+    - name: system:serviceaccounts:{{ $ns }}
+  modelRefs:
+{{- range $m := .Values.models.maas.chatModels }}
+  - name: {{ $m }}
+    namespace: {{ $ns }}
+    tokenRateLimits:
+    - limit: {{ $.Values.models.maas.tokenRateLimit.limit }}
+      window: {{ $.Values.models.maas.tokenRateLimit.window }}
+{{- end }}
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: {{ .Values.models.maas.subscriptionName }}
+  namespace: {{ .Values.models.maas.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  modelRefs:
+{{- range $m := .Values.models.maas.chatModels }}
+  - name: {{ $m }}
+    namespace: {{ $ns }}
+{{- end }}
+  subjects:
+    groups:
+    - name: system:serviceaccounts:{{ $ns }}
+{{- end }}

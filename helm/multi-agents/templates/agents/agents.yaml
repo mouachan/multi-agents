@@ -1,0 +1,162 @@
+{{- /*
+Decoupled A2A domain agents (a2a-sdk, JSON-RPC binding on :8090).
+One Deployment + Service + ServiceAccount per agent. Prompts are loaded from the
+MLflow Prompt Registry (alias .Values.mlflow.prompts.alias) with the prompt
+ConfigMaps mounted as fallback.
+*/}}
+{{- if .Values.agents.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- range $name := list "claims" "tenders" "postal" }}
+{{- $agent := index $.Values.agents $name }}
+{{- if $agent.enabled }}
+{{- $app := printf "%s-agent" $name }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $app }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+    app: {{ $app }}
+    component: a2a-agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $app }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+    app: {{ $app }}
+    component: a2a-agent
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8090
+    targetPort: 8090
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $app }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $app }}
+  namespace: {{ $ns }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+    app: {{ $app }}
+    component: a2a-agent
+    agent-domain: {{ $name }}
+spec:
+  replicas: {{ $agent.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $app }}
+  template:
+    metadata:
+      labels:
+        app: {{ $app }}
+        component: a2a-agent
+        agent-domain: {{ $name }}
+      annotations:
+        checksum/prompts: {{ $.Files.Glob "files/cm.*-prompts/*" | toString | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ $app }}
+      containers:
+      - name: agent
+        image: {{ include "multi-agents.imageRegistry" $ }}/{{ $agent.image.repository }}:{{ $agent.image.tag }}
+        imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8090
+          name: http
+          protocol: TCP
+        env:
+        - name: AGENT_ID
+          value: {{ $name | quote }}
+        - name: AGENT_PORT
+          value: "8090"
+        - name: AGENT_PUBLIC_URL
+          value: {{ printf "http://%s.%s.svc.cluster.local:8090" $app $ns | quote }}
+        - name: OGX_ENDPOINT
+          value: {{ include "multi-agents.ogx.endpoint" $ | quote }}
+        - name: OGX_DEFAULT_MODEL
+          value: {{ $agent.model | default $.Values.models.reasoning | quote }}
+        - name: OGX_MAX_TOKENS
+          value: {{ $.Values.agents.maxTokens | quote }}
+        - name: OGX_TIMEOUT
+          value: {{ $.Values.agents.timeout | quote }}
+        {{- include "multi-agents.mcp.agentEnv" $ | nindent 8 }}
+        {{- if $.Values.guardrails.enabled }}
+        - name: GUARDRAILS_ENDPOINT
+          value: {{ include "multi-agents.guardrails.endpoint" $ | quote }}
+        - name: GUARDRAILS_CONFIG_ID
+          value: {{ $.Values.guardrails.configId | quote }}
+        - name: GUARDRAILS_FAIL_OPEN
+          value: {{ $.Values.guardrails.failOpen | quote }}
+        - name: GUARDRAILS_MODEL
+          value: {{ $.Values.models.guardrails | quote }}
+        {{- end }}
+        {{- if $.Values.mlflow.enabled }}
+        {{- include "multi-agents.mlflow.env" (dict "root" $ "experiment" (printf "%s-%s" $.Values.mlflow.experimentName $app)) | nindent 8 }}
+        {{- end }}
+        {{- if $.Values.spiffe.enabled }}
+        {{- include "multi-agents.spiffe.env" $ | nindent 8 }}
+        - name: SPIFFE_ALLOWED_IDS
+          value: {{ printf "/ns/%s/sa/backend" $ns | quote }}
+        {{- end }}
+        - name: PROMPTS_DIRS
+          value: "/opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator"
+        - name: LOG_LEVEL
+          value: {{ $agent.logLevel | default "INFO" | quote }}
+        volumeMounts:
+        - name: claims-prompts
+          mountPath: /opt/app-root/prompts/claims
+        - name: ao-prompts
+          mountPath: /opt/app-root/prompts/ao
+        - name: courrier-prompts
+          mountPath: /opt/app-root/prompts/courrier
+        - name: orchestrator-prompts
+          mountPath: /opt/app-root/prompts/orchestrator
+        {{- include "multi-agents.spiffe.volumeMount" $ | nindent 8 }}
+        resources:
+          {{- toYaml $agent.resources | nindent 10 }}
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          periodSeconds: 5
+          failureThreshold: 24
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          periodSeconds: 20
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /.well-known/agent-card.json
+            port: 8090
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: claims-prompts
+        configMap:
+          name: claims-prompts
+      - name: ao-prompts
+        configMap:
+          name: ao-prompts
+      - name: courrier-prompts
+        configMap:
+          name: courrier-prompts
+      - name: orchestrator-prompts
+        configMap:
+          name: orchestrator-prompts
+      {{- include "multi-agents.spiffe.volume" $ | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

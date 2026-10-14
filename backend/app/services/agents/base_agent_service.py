@@ -190,16 +190,29 @@ class BaseAgentService(ABC):
 
             # Build agent config
             effective_config = agent_config or {
-                "model": settings.llamastack_default_model,
+                "model": settings.ogx_default_model,
                 "instructions": self.get_instructions(),
             }
 
-            # Process with Responses API
-            result = await self.orchestrator.process_with_agent(
-                agent_config=effective_config,
-                input_message=processing_message,
-                tools=tools or self.get_tools(),
-            )
+            # Decoupled A2A agent when deployed, else in-process Responses API
+            from app.services.agents.registry import AgentRegistry
+            agent_def = AgentRegistry.get_by_entity_type(self.get_entity_type())
+            if agent_def and agent_def.a2a_url and agent_config is None:
+                from app.services.agent.a2a_client import get_a2a_client
+                result = await get_a2a_client().send(
+                    base_url=agent_def.a2a_url,
+                    message=processing_message,
+                    context_id=f"{self.get_entity_type()}-{entity_id}",
+                    metadata={"profile": agent_def.id, "mode": "process"},
+                )
+                if result.get("status") != "completed":
+                    raise RuntimeError(result.get("output") or f"A2A task {result.get('status')}")
+            else:
+                result = await self.orchestrator.process_with_agent(
+                    agent_config=effective_config,
+                    input_message=processing_message,
+                    tools=tools or self.get_tools(),
+                )
 
             # Parse decision
             response_content = result.get("output", "")
@@ -232,7 +245,7 @@ class BaseAgentService(ABC):
             # Trace to MLflow
             tracing.log_agent_trace(
                 agent_id=f"{self.get_entity_type()}-agent",
-                model=result.get("model", settings.llamastack_default_model),
+                model=result.get("model", settings.ogx_default_model),
                 input_text=processing_message[:2000],
                 output_text=response_content[:2000],
                 tool_calls=tool_calls,
@@ -250,7 +263,7 @@ class BaseAgentService(ABC):
 
             return {
                 "response_id": result.get("response_id"),
-                "model": result.get("model", settings.llamastack_default_model),
+                "model": result.get("model", settings.ogx_default_model),
                 "decision": decision_data,
                 f"{self.get_entity_type()}_status": new_status,
                 "processing_steps": processing_steps,

@@ -1,0 +1,13 @@
+a2a-sdk[http-server]>=1.2.2,<2.0.0
+fastapi>=0.115
+uvicorn>=0.30
+httpx>=0.27
+pydantic>=2.0
+pydantic-settings>=2.0
+# MLflow Prompt Registry client — pinned to the RHOAI 3.5 MLflow server minor (3.14)
+mlflow-skinny>=3.14,<3.15
+# Traces → MLflow OTLP endpoint (/v1/traces)
+opentelemetry-sdk>=1.33
+opentelemetry-exporter-otlp-proto-http>=1.33
+# SPIFFE workload identity (JWT-SVID) — ZTWIM / SPIRE
+spiffe>=0.3.2,<0.4
