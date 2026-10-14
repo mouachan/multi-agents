@@ -343,6 +343,20 @@ async def upload_pdf_to_ogx(filepath: str, purpose: str = "assistants") -> str:
             return file_id
 
 
+def link_file(cur, table: str, doc_path: str, file_id: str) -> None:
+    """Point the rows using this PDF to its OGX file ID.
+
+    The French document is the row's document_path; the English one is referenced by
+    metadata.document_path_en, which is kept and completed with document_file_id_en.
+    """
+    cur.execute(f"UPDATE {table} SET document_path = %s WHERE document_path = %s", (file_id, doc_path))
+    cur.execute(
+        f"UPDATE {table} SET metadata = metadata || jsonb_build_object('document_file_id_en', %s::text) "
+        "WHERE metadata->>'document_path_en' = %s",
+        (file_id, doc_path),
+    )
+
+
 async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
     """Upload all PDFs from documents_dir to OGX and update DB with file IDs."""
     conn = get_pg_conn()
@@ -362,10 +376,7 @@ async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
             doc_path = f"claims/{filename}"
             try:
                 file_id = await upload_pdf_to_ogx(filepath)
-                cur.execute(
-                    "UPDATE claims SET document_path = %s WHERE document_path = %s",
-                    (file_id, doc_path),
-                )
+                link_file(cur, "claims", doc_path, file_id)
                 claim_count += 1
                 logger.info(f"Claim {doc_path} -> {file_id}")
             except Exception as e:
@@ -378,10 +389,7 @@ async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
             doc_path = f"tenders/{filename}"
             try:
                 file_id = await upload_pdf_to_ogx(filepath)
-                cur.execute(
-                    "UPDATE tenders SET document_path = %s WHERE document_path = %s",
-                    (file_id, doc_path),
-                )
+                link_file(cur, "tenders", doc_path, file_id)
                 tender_count += 1
                 logger.info(f"Tender {doc_path} -> {file_id}")
             except Exception as e:
@@ -396,10 +404,7 @@ async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
             doc_path = f"reclamations/{filename}"
             try:
                 file_id = await upload_pdf_to_ogx(filepath)
-                cur.execute(
-                    "UPDATE reclamations SET document_path = %s WHERE document_path = %s",
-                    (file_id, doc_path),
-                )
+                link_file(cur, "reclamations", doc_path, file_id)
                 reclamation_count += 1
                 logger.info(f"Reclamation {doc_path} -> {file_id}")
             except Exception as e:

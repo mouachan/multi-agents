@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     tenders_server_url: str  # TENDERS_SERVER_URL (required)
     postal_server_url: str = ""  # POSTAL_SERVER_URL
     tracking_server_url: str = ""  # TRACKING_SERVER_URL
+    # Semantic routing over the A2A agent cards (keyword routing when disabled or on error)
+    router_enabled: bool = True  # ROUTER_ENABLED
+    router_min_score: float = 0.62  # ROUTER_MIN_SCORE
+    router_margin: float = 0.04  # ROUTER_MARGIN
+
     guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional, NeMo Service on port 80)
     guardrails_config_id: str = "multi-agents"  # GUARDRAILS_CONFIG_ID (NeMo config served by the CR)
     guardrails_model_name: str = "llama-scout-17b"  # GUARDRAILS_MODEL_NAME

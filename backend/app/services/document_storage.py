@@ -1,7 +1,7 @@
 """
 Document storage service — OGX Files API with local filesystem fallback.
 
-Primary: OGX Files API (file ID = claim/tender number).
+Primary: OGX Files API (document_path / metadata.document_file_id_en = "file-xxx").
 Fallback: local filesystem (document_path like "claims/file.pdf").
 """
 
@@ -16,11 +16,12 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _get_from_ogx(file_id: str) -> Optional[tuple[bytes, str]]:
+async def _get_from_ogx(file_id: str) -> Optional[tuple[bytes, str]]:
     """Fetch document content from OGX Files API."""
     url = f"{settings.ogx_endpoint}/v1/files/{file_id}/content"
     try:
-        resp = httpx.get(url, timeout=30)
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url)
         if resp.status_code == 200:
             cd = resp.headers.get("content-disposition", "")
             if "filename=" in cd:
@@ -29,11 +30,10 @@ def _get_from_ogx(file_id: str) -> Optional[tuple[bytes, str]]:
                 filename = f"{file_id}.pdf"
             logger.info(f"Document served from OGX: {file_id} ({len(resp.content)} bytes)")
             return resp.content, filename
-        else:
-            logger.debug(f"OGX file not found: {file_id} (HTTP {resp.status_code})")
-            return None
+        logger.warning(f"OGX file not available: {file_id} (HTTP {resp.status_code})")
+        return None
     except Exception as e:
-        logger.debug(f"OGX fetch error for {file_id}: {e}")
+        logger.warning(f"OGX fetch error for {file_id}: {e}")
         return None
 
 
@@ -49,30 +49,22 @@ def _resolve_local_path(stored_path: str) -> Optional[str]:
     return None
 
 
-def get_document(file_id: str, fallback_path: Optional[str] = None) -> Optional[tuple[bytes, str]]:
-    """Fetch a document by its file ID (claim/tender number).
+async def get_document(file_id: str, fallback_path: Optional[str] = None) -> Optional[tuple[bytes, str]]:
+    """Fetch a document for a claim/tender/reclamation number.
 
     Resolution order:
-    1. OGX Files API using fallback_path (the actual file-xxx ID stored in DB)
-    2. OGX Files API using file_id (claim/tender number)
-    3. Local filesystem fallback
+    1. OGX Files API, when the stored path is an OGX file ID (file-xxx, set by data-init)
+    2. Local filesystem (podman compose mounts ./documents on /documents)
 
     Returns (file_bytes, filename) or None if not found.
     """
-    # Try OGX with the actual file ID (document_path = file-xxx)
-    if fallback_path and fallback_path != file_id:
-        result = _get_from_ogx(fallback_path)
+    path = fallback_path or file_id
+    if path.startswith("file-"):
+        result = await _get_from_ogx(path)
         if result:
-            # Override filename with the claim/tender number
+            # Name the download after the business number
             return result[0], f"{file_id}.pdf"
 
-    # Try OGX with claim/tender number
-    result = _get_from_ogx(file_id)
-    if result:
-        return result
-
-    # Fallback: local filesystem
-    path = fallback_path or file_id
     filename = os.path.basename(path)
     local_path = _resolve_local_path(path)
     if local_path:
@@ -81,4 +73,5 @@ def get_document(file_id: str, fallback_path: Optional[str] = None) -> Optional[
         logger.info(f"Document served from filesystem: {local_path} ({len(data)} bytes)")
         return data, filename
 
+    logger.warning(f"Document not found for {file_id} (stored path: {path})")
     return None

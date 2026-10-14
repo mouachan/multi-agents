@@ -9,9 +9,14 @@ Request metadata (A2A Message.metadata, all optional) sent by the backend:
 
 Final task status message metadata returned to the caller:
     output, decision, tool_calls, response_id, model, usage, prompt{name,version,source},
-    guardrails{input,output}
+    guardrails{input,output}, caller (SPIFFE ID), duration_ms
+
+Working status updates (metadata "event"): tool_call / tool_result, and guardrails
+(stage input|output). With output rails on, the answer is masked sentence by sentence
+and streamed as soon as each sentence is masked (no unmasked PII ever leaves the agent).
 """
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -25,7 +30,7 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import Message, Role, TaskState
 from google.protobuf import json_format, struct_pb2
 
-from . import tracing
+from . import spiffe_auth, tracing
 from .config import AgentSettings
 from .guardrails import Guardrails, blocked_message
 from .ogx_client import OGXClient
@@ -36,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 CHAT_WRAPPER_PROMPT = "chat-agent-wrapper"
 LANGUAGE_RULE_PROMPT = "orchestrator-language-rule"
+# End of a sentence: punctuation (or a newline) followed by whitespace
+SENTENCE_END = re.compile(r"[.!?:;\n](?=\s)")
 TEXT_TOOL_CALL_RETRY = (
     "You wrote tool calls as text instead of calling them. "
     "Use the function calling mechanism to actually execute the tools now."
@@ -95,7 +102,7 @@ class BaseA2AExecutor(AgentExecutor):
         self.prompts = PromptStore(settings)
         self.guardrails = Guardrails(settings)
         self.parser = ResponseParser()
-        self._buffer_output = self.guardrails.enabled and settings.guardrails_buffer_output
+        self._mask_stream = self.guardrails.enabled and settings.guardrails_buffer_output
 
     async def _instructions(self, profile: Profile, meta: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
         override = meta.get("instructions_override")
@@ -141,6 +148,7 @@ class BaseA2AExecutor(AgentExecutor):
 
         # Input rails: block (jailbreak / off-topic) or mask PII before it reaches the LLM
         gin = await self.guardrails.check_input(user_text)
+        await self._guardrails_event(updater, "input", gin.to_dict())
         if not gin.allowed:
             refusal = blocked_message(meta.get("language"))
             await updater.reject(_message(refusal, context, metadata={
@@ -164,14 +172,14 @@ class BaseA2AExecutor(AgentExecutor):
                 retry["usage"] = _merge_usage(result["usage"], retry["usage"])
                 result = retry
 
-            output = result["output"]
-            gout = await self.guardrails.check_output(output)
-            final_text = gout.text if gout.allowed else blocked_message(meta.get("language"))
-            if self._buffer_output or final_text != output:
-                # Send the (masked) text — replaces any unmasked deltas already streamed
-                await updater.add_artifact([new_text_part(final_text)], artifact_id="response",
+            gout = result["guardrails_output"]
+            if not gout["allowed"]:
+                output = blocked_message(meta.get("language"))
+                await updater.add_artifact([new_text_part(output)], artifact_id="response",
                                            name="response", append=False, last_chunk=True)
-            output = final_text
+            else:
+                output = result["streamed_output"]
+            await self._guardrails_event(updater, "output", gout)
 
             decision = self.parser.parse_decision(output) if meta.get("mode") == "process" else {}
             duration_ms = int((time.time() - start) * 1000)
@@ -185,7 +193,9 @@ class BaseA2AExecutor(AgentExecutor):
                 "duration_ms": duration_ms,
                 "profile": profile_id,
                 "prompt": prompt_info,
-                "guardrails": {"input": gin.to_dict(), "output": gout.to_dict()},
+                "guardrails": {"input": gin.to_dict(), "output": gout},
+                "caller": spiffe_auth.current_caller(),
+                "agent_id": self.settings.agent_id,
             }
 
             tracing.log_agent_trace(
@@ -208,10 +218,49 @@ class BaseA2AExecutor(AgentExecutor):
             logger.error("Agent %s/%s failed: %s", self.settings.agent_id, profile_id, e, exc_info=True)
             await updater.failed(_message(f"Agent error: {e}", context))
 
+    async def _guardrails_event(self, updater: TaskUpdater, stage: str, result: Dict[str, Any]) -> None:
+        if not self.guardrails.enabled:
+            return
+        await updater.update_status(
+            TaskState.TASK_STATE_WORKING,
+            _message(f"guardrails {stage}", metadata={
+                "event": "guardrails", "stage": stage,
+                "status": result.get("status"), "rail": result.get("rail"),
+            }),
+        )
+
     async def _run(self, updater: TaskUpdater, model, instructions, input_message, tools,
                    previous_response_id) -> Dict[str, Any]:
-        """Stream one OGX response, forwarding deltas and tool activity as A2A events."""
-        first_chunk = True
+        """Stream one OGX response, forwarding (masked) text and tool activity as A2A events.
+
+        The first chunk starts (or, on a retry, replaces) the "response" artifact.
+        Returns the OGX `done` event plus `streamed_output` (the text actually sent) and
+        `guardrails_output` (aggregated output rails verdict).
+        """
+        sent: List[str] = []
+        pending = ""
+        verdict: Dict[str, Any] = {"allowed": True, "status": "passed", "rail": None, "error": None}
+
+        async def emit(chunk: str) -> None:
+            if not chunk or not verdict["allowed"]:
+                return
+            if self._mask_stream and chunk.strip():
+                core = chunk.strip()
+                lead, trail = chunk[:len(chunk) - len(chunk.lstrip())], chunk[len(chunk.rstrip()):]
+                g = await self.guardrails.check_output(core)
+                if not g.allowed:
+                    verdict.update(allowed=False, status="blocked", rail=g.rail)
+                    return
+                if g.status == "modified":
+                    verdict.update(status="modified", rail=g.rail)
+                elif g.status == "error" and verdict["status"] == "passed":
+                    verdict.update(status="error", error=g.error)
+                chunk = lead + g.text + trail
+            first = not sent
+            sent.append(chunk)
+            await updater.add_artifact([new_text_part(chunk)], artifact_id="response",
+                                       name="response", append=not first)
+
         done: Dict[str, Any] = {}
         async for ev in self.llm.stream(
             model=model,
@@ -222,10 +271,17 @@ class BaseA2AExecutor(AgentExecutor):
             previous_response_id=previous_response_id,
         ):
             etype = ev["type"]
-            if etype == "text_delta" and not self._buffer_output:
-                await updater.add_artifact([new_text_part(ev["delta"])], artifact_id="response",
-                                           name="response", append=not first_chunk)
-                first_chunk = False
+            if etype == "text_delta":
+                pending += ev["delta"]
+                if not self._mask_stream:
+                    await emit(pending)
+                    pending = ""
+                    continue
+                ends = list(SENTENCE_END.finditer(pending))
+                if ends:
+                    cut = ends[-1].end()
+                    chunk, pending = pending[:cut], pending[cut:]
+                    await emit(chunk)
             elif etype in ("tool_call", "tool_result"):
                 await updater.update_status(
                     TaskState.TASK_STATE_WORKING,
@@ -236,6 +292,12 @@ class BaseA2AExecutor(AgentExecutor):
                 )
             elif etype == "done":
                 done = ev
+        await emit(pending)
+        if not sent and done.get("output"):
+            # No text deltas (non-streamed answer): send the whole output once
+            await emit(done["output"])
+        done["streamed_output"] = "".join(sent)
+        done["guardrails_output"] = verdict
         return done
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

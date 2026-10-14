@@ -529,7 +529,7 @@ async def view_reclamation_document(
         # Determine which document path to use based on language
         metadata = reclamation.reclamation_metadata or {}
         if lang == "en" and metadata.get("document_path_en"):
-            doc_path = metadata["document_path_en"]
+            doc_path = metadata.get("document_file_id_en") or metadata["document_path_en"]
         elif reclamation.document_path:
             doc_path = reclamation.document_path
         else:
@@ -538,7 +538,7 @@ async def view_reclamation_document(
             )
 
         # Fetch document from OGX or local filesystem
-        doc = get_document(
+        doc = await get_document(
             reclamation.reclamation_number, fallback_path=doc_path
         )
         if not doc:

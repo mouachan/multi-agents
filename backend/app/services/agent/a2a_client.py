@@ -7,10 +7,15 @@ Normalizes the A2A event stream into the same events as the Responses API stream
     {"type": "text_delta",   "delta"}
     {"type": "text_replace", "text"}     (agent re-sent a masked/redacted version)
     {"type": "done", "output", "tool_calls", "response_id", "model", "usage",
-                     "decision", "prompt", "guardrails", "status"}
+                     "decision", "prompt", "guardrails", "status", "a2a"}
+and exposes the A2A exchange itself (shown in the UI):
+    {"type": "a2a", "phase": "request", "agent": {...card}, "auth": {...}, "profile", "method"}
+    {"type": "a2a", "phase": "status", "state", "task_id", "context_id"}   (state transitions)
+    {"type": "guardrails", "stage": "input"|"output", "status", "rail"}
 """
 
 import logging
+import time
 import uuid
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -38,6 +43,10 @@ def _text(parts) -> str:
     return "".join(p.text for p in parts if p.text)
 
 
+def _state_name(state) -> str:
+    return TaskState.Name(state).replace("TASK_STATE_", "").lower()
+
+
 class A2AClient:
     """Client for the A2A domain agents, with one cached SDK client per agent URL."""
 
@@ -51,6 +60,7 @@ class A2AClient:
         )
         self._factory = ClientFactory(ClientConfig(streaming=True, httpx_client=self._http))
         self._clients: Dict[str, Client] = {}
+        self._cards: Dict[str, Dict[str, Any]] = {}
 
     async def _client(self, base_url: str) -> Client:
         client = self._clients.get(base_url)
@@ -59,6 +69,16 @@ class A2AClient:
             self._clients[base_url] = client
             logger.info("Discovered A2A agent at %s", base_url)
         return client
+
+    async def agent_card(self, base_url: str) -> Dict[str, Any]:
+        """Public agent card (cached) — name, version, skills, protocol, URL."""
+        card = self._cards.get(base_url)
+        if card is None:
+            resp = await self._http.get(f"{base_url.rstrip('/')}/.well-known/agent-card.json")
+            resp.raise_for_status()
+            card = resp.json()
+            self._cards[base_url] = card
+        return card
 
     async def stream(
         self,
@@ -84,11 +104,57 @@ class A2AClient:
             self._clients.pop(base_url, None)
             raise
 
+        from app.core import spiffe
+
+        start = time.time()
+        agent_host = httpx.URL(base_url).host.split(".")[0]
+        try:
+            card = await self.agent_card(base_url)
+        except Exception:
+            card = {}
+        yield {
+            "type": "a2a",
+            "phase": "request",
+            "method": "SendStreamingMessage",
+            "agent": {
+                "name": card.get("name", agent_host),
+                "description": card.get("description", ""),
+                "version": card.get("version", ""),
+                "url": base_url,
+                "skills": [sk.get("name") for sk in card.get("skills", [])],
+            },
+            "auth": {
+                "scheme": "JWT-SVID" if spiffe.enabled() else "none",
+                "audience": f"a2a:{agent_host}" if spiffe.enabled() else None,
+            },
+            "profile": (metadata or {}).get("profile"),
+            "mode": (metadata or {}).get("mode"),
+            "context_id": context_id,
+            "message_id": msg.message_id,
+        }
+
         text = ""
         final: Dict[str, Any] = {}
         status = "unknown"
+        task_id, task_context, last_state = "", context_id or "", None
 
         async for event in client.send_message(SendMessageRequest(message=msg)):
+            # A2A task lifecycle (submitted -> working -> completed/failed/rejected)
+            if event.HasField("task"):
+                task_id, task_context = event.task.id or task_id, event.task.context_id or task_context
+                state = _state_name(event.task.status.state)
+            elif event.HasField("status_update"):
+                task_id = event.status_update.task_id or task_id
+                task_context = event.status_update.context_id or task_context
+                state = _state_name(event.status_update.status.state)
+            else:
+                state = last_state
+            if state and state != last_state:
+                last_state = state
+                yield {"type": "a2a", "phase": "status", "state": state,
+                       "task_id": task_id, "context_id": task_context,
+                       "elapsed_ms": int((time.time() - start) * 1000)}
+
             if event.HasField("artifact_update"):
                 upd = event.artifact_update
                 chunk = _text(upd.artifact.parts)
@@ -111,6 +177,13 @@ class A2AClient:
                         "name": meta.get("name", ""),
                         "server": meta.get("server", ""),
                         "status": meta.get("status", "in_progress"),
+                    }
+                elif st.state == TaskState.TASK_STATE_WORKING and meta.get("event") == "guardrails":
+                    yield {
+                        "type": "guardrails",
+                        "stage": meta.get("stage", ""),
+                        "status": meta.get("status", ""),
+                        "rail": meta.get("rail"),
                     }
                 elif st.state == TaskState.TASK_STATE_COMPLETED:
                     status, final = "completed", meta
@@ -147,6 +220,15 @@ class A2AClient:
             "decision": final.get("decision", {}),
             "prompt": final.get("prompt", {}),
             "guardrails": final.get("guardrails", {}),
+            "a2a": {
+                "task_id": task_id,
+                "context_id": task_context,
+                "state": last_state,
+                "duration_ms": int((time.time() - start) * 1000),
+                "agent_duration_ms": final.get("duration_ms"),
+                "caller": final.get("caller"),
+                "agent": card.get("name", agent_host),
+            },
         }
 
     async def send(

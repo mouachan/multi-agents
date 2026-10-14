@@ -6,8 +6,11 @@ Orchestrator API endpoints.
 - POST /chat/stream       - Send a message with SSE streaming
 - GET  /sessions/{id}/messages - Get session history
 """
+import asyncio
 import json
 import logging
+import time
+from typing import Any, AsyncIterator, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -33,6 +36,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 orchestrator_service = OrchestratorService()
+
+# Keep idle SSE streams alive (cloud load balancers close connections idle for ~60s
+# while the model generates or the guardrails hold the answer)
+HEARTBEAT_SECONDS = 10
+
+
+async def with_heartbeat(events: AsyncIterator[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
+    """Yield the events, plus {"type": "heartbeat"} whenever nothing came for HEARTBEAT_SECONDS."""
+    start = time.time()
+    iterator = events.__aiter__()
+    pending = asyncio.ensure_future(iterator.__anext__())
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=HEARTBEAT_SECONDS)
+            if not done:
+                yield {"type": "heartbeat", "elapsed_ms": int((time.time() - start) * 1000)}
+                continue
+            try:
+                event = pending.result()
+            except StopAsyncIteration:
+                return
+            yield event
+            pending = asyncio.ensure_future(iterator.__anext__())
+    finally:
+        if not pending.done():
+            pending.cancel()
 
 
 @router.post("/sessions", response_model=CreateSessionResponse)
@@ -83,12 +112,12 @@ async def send_message_stream(
     """Send a message and stream the agent response via SSE."""
     async def event_generator():
         try:
-            async for event in orchestrator_service.process_message_stream(
+            async for event in with_heartbeat(orchestrator_service.process_message_stream(
                 db=db,
                 session_id=request.session_id,
                 message=request.message,
                 user_id=request.user_id,
-            ):
+            )):
                 yield f"data: {json.dumps(event)}\n\n"
         except ValueError as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

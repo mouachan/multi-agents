@@ -456,11 +456,11 @@ async def view_tender_document(
         # Determine document path based on language
         metadata = tender.tender_metadata or {}
         if lang == "en" and metadata.get("document_path_en"):
-            fallback = metadata["document_path_en"]
+            fallback = metadata.get("document_file_id_en") or metadata["document_path_en"]
         else:
             fallback = tender.document_path
 
-        doc = get_document(tender.tender_number, fallback_path=fallback)
+        doc = await get_document(tender.tender_number, fallback_path=fallback)
         if not doc:
             logger.error(f"Document not found for tender {tender_id}")
             raise HTTPException(status_code=404, detail="Document file not found")

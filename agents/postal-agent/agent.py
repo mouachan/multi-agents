@@ -35,29 +35,45 @@ SKILLS = [
         id="process-complaint",
         name="Process Postal Complaint",
         description="Evaluate a postal/parcel complaint — photos, tracking, precedents — rembourser/réexpédier/rejeter/escalader.",
-        tags=["postal", "complaints", "tracking", "ocr"],
-        examples=["Traiter la réclamation RECL-2026-0001", "Process complaint RECL-2026-0012"],
+        tags=["postal", "complaints", "tracking", "ocr", "profile:courrier_reclamation"],
+        examples=[
+            "Traiter la réclamation RECL-2026-0001", "Process complaint RECL-2026-0012",
+            "Mon colis est arrivé endommagé, je veux être remboursé",
+            "Je veux déposer une réclamation pour un colis perdu",
+            "My parcel was delivered broken, I want a refund",
+        ],
     ),
     AgentSkill(
         id="track-parcel",
         name="Track Parcel",
         description="Track a parcel or mail item by tracking number.",
-        tags=["postal", "tracking"],
-        examples=["Où est mon colis 6C12345678901?", "Suivi du colis 1A98765432100"],
+        tags=["postal", "tracking", "profile:courrier_suivi"],
+        examples=[
+            "Où est mon colis 6C12345678901?", "Suivi du colis 1A98765432100",
+            "Suivre un colis", "Quel est le statut de livraison de mon envoi ?",
+            "Track my parcel 1A98765432100", "Quand mon colis sera-t-il livré ?",
+        ],
     ),
     AgentSkill(
         id="postal-info",
         name="Postal Information",
         description="Answer questions about postal rates, shipping times, packaging, customs.",
-        tags=["postal", "rates", "info"],
-        examples=["Combien coûte l'envoi d'un colis en France?", "Délai Colissimo vers l'Allemagne?"],
+        tags=["postal", "rates", "info", "profile:courrier_info"],
+        examples=[
+            "Combien coûte l'envoi d'un colis en France?", "Délai Colissimo vers l'Allemagne?",
+            "Quel est le tarif d'une lettre recommandée ?", "Tarifs Colissimo",
+            "Comment emballer un objet fragile ?", "What are the customs rules for a parcel abroad?",
+        ],
     ),
     AgentSkill(
         id="query-complaints",
         name="Query Complaints",
         description="List, view details, or get statistics about postal complaints.",
-        tags=["postal", "complaints", "query"],
-        examples=["Lister les réclamations en cours", "Détail RECL-2026-0001"],
+        tags=["postal", "complaints", "query", "profile:courrier_reclamation"],
+        examples=[
+            "Lister les réclamations en cours", "Détail RECL-2026-0001",
+            "Combien de réclamations postales sont en attente ?", "Statistiques des réclamations",
+        ],
     ),
 ]
 

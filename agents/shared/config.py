@@ -27,8 +27,8 @@ class AgentSettings(BaseSettings):
     guardrails_model: str = "llama-scout-17b"
     guardrails_timeout: float = 15.0
     guardrails_fail_open: bool = True
-    # When output rails are active, hold the text until it has been masked (no unmasked
-    # PII ever reaches the UI); tool activity is still streamed live.
+    # When output rails are active, mask the answer sentence by sentence before streaming
+    # it (no unmasked PII ever reaches the UI); tool activity is always streamed live.
     guardrails_buffer_output: bool = True
 
     # MLflow (RHOAI) — tracing + Prompt Registry

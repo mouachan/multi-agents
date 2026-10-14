@@ -13,11 +13,19 @@ import asyncio
 import json
 import logging
 import os
-from typing import Iterable
+from contextvars import ContextVar
+from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_PATHS = ("/.well-known/", "/health", "/docs", "/openapi.json")
+
+# SPIFFE ID of the authenticated caller, visible to the executor (returned in the task metadata)
+_caller: ContextVar[Optional[str]] = ContextVar("spiffe_caller", default=None)
+
+
+def current_caller() -> Optional[str]:
+    return _caller.get()
 
 
 def enabled() -> bool:
@@ -58,6 +66,7 @@ class SpiffeJwtMiddleware:
             return await _deny(send, 403, f"caller {caller} not allowed")
 
         scope.setdefault("state", {})["spiffe_id"] = str(caller)
+        _caller.set(str(caller))
         return await self.app(scope, receive, send)
 
 

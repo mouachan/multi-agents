@@ -30,6 +30,7 @@ from app.prompts.orchestrator_prompts import (
 )
 from app.core import tracing
 from app.services.agent.a2a_client import get_a2a_client
+from app.services.agents.semantic_router import get_semantic_router
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
 from .conversation_utils import ConversationHelper
 from .registry import AgentRegistry
@@ -43,6 +44,7 @@ class OrchestratorService:
     def __init__(self, orchestrator: Optional[ResponsesOrchestrator] = None):
         self.orchestrator = orchestrator or ResponsesOrchestrator()
         self.a2a = get_a2a_client()
+        self.router = get_semantic_router()
         self.conv = ConversationHelper(ORCHESTRATOR_CONFIG.get("conversation"))
 
     async def create_session(
@@ -146,8 +148,8 @@ class OrchestratorService:
         db.add(user_msg)
         await db.commit()
 
-        # Fast keyword classification (no LLM call - saves ~10s)
-        classification = self._fallback_classification(message, session.agent_id)
+        # Semantic routing over the A2A agent cards (keyword fallback)
+        classification = await self._classify(message, session.agent_id)
         intent = classification.get("intent", "general")
         agent_id = classification.get("agent_id") or session.agent_id
         response_text = classification.get("message", "")
@@ -332,8 +334,9 @@ class OrchestratorService:
         db.add(user_msg)
         await db.commit()
 
-        # Fast keyword classification
-        classification = self._fallback_classification(message, session.agent_id)
+        # Semantic routing over the A2A agent cards (keyword fallback)
+        classification = await self._classify(message, session.agent_id)
+        yield classification["routing"]
         intent = classification.get("intent", "general")
         agent_id = classification.get("agent_id") or session.agent_id
 
@@ -387,6 +390,8 @@ class OrchestratorService:
 
         tool_calls = []
         full_text = ""
+        streamed_text = False
+        a2a_summary: Dict[str, Any] = {}
         response_id = None
         token_usage = None
         model = agent_def.model or settings.ogx_streaming_model or settings.ogx_default_model
@@ -402,10 +407,22 @@ class OrchestratorService:
                     metadata=self._a2a_metadata(agent_def, user_lang, session, previous_response_id),
                 ):
                     event_type = event.get("type")
-                    if event_type in ("tool_call", "tool_result", "text_delta", "text_replace"):
+                    if event_type in ("tool_call", "tool_result", "text_delta", "text_replace",
+                                      "a2a", "guardrails"):
+                        streamed_text = streamed_text or event_type in ("text_delta", "text_replace")
                         yield event
                     elif event_type == "done":
                         full_text = event.get("output", "")
+                        a2a_summary = {
+                            **event.get("a2a", {}),
+                            "status": event.get("status"),
+                            "prompt": event.get("prompt", {}),
+                            "guardrails": event.get("guardrails", {}),
+                        }
+                        if full_text and not streamed_text:
+                            # e.g. input rejected by the guardrails: the refusal only comes in the final status
+                            yield {"type": "text_delta", "delta": full_text}
+                            streamed_text = True
                         response_id = event.get("response_id")
                         model = event.get("model") or model
                         token_usage = ConversationHelper.normalize_token_usage(event.get("usage", {}))
@@ -522,6 +539,7 @@ class OrchestratorService:
             "agent_id": agent_id,
             "model_id": model_id,
             "suggested_actions": suggested_actions,
+            "a2a": a2a_summary or None,
         }
 
     async def list_sessions(
@@ -866,6 +884,27 @@ class OrchestratorService:
                 if kw in message_lower:
                     return True
         return False
+
+    async def _classify(self, message: str, current_agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Semantic routing (see semantic_router.py); keyword routing when disabled or on error."""
+        if settings.router_enabled:
+            try:
+                decision = await self.router.route(message, current_agent_id)
+                intent = "follow_up" if decision.method == "sticky" else "agent_request"
+                return {
+                    "intent": intent,
+                    "agent_id": decision.agent_id,
+                    "message": "",
+                    "suggested_actions": self._generate_actions_for_intent(
+                        intent, decision.agent_id, self._detect_language(message)),
+                    "routing": decision.to_event(),
+                }
+            except Exception as e:
+                logger.warning("Semantic routing failed, using keywords: %s", e)
+        result = self._fallback_classification(message, current_agent_id)
+        result["routing"] = {"type": "routing", "agent_id": result["agent_id"], "method": "keywords",
+                             "score": None, "candidates": [], "duration_ms": 0}
+        return result
 
     def _fallback_classification(
         self,

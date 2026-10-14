@@ -24,15 +24,24 @@ SKILLS = [
         id="analyze-tender",
         name="Analyze Tender (Appel d'Offres)",
         description="Evaluate a BTP tender — OCR, references, history, capabilities — Go/No-Go/A approfondir.",
-        tags=["btp", "tenders", "construction", "ocr", "rag"],
-        examples=["Analyser l'AO AO-2026-IDF-001", "Process tender AO-2026-PAC-015"],
+        tags=["btp", "tenders", "construction", "ocr", "rag", "profile:tenders"],
+        examples=[
+            "Analyser l'AO AO-2026-IDF-001", "Process tender AO-2026-PAC-015",
+            "Faut-il répondre à cet appel d'offres de construction ?",
+            "Go ou No-Go pour le marché public de rénovation du lycée ?",
+            "Quelles références similaires avons-nous pour ce chantier ?",
+        ],
     ),
     AgentSkill(
         id="query-tenders",
         name="Query Tenders",
         description="List, view details, or get statistics about tenders.",
-        tags=["btp", "tenders", "query"],
-        examples=["Lister les appels d'offres en cours", "Detail AO-2026-IDF-001"],
+        tags=["btp", "tenders", "query", "profile:tenders"],
+        examples=[
+            "Lister les appels d'offres en cours", "Detail AO-2026-IDF-001",
+            "Combien d'appels d'offres sont en attente ?",
+            "Statistiques des appels d'offres BTP", "Show tenders in Île-de-France",
+        ],
     ),
 ]
 
