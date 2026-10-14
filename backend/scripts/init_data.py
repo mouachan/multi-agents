@@ -357,6 +357,45 @@ def link_file(cur, table: str, doc_path: str, file_id: str) -> None:
     )
 
 
+def missing_english_documents() -> list:
+    """(table, document_path_en) of English PDFs not linked to an OGX file yet."""
+    conn = get_pg_conn()
+    cur = conn.cursor()
+    missing = []
+    try:
+        for table in ("claims", "tenders", "reclamations"):
+            cur.execute(
+                f"SELECT DISTINCT metadata->>'document_path_en' FROM {table} "
+                "WHERE metadata ? 'document_path_en' AND NOT metadata ? 'document_file_id_en'"
+            )
+            missing += [(table, row[0]) for row in cur.fetchall() if row[0]]
+    finally:
+        conn.close()
+    return missing
+
+
+async def link_english_documents(missing: list, documents_dir: str = DOCUMENTS_DIR):
+    """Upload the English PDFs of an already initialized database (idempotent catch-up)."""
+    conn = get_pg_conn()
+    conn.autocommit = True
+    cur = conn.cursor()
+    linked = 0
+    try:
+        for table, doc_path in missing:
+            filepath = os.path.join(documents_dir, doc_path)
+            if not os.path.exists(filepath):
+                logger.warning(f"English document not found: {doc_path}")
+                continue
+            try:
+                link_file(cur, table, doc_path, await upload_pdf_to_ogx(filepath))
+                linked += 1
+            except Exception as e:
+                logger.error(f"Failed to upload {filepath}: {e}")
+    finally:
+        conn.close()
+    logger.info(f"Linked {linked}/{len(missing)} English documents")
+
+
 async def upload_all_pdfs_to_ogx(documents_dir: str = DOCUMENTS_DIR):
     """Upload all PDFs from documents_dir to OGX and update DB with file IDs."""
     conn = get_pg_conn()
@@ -662,6 +701,11 @@ async def main():
         logger.info("FORCE_REINIT is enabled — resetting data for re-processing")
         reset_for_reinit()
     elif check_already_initialized():
+        missing = missing_english_documents()
+        if missing:
+            logger.info(f"Already initialized, but {len(missing)} English documents are not linked yet")
+            download_documents(DOCUMENTS_ARCHIVE_URL)
+            await link_english_documents(missing)
         logger.info("Skipping init (already done). Exiting.")
         return
 
