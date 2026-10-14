@@ -360,10 +360,15 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
 
   ```bash
   oc patch maastenantconfig default-tenant -n models-as-a-service --type=merge \
-    -p '{"spec":{"telemetry":{"enabled":true,"metrics":{"captureModelUsage":true}}}}'
+    -p '{"spec":{"telemetry":{"enabled":true,"metrics":{"captureModelUsage":true,"captureUser":true}}}}'
   ```
 
-  (`captureUser` adds the user id to the metrics: GDPR review first.)
+  The built-in **Usage** tab filters on `user!=""`: without `captureUser` it shows 0
+  everywhere. `user` is the identity behind the API key; for this application it is the
+  ServiceAccount that minted it (`system:serviceaccount:<namespace>:maas-key-minter`), so
+  *Active users* is 1. The setting applies to every MaaS caller of the cluster (human API
+  keys included): review it for GDPR on shared clusters. Only requests made after the
+  change carry the label.
 
 ### Business processing
 
