@@ -1,3 +1,9 @@
+{{- /*
+The release namespace is created by `helm install --create-namespace` (Helm stores the
+release there) and labelled by the post-install namespace-labels job; it is only
+templated when the chart targets another namespace than the release one.
+*/}}
+{{- if ne (include "multi-agents.namespace" .) .Release.Namespace }}
 ---
 apiVersion: v1
 kind: Namespace
@@ -14,6 +20,7 @@ metadata:
     "helm.sh/hook-weight": "-100"
     # ArgoCD GitOps
     "argocd.argoproj.io/sync-wave": "-100"
+{{- end }}
 {{- if .Values.inference.enabled }}
 ---
 apiVersion: v1
