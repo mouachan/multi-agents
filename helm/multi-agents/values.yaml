@@ -521,6 +521,18 @@ minio:
       memory: 1Gi
 
 # =============================================================================
+# Hibernation: CronJobs scaling the Helm-managed workloads (backend, frontend,
+# agents, PostgreSQL, MinIO) to zero at night and back up in the morning.
+# Operator-managed workloads stay up. Schedules are in the cluster time zone (UTC).
+# =============================================================================
+hibernate:
+  enabled: false
+  image: registry.redhat.io/openshift4/ose-cli:latest
+  shutdownSchedule: "0 19 * * *"
+  wakeupSchedule: "0 13 * * *"
+  wakeupSuspended: true
+
+# =============================================================================
 # Data Initialization (post-install job)
 # =============================================================================
 dataInit:

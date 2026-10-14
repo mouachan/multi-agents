@@ -1,10 +1,14 @@
 #!/bin/bash
+# Scale the Helm-managed workloads (backend, frontend, agents, PostgreSQL, MinIO) to
+# zero and keep their replica counts in an annotation for wakeup.sh. Operator-managed
+# workloads (OGX, MCP servers, NeMo, gateways) are left alone: their operators would
+# scale them back.
 
 set -e
 
-oc annotate inferenceservice/llama serving.kserve.io/stop=true --overwrite=true
-oc annotate inferenceservice/gemma serving.kserve.io/stop=true --overwrite=true
-oc scale sts/postgresql --replicas=0
-oc scale deploy/backend --replicas=0
-oc scale deploy/frontend --replicas=0
-oc scale deploy/rag-server --replicas=0
+for r in $(oc get deploy,sts -l app.kubernetes.io/managed-by=Helm -o name); do
+  n=$(oc get "$r" -o jsonpath='{.spec.replicas}')
+  [ "$n" = "0" ] && continue
+  oc annotate "$r" hibernate.multi-agents/replicas="$n" --overwrite
+  oc scale "$r" --replicas=0
+done

@@ -1,10 +1,9 @@
 #!/bin/bash
+# Restore the replica counts saved by shutdown.sh.
 
 set -e
 
-oc annotate inferenceservice/llama serving.kserve.io/stop=false --overwrite=true
-oc annotate inferenceservice/gemma serving.kserve.io/stop=false --overwrite=true
-oc scale sts/postgresql --replicas=1
-oc scale deploy/backend --replicas=1
-oc scale deploy/frontend --replicas=2
-oc scale deploy/rag-server --replicas=1
+for r in $(oc get deploy,sts -l app.kubernetes.io/managed-by=Helm -o name); do
+  n=$(oc get "$r" -o jsonpath='{.metadata.annotations.hibernate\.multi-agents/replicas}')
+  [ -n "$n" ] && oc scale "$r" --replicas="$n"
+done

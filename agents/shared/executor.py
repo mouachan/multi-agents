@@ -4,7 +4,7 @@ Request metadata (A2A Message.metadata, all optional) sent by the backend:
     profile               profile id (e.g. "courrier-info"); defaults to the agent's first profile
     mode                  "chat" (conversational wrapper) or "process" (batch processing,
                           OGX_PROCESS_MODEL)
-    tools                 subset of the profile tools to use (never extends the profile)
+    tools                 subset of the profile tools to use, in this order (never extends the profile)
     decision_values       allowed recommendations (mode=process): the user message asks for a
                           final JSON block {recommendation, confidence, reasoning}
     language              "fr" | "en" — enforced via the language-rule prompt
@@ -182,7 +182,9 @@ class BaseA2AExecutor(AgentExecutor):
             process = meta.get("mode") == "process"
             model = profile.model or (process and self.settings.ogx_process_model) or self.settings.ogx_default_model
             requested = meta.get("tools")
-            tools = [t for t in profile.tools if t in requested] if requested else profile.tools
+            # caller order: the guided workflow runs the tools in this order (OCR before the
+            # precedent search, which reads the OCR text)
+            tools = [t for t in requested if t in profile.tools] if requested else profile.tools
             previous_response_id = meta.get("previous_response_id")
 
             run = self._run
