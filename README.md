@@ -144,8 +144,8 @@ The platform integrates **NeMo Guardrails** (GA since RHOAI 3.4) deployed by the
 
 - **Input rails**: Presidio PII masking first (the LLM never sees raw personal data), then an LLM-based `self check input` that blocks jailbreak / prompt-injection / abusive messages
 - **Output rails**: Presidio PII masking of the agent's answer
-- **PII masking**: entities are replaced by `<ENTITY_TYPE>` placeholders (e.g. `<PERSON>`, `<EMAIL_ADDRESS>`, `<FR_IBAN>`), including custom French recognizers (`FR_NIR`, `FR_IBAN`, `FR_PHONE`, `FR_PLATE`)
-- **No unmasked streaming**: when output rails are active, the agent buffers the answer until it is masked; tool activity is still streamed live
+- **PII masking**: entities are replaced by `[ENTITY_TYPE]` placeholders (e.g. `[EMAIL_ADDRESS]`, `[FR_IBAN]`), including custom French recognizers (`FR_NIR`, `FR_IBAN`, `FR_PHONE`, `FR_PLATE`). The agents rewrite Presidio's `<ENTITY_TYPE>` tags as `[ENTITY_TYPE]`: Llama answers nothing when its input contains `<IBAN_CODE>`-like tags. `PERSON` is masked on input only (on output Presidio's English model tagged ordinary French words as names)
+- **Masked progressive streaming**: when output rails are active, the agent masks the answer sentence by sentence and streams each sentence as soon as it is masked (no unmasked PII ever leaves the agent); tool activity is streamed live
 - **Configurable**: score threshold, entity lists, self-check on/off and fail-open behaviour via the `guardrails.*` Helm values
 
 NeMo runs as a standalone service (`NemoGuardrails` CR). It does **not** proxy OGX: each A2A agent calls NeMo's `POST /v1/checks` endpoint explicitly, before and after the OGX call. If NeMo is unreachable, the request is allowed through by default (`guardrails.failOpen: true`).
@@ -202,7 +202,7 @@ graph TB
         end
 
         subgraph "RHOAI Models-as-a-Service"
-            LLM["gpt-oss-120b<br/>Reasoning + Tool Calling"]
+            LLM["llama-scout-17b<br/>Reasoning + Tool Calling"]
             VIS["llama-scout-17b<br/>Vision OCR + guardrails"]
         end
 
@@ -426,7 +426,7 @@ frontend/
 | Component | Technology | Details |
 |-----------|-----------|---------|
 | **Platform** | Red Hat OpenShift AI 3.5 on OpenShift 4.22 | See [RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md) |
-| **LLM Inference** | RHOAI Models-as-a-Service (external models) | `gpt-oss-120b` (agents reasoning + tool calling) |
+| **LLM Inference** | RHOAI Models-as-a-Service (external models) | `llama-scout-17b` (agents reasoning + tool calling, OCR vision, guardrails) |
 | **Vision OCR** | `llama-scout-17b` via MaaS | PDF page images -> structured text extraction |
 | **Embeddings** | `nomic-embed-text-v1-5` (external MaaS, direct) | 768-dim vectors for similarity search |
 | **AI Orchestration** | OGX (formerly LlamaStack), `OGXServer` CR | Responses API, MCP tool routing, pgvector, Files API |
@@ -456,7 +456,7 @@ The local `podman compose` stack runs the same architecture as RHOAI 3.5: OGX (s
 cat > .env <<'ENV'
 MAAS_BASE_URL=https://<external-maas-host>/v1
 MAAS_API_KEY=sk-your-key
-MAAS_REASONING_MODEL=gpt-oss-120b
+MAAS_REASONING_MODEL=llama-scout-17b
 MAAS_VISION_MODEL=llama-scout-17b
 MAAS_EMBEDDING_MODEL=nomic-embed-text-v1-5
 MAAS_EMBEDDING_DIMENSION=768
@@ -469,7 +469,7 @@ podman login registry.redhat.io
 podman compose up -d --build
 ```
 
-OGX registers every model as `<provider_id>/<model_id>`, so local clients use `maas/gpt-oss-120b`, `maas/nomic-embed-text-v1-5`, etc. (`ogx/config.yaml`).
+OGX registers every model as `<provider_id>/<model_id>`, so local clients use `maas/llama-scout-17b`, `maas/nomic-embed-text-v1-5`, etc. (`ogx/config.yaml`).
 
 ### What Gets Started
 
@@ -736,7 +736,7 @@ Models are declared once in the `models:` block of the Helm values and propagate
 
 | Key | Default | Role |
 |-----|---------|------|
-| `models.reasoning` | `gpt-oss-120b` | Agents reasoning + tool calling (`OGX_DEFAULT_MODEL`) |
+| `models.reasoning` | `llama-scout-17b` | Agents reasoning + tool calling (`OGX_DEFAULT_MODEL`); gpt-oss-120b also works but its latency on the external MaaS varied from 2 s to 70 s per call |
 | `models.vision` | `llama-scout-17b` | OCR of PDF page images (`OGX_VISION_MODEL`) |
 | `models.guardrails` | `llama-scout-17b` | NeMo LLM-based rails (self check input) |
 | `models.embedding` | `nomic-embed-text-v1-5` | Embeddings |
@@ -744,7 +744,7 @@ Models are declared once in the `models:` block of the Helm values and propagate
 
 ```yaml
 models:
-  reasoning: gpt-oss-120b
+  reasoning: llama-scout-17b
   vision: llama-scout-17b
   guardrails: llama-scout-17b
   embedding: nomic-embed-text-v1-5
@@ -792,7 +792,23 @@ Each agent exposes its agent card at `/.well-known/agent-card.json` (readiness p
 
 **Execution**: NeMo input rails → OGX `/v1/responses` with the profile's MCP tools → NeMo output rails. MCP tools are reached through the MCP Gateway (`MCP_GATEWAY_URL`) when `mcpGateway.enabled`, otherwise per server (`http://<server>.<ns>.svc.cluster.local:8080/mcp`).
 
-**Streaming events**: tool activity is sent as `working` status updates (`event: tool_call | tool_result`, `name`, `server`, `status`), text as `response` artifact chunks (a non-append chunk replaces the text with its masked version). The final status message carries `output`, `decision`, `tool_calls`, `response_id`, `model`, `usage`, `prompt {name, version, source}` and `guardrails {input, output}`. The backend A2A client normalizes them into the same `tool_call` / `tool_result` / `text_delta` / `text_replace` / `done` events as the Responses API stream.
+**Streaming events**: tool activity and guardrails verdicts are sent as `working` status updates (`event: tool_call | tool_result | guardrails`), text as `response` artifact chunks (a non-append chunk replaces the text). The final status message carries `output`, `decision`, `tool_calls`, `response_id`, `model`, `usage`, `duration_ms`, `prompt {name, version, source}`, `guardrails {input, output}` and `caller` (the SPIFFE ID of the authenticated caller).
+
+**Agent routing**: the backend picks the agent (and the postal profile) with a semantic router (`backend/app/services/agents/semantic_router.py`). It embeds, once, the skills published in each A2A agent card (description + examples, tagged `profile:<agent_id>`), then compares the message embedding: a clear winner is routed directly (~0.5 s); when two agents are too close, one short LLM call picks between them; a weak match on a follow-up (“merci”, “et le deuxième ?”) stays on the session's agent. Keyword routing remains as a fallback (`ROUTER_ENABLED`, `ROUTER_MIN_SCORE=0.62`, `ROUTER_MARGIN=0.04`).
+
+**Chat SSE stream** (`POST /api/v1/orchestrator/chat/stream`), consumed by the UI's A2A panel:
+
+| Event | Content |
+|---|---|
+| `routing` | chosen agent, method (`semantic`, `llm`, `sticky`, `keywords`), score, top candidates, duration |
+| `agent_resolved` | agent id |
+| `a2a` (`phase: request`) | agent card (name, version, URL, skills), profile, auth (`JWT-SVID` + audience) |
+| `a2a` (`phase: status`) | task state transitions (`submitted` → `working` → `completed`/`failed`/`rejected`), task and context ids |
+| `guardrails` | `input` / `output` verdict (`passed`, `modified`, `blocked`) |
+| `tool_call`, `tool_result` | MCP tool activity |
+| `text_delta`, `text_replace` | answer text (already masked) |
+| `heartbeat` | every 10 s while waiting, so load balancers never cut long answers |
+| `done` | usage, model, suggested actions, `a2a` summary (task id, durations, caller SPIFFE ID, prompt version, guardrails) |
 
 **SPIFFE (optional, `spiffe.enabled`)**: the backend fetches a JWT-SVID for audience `a2a:<agent>-agent` from the SPIFFE CSI Workload API socket and sends it as `Authorization: Bearer`. Each agent validates it against its local SPIRE agent and only accepts the caller `/ns/<ns>/sa/backend` (401 without/invalid token, 403 for another identity). The agent card and `/health` stay public.
 
@@ -811,8 +827,8 @@ Each agent prompt distinguishes between **information queries** (detail, list, s
 ```yaml
 # OGX
 OGX_ENDPOINT: http://ogx-service.<NAMESPACE>.svc.cluster.local:8321
-OGX_DEFAULT_MODEL: gpt-oss-120b
-OGX_STREAMING_MODEL: gpt-oss-120b
+OGX_DEFAULT_MODEL: maas/llama-scout-17b
+OGX_STREAMING_MODEL: maas/llama-scout-17b
 OGX_EMBEDDING_MODEL: nomic-embed-text-v1-5
 OGX_EMBEDDING_DIMENSION: "768"
 OGX_TIMEOUT: "300"

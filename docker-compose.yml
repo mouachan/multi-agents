@@ -20,7 +20,7 @@ x-postgres-env: &postgres-env
 # OGX 1.2 model identifiers are "<provider_id>/<model_id>" (provider "maas" in ogx/config.yaml)
 x-ogx-env: &ogx-env
   OGX_ENDPOINT: http://ogx:8321
-  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-llama-scout-17b}
   OGX_EMBEDDING_MODEL: maas/${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
   OGX_EMBEDDING_DIMENSION: ${MAAS_EMBEDDING_DIMENSION:-768}
   OGX_TIMEOUT: 300
@@ -34,7 +34,7 @@ x-mcp-env: &mcp-env
 x-agent-env: &agent-env
   AGENT_PORT: 8090
   OGX_ENDPOINT: http://ogx:8321
-  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-llama-scout-17b}
   OGX_MAX_TOKENS: 4096
   OGX_TIMEOUT: 300
   MCP_SERVER_URL_TEMPLATE: http://{server}:8080/mcp
@@ -81,7 +81,7 @@ services:
       RUN_CONFIG_PATH: /etc/ogx/config.yaml
       MAAS_BASE_URL: ${MAAS_BASE_URL:?set MAAS_BASE_URL in .env}
       MAAS_API_KEY: ${MAAS_API_KEY:?set MAAS_API_KEY in .env}
-      MAAS_REASONING_MODEL: ${MAAS_REASONING_MODEL:-gpt-oss-120b}
+      MAAS_REASONING_MODEL: ${MAAS_REASONING_MODEL:-llama-scout-17b}
       MAAS_VISION_MODEL: ${MAAS_VISION_MODEL:-llama-scout-17b}
       MAAS_EMBEDDING_MODEL: ${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
       MAAS_EMBEDDING_DIMENSION: ${MAAS_EMBEDDING_DIMENSION:-768}
@@ -123,7 +123,7 @@ services:
       <<: [*postgres-env, *ogx-env]
       DEBUG: "true"
       ENVIRONMENT: development
-      OGX_STREAMING_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+      OGX_STREAMING_MODEL: maas/${MAAS_REASONING_MODEL:-llama-scout-17b}
       OGX_MAX_TOKENS: 4096
       OCR_SERVER_URL: http://ocr-server:8080
       RAG_SERVER_URL: http://rag-server:8080

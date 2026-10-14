@@ -105,7 +105,7 @@ postgresql:
 # Models — Red Hat OpenShift AI 3.5 Models-as-a-Service (no on-cluster GPU)
 # =============================================================================
 models:
-  reasoning: gpt-oss-120b          # agents (tool calling, reasoning)
+  reasoning: llama-scout-17b       # agents (tool calling, reasoning)
   vision: llama-scout-17b          # OCR (multimodal)
   guardrails: llama-scout-17b      # NeMo LLM-based rails (fast)
   embedding: nomic-embed-text-v1-5
@@ -557,7 +557,9 @@ guardrails:
   # Presidio PII masking (entities replaced by <ENTITY_TYPE>)
   pii:
     inputEntities: [PERSON, EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
-    outputEntities: [PERSON, EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
+    # No PERSON on output: Presidio's English spaCy model tags ordinary French words as
+    # PERSON (answers became "<PERSON>, <PERSON> ..."); names shown come from business data.
+    outputEntities: [EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
     scoreThreshold: 0.4
 
 # =============================================================================

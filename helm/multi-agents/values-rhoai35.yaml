@@ -19,7 +19,7 @@ global:
   namespace: multi-agents
 
 models:
-  reasoning: gpt-oss-120b
+  reasoning: llama-scout-17b    # ~2 s per agent turn on the external MaaS (gpt-oss-120b: 2-70 s)
   vision: llama-scout-17b
   guardrails: llama-scout-17b
   embedding: nomic-embed-text-v1-5

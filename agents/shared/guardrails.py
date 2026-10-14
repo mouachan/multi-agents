@@ -5,9 +5,12 @@ rails without generating an LLM answer and returns the processed text:
     request : {"model", "messages": [{"role": "user"|"assistant", "content"}], "guardrails": {"config_id"}}
     response: {"status": "passed" | "modified" | "blocked", "content": "<text after rails>", "rail": "<name>"}
 A user message triggers the input rails, an assistant-only message the output rails.
-Presidio masking replaces entities with <ENTITY_TYPE> placeholders.
+Presidio masking replaces entities with <ENTITY_TYPE> placeholders; they are rewritten
+as [ENTITY_TYPE]: the LLM answers nothing when its input contains "<IBAN_CODE>"-like
+tags, and markdown renderers drop them as unknown HTML.
 """
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +19,8 @@ import httpx
 from .config import AgentSettings
 
 logger = logging.getLogger(__name__)
+
+PLACEHOLDER = re.compile(r"<([A-Z][A-Z0-9_]*)>")
 
 BLOCKED_MESSAGES = {
     "fr": "Désolé, cette requête a été bloquée par notre système de sécurité (NeMo Guardrails). "
@@ -92,5 +97,5 @@ class Guardrails:
         content = data.get("content")
         if status == "modified" and content:
             logger.info("NeMo masked sensitive data in %s message", role)
-            return GuardrailResult(True, content, status=status, rail=rail)
+            return GuardrailResult(True, PLACEHOLDER.sub(r"[\1]", content), status=status, rail=rail)
         return GuardrailResult(True, text, status="passed", rail=rail)
