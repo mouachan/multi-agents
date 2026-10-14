@@ -19,7 +19,8 @@ CREATE TYPE reclamation_status AS ENUM (
     'completed',
     'rejected',
     'manual_review',
-    'escalated'
+    'escalated',
+    'failed'
 );
 
 CREATE TYPE reclamation_type AS ENUM (

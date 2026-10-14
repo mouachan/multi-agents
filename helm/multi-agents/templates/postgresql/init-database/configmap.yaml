@@ -73,6 +73,13 @@ data:
         echo " => Done"
     fi
 
+    echo Applying schema updates ...
+    # Values added after the first release (idempotent)
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql "$POSTGRESQL_DATABASE" -c \
+        "ALTER TYPE reclamation_status ADD VALUE IF NOT EXISTS 'failed'"
+    echo " => Done"
+
     # =========================================================================
     # Initialize ogx database (technical database for OGX)
     # =========================================================================

@@ -53,6 +53,7 @@ class ReclamationStatus(str, enum.Enum):
     rejected = "rejected"
     manual_review = "manual_review"
     escalated = "escalated"
+    failed = "failed"  # processing error (agent or model unavailable); can be processed again
 
 
 class ReclamationType(str, enum.Enum):

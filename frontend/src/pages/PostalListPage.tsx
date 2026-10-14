@@ -10,7 +10,7 @@ import { formatDate, formatMoney, numericKey } from '../lib/format'
 import { postalApi } from '../services/api'
 import type { Reclamation } from '../types/reclamation'
 
-const STATUSES = ['pending', 'processing', 'completed', 'manual_review', 'escalated', 'rejected']
+const STATUSES = ['pending', 'processing', 'completed', 'manual_review', 'escalated', 'rejected', 'failed']
 const TYPES = ['colis_endommage', 'colis_perdu', 'non_livre', 'mauvaise_adresse', 'vol_point_relais', 'retard_livraison']
 
 export default function PostalListPage() {

@@ -1,6 +1,6 @@
 // Type definitions for Reclamation (Courrier & Colis) module
 
-export type ReclamationStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'manual_review' | 'escalated'
+export type ReclamationStatus = 'pending' | 'processing' | 'completed' | 'rejected' | 'manual_review' | 'escalated' | 'failed'
 
 export type ReclamationType = 'colis_endommage' | 'colis_perdu' | 'non_livre' | 'mauvaise_adresse' | 'vol_point_relais' | 'retard_livraison'
 
