@@ -301,16 +301,26 @@ What the chart creates for the RHOAI 3.5 features:
 | `templates/maas/` | `ExternalProvider` → `ExternalModel` + `MaaSModelRef` (gpt-oss-120b, llama-scout-17b), `MaaSSubscription` + `MaaSAuthPolicy` (namespace ServiceAccounts), Job `maas-api-key` (mints an `sk-oai-` key into Secret `maas-api-key`) |
 | `templates/ogx/` | `OGXServer` `ogx` + run config (kv/sql on PostgreSQL, pgvector, S3 files, pypdf, MCP) |
 | `templates/agents/` | `claims-agent`, `tenders-agent`, `postal-agent` (A2A, port 8090) |
-| `templates/mcp-servers/` | 6 `MCPServer` CRs (`/mcp` Streamable HTTP) |
+| `templates/mcp-servers/` | 7 `MCPServer` CRs (`/mcp` Streamable HTTP; `/tmp` is an `emptyDir`, the operator mounts the root filesystem read-only), with the AI hub annotations `mcp.opendatahub.io/display-name` / `catalog-server` |
 | `templates/mcp-gateway/` | `Gateway`, `MCPGatewayExtension`, `MCPServerRegistration`s, rate limit |
 | `templates/guardrails/` | `NemoGuardrails` + config (Presidio PII masking incl. French recognizers, self-check input) |
 | `templates/mlflow/` | RoleBinding `mlflow-operator-mlflow-integration`, Job `prompt-sync` |
 | `templates/spiffe/` | `ClusterSPIFFEID` |
+| `templates/openshell/` | Sandbox policy ConfigMap for `run_python` (`mcp.sandbox`, needs the OpenShell gateway — see [openshell/README.md](openshell/README.md)) |
+| `templates/rhoai/` | ConfigMap `multi-agents-catalog` in `rhoai-model-registries` (agents + MCP catalog sources), ConfigMap `gen-ai-aa-mcp-servers` (playground) |
+| `templates/monitoring/` | `PersesDashboard` `dashboard-5-multi-agents` in `redhat-ods-monitoring`, NetworkPolicy for the OGX metrics port |
 
 Models: chat models go through the **cluster MaaS** (`https://maas.<apps-domain>/v1`,
 API key bound to the `multi-agents` subscription). MaaS external models are chat-only,
 so **embeddings** (`nomic-embed-text-v1-5`, 768 dims) are served straight from the
 external MaaS.
+
+**Upgrades**: use `--reset-then-reuse-values` (`--reuse-values` ignores new chart
+defaults) and pin the image tags you built (`--set backend.image.tag=...`,
+`agents.<name>.image.tag`, `mcp.<name>.image.tag`, `frontend.image.tag`,
+`dataInit.image.tag`): a release value left at an older tag rolls the workload back.
+Hook Jobs use `before-hook-creation`, so a Job left by an interrupted upgrade does not
+block the next one.
 
 ---
 
@@ -336,6 +346,36 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
   -d '{"model":"llama-scout-17b","messages":[{"role":"user","content":"Mon IBAN est FR76 3000 6000 0112 3456 7890 189, email jean.dupont@example.com"}],"guardrails":{"config_id":"multi-agents"}}'
 # -> {"status":"modified","content":"Mon IBAN est <FR_IBAN>, email <EMAIL_ADDRESS>"}  (or <IBAN_CODE>)
 ```
+
+### OpenShift AI catalogs and metrics
+
+* **AI hub → Agents / MCP servers**: the chart registers the three A2A agents and the
+  seven MCP servers as catalog sources (`rhoaiCatalog` values). Check them with
+  `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
+  (`multi_agents_agents`, `multi_agents_mcp`).
+* **Observe & monitor → Multi-agents** (Perses): OGX requests, latency, time to first
+  token, tokens/s, tool and agentic calls, MLflow requests, MaaS authorized hits.
+  MaaS counters need the tenant telemetry:
+
+  ```bash
+  oc patch maastenantconfig default-tenant -n models-as-a-service --type=merge \
+    -p '{"spec":{"telemetry":{"enabled":true,"metrics":{"captureModelUsage":true}}}}'
+  ```
+
+  (`captureUser` adds the user id to the metrics: GDPR review first.)
+
+### Business processing
+
+```bash
+B=https://backend-<namespace>.<apps-domain>/api/v1
+curl -X POST $B/tenders/<id>/process -H 'Content-Type: application/json' -d '{}'   # returns at once
+curl $B/tenders/<id>/status | jq '.status, [.processing_steps[].step_name]'          # poll
+```
+
+Every tool step should be `completed`, and the RAG steps should return precedents:
+`data-init` embeds the reference data (company references, historical tenders,
+capabilities, knowledge bases, contracts) and retries the OCR of the seeded
+precedents on every upgrade; the backend embeds each processed document.
 
 ---
 
@@ -367,3 +407,8 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
 * NeMo's OpenAI client cannot skip TLS verification: with `models.maas.tlsVerify=false`
   (self-signed gateway) the guardrails LLM calls the external MaaS directly.
 * `MCPServer` has no `imagePullPolicy`: bump image tags on rebuilds.
+* Llama via this MaaS turns multi-tool requests into Python-like text calls the
+  gateway cannot parse (OGX 500): processing runs one tool per call (guided workflow).
+  gpt-oss-120b fails multi-step tool calling through the same MaaS.
+* The MaaS gateway stalls on request bodies above ~90 KB: OCR page images are capped
+  at 60 KB of base64 (`OCR_MAX_IMAGE_B64_KB`).

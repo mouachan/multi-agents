@@ -60,30 +60,28 @@ Many business processes require expert analysis of documents, comparison with hi
 
 Instead of rigid, pre-programmed rules, the system uses the **ReAct (Reasoning + Acting)** pattern where an AI agent reasons about what information it needs, calls appropriate tools, observes the results, and repeats until it can make a decision.
 
-In practice, the agent calls **all 4 tools in a single parallel batch** for maximum efficiency:
+Business processing (the **Process** button, `POST /api/v1/<domain>/<id>/process`) runs a **guided workflow** in the agent: one OGX Responses call per tool (`tool_choice: required`, `max_tool_calls: 1`, `parallel_tool_calls: false`, chained by `previous_response_id`), then a final call that analyzes the results, may use the optional tools (`run_python`, knowledge base search) and ends with a JSON decision block. Llama emits Python-like text instead of structured calls when asked for several tools at once, so one tool per call keeps processing reliable; a failed step is retried once, then recorded and the workflow continues.
 
 ```
 Customer Submits Claim
         |
 +-------------------------------------------------------+
-|  ReAct Agent — Single-batch parallel tool calling      |
+|  Guided agent workflow — one tool per OGX call         |
 +-------------------------------------------------------+
-|                                                        |
-|  get_claim(claim_id)          -> Claim details         |
-|  ocr_document(document_id)   -> Extracted text (OCR)   |
-|  retrieve_user_info(user_id) -> Contracts & coverage   |
-|  retrieve_similar_claims()   -> Historical precedents  |
-|                                                        |
-|  All 4 tools accept the claim number directly.         |
-|  Auto-resolution removes inter-tool dependencies.      |
+|  1. retrieve_user_info(user_id)  -> Contracts          |
+|  2. retrieve_similar_claims()    -> Precedents (RAG)   |
+|  3. ocr_document(claim_number)   -> Extracted text     |
+|  4. analysis (+ run_python in the OpenShell sandbox)   |
 +-------------------------------------------------------+
         |
-  Agent synthesizes all results
-  -> Recommendation: Approve / Deny / Manual Review
-  -> Confidence score + reasoning
+  JSON decision: Approve / Deny / Manual Review
+  + confidence + reasoning
         |
-  save_claim_decision() -> Persists decision + embedding
+  Backend saves the decision and embeds the document
+  (searchable as a precedent)
 ```
+
+The endpoint returns at once (`status: processing`) and the job runs in the backend; the UI polls `GET /api/v1/<domain>/<id>/status` (cloud load balancers close requests idle for 60 s). An item left `processing` without a running job (backend restart) can be processed again.
 
 ### Multi-Agent Orchestrator
 
@@ -114,6 +112,7 @@ User Message
 +--------------------------------------------------+
 |              MCP Tool Servers                     |
 | OCR | RAG | Claims | Tenders | Postal | Tracking |
+| Sandbox (run_python in OpenShell)                |
 +--------------------------------------------------+
     |
     v
@@ -128,7 +127,7 @@ User Message
 - **SSE Streaming**: Real-time response streaming via `POST /api/v1/orchestrator/chat/stream` with tool call events, text deltas, and completion notifications
 - **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` / `save_reclamation_decision` MCP tools to persist decisions, update status, and auto-generate embeddings
 - **RAG by precedents**: Similar claims/tenders found via pgvector cosine similarity on OCR text embeddings
-- **Intent-based routing**: Keyword classification routes user messages to the correct domain agent
+- **Semantic routing**: embeddings of the A2A agent card skills pick the agent, one short LLM call breaks ties, keywords as fallback (see [A2A agents](#a2a-agents))
 - **Chat sessions**: Persistent conversation history with session management
 - **Tool call observability**: Full tool execution traces (name, server, output, error) persisted and displayed in UI
 - **Token consumption tracking**: Per-message and per-session LLM token usage displayed in chat
@@ -518,7 +517,7 @@ FORCE_REINIT=true podman compose up data-init
 
 # OpenShift (via Helm)
 helm upgrade multi-agents helm/multi-agents \
-  --reuse-values \
+  --reset-then-reuse-values \
   --set dataInit.forceReinit=true \
   -n <NAMESPACE>
 ```
@@ -584,6 +583,9 @@ The step-by-step platform setup (operators, DataScienceCluster patch, SPIRE oper
 | PII masking, jailbreak check | **NeMo Guardrails** (`NemoGuardrails`, TrustyAI) | `templates/guardrails/` |
 | Traces, versioned prompts | **MLflow** (tracing + Prompt Registry) | `templates/mlflow/` |
 | Agent identity without a mesh | **SPIFFE/SPIRE** via ZTWIM (`ClusterSPIFFEID`) | `templates/spiffe/` |
+| Sandboxed code execution (`run_python`) | **OpenShell** (NVIDIA, Developer Preview): kernel-enforced policy, no network | `templates/openshell/`, `mcp.sandbox` — see [openshell/README.md](openshell/README.md) |
+| Agents and MCP servers in the AI hub catalogs | **Model catalog** sources (`opendatahub.io/catalog-source`) | `templates/rhoai/` (`rhoaiCatalog`) |
+| Metrics dashboard (OGX, MLflow, MaaS) | **Perses** dashboard in *Observe & monitor* | `templates/monitoring/` (`observability`) |
 
 `helm/multi-agents/values-rhoai35.yaml` enables all of these features on top of `values.yaml`. Sizing: the application requests ~8 vCPU / ~24 GiB; see the setup guide for cluster topologies.
 
@@ -996,7 +998,7 @@ Each span includes: `response.id`, input/output text, tool call details, token u
 
 ```bash
 helm upgrade multi-agents helm/multi-agents \
-  --reuse-values \
+  --reset-then-reuse-values \
   --set mlflow.enabled=true \
   --set mlflow.workspace=<NAMESPACE> \
   -n <NAMESPACE>
@@ -1048,11 +1050,14 @@ BACKEND=http://localhost:8000
 # List claims
 curl "$BACKEND/api/v1/claims?status=pending" | jq
 
-# Process a claim
+# Process a claim (returns at once, the agent runs in the background)
 CLAIM_ID="<uuid-from-list>"
 curl -X POST "$BACKEND/api/v1/claims/$CLAIM_ID/process" \
   -H "Content-Type: application/json" \
   -d '{"skip_ocr": false, "enable_rag": true}'
+
+# Poll until status is no longer "processing" (1-2 min)
+curl "$BACKEND/api/v1/claims/$CLAIM_ID/status" | jq .status
 
 # Get decision
 curl "$BACKEND/api/v1/claims/$CLAIM_ID/decision" | jq
@@ -1118,6 +1123,7 @@ The OCR server sends PDF page images to the vision model (`models.vision`) throu
 - Check the OCR server and OGX logs for inference errors
 - Verify the vision model is listed in `models.maas.chatModels`
 - Each page takes ~5-10 seconds, multi-page documents take longer
+- Page images are sent as grayscale JPEG shrunk to at most `OCR_MAX_IMAGE_B64_KB` (default 60 KB of base64): the MaaS gateway stalls on request bodies above ~90 KB
 
 ### NeMo Guardrails Not Working
 
