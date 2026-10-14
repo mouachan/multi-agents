@@ -117,6 +117,7 @@ class OGXClient:
             payload["tool_choice"] = tool_choice
         if max_tool_calls:
             payload["max_tool_calls"] = max_tool_calls
+            payload["parallel_tool_calls"] = False  # no duplicated call (arguments "{..}{..}")
 
         full_text: List[str] = []
         tool_calls: List[Dict[str, Any]] = []

@@ -293,8 +293,20 @@ class BaseA2AExecutor(AgentExecutor):
             step_input = (input_message if i == 1 else "") + step.format(i=i, n=len(forced), tool=tool)
             # max_tool_calls=1: with tool_choice=required OGX would otherwise call the tool
             # again on every turn (4 get_reclamation calls in one step)
-            done = await self._run(updater, model, instructions, step_input, [tool], response_id,
-                                   tool_choice="required", max_tool_calls=1, emit_text=False)
+            done: Dict[str, Any] = {}
+            for attempt in (1, 2):
+                logger.info("Guided step %d/%d: %s (attempt %d)", i, len(forced), tool, attempt)
+                try:
+                    done = await self._run(updater, model, instructions, step_input, [tool], response_id,
+                                           tool_choice="required", max_tool_calls=1, emit_text=False)
+                    break
+                except RuntimeError as e:
+                    # Intermittent: malformed tool-call arguments ("Extra data"), MaaS disconnects
+                    logger.warning("Guided step %s failed (attempt %d): %s", tool, attempt, e)
+            if not done:
+                # Keep going: the decision is made with the other results
+                tool_calls.append({"name": tool, "error": "step failed after 2 attempts"})
+                continue
             tool_calls += done.get("tool_calls", [])
             usage = _merge_usage(usage, done.get("usage") or {})
             response_id = done.get("response_id") or response_id

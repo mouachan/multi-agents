@@ -148,23 +148,32 @@ async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
     """Extract text from a PIL Image using the OGX vision model."""
     b64 = _encode_image(image)
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            f"{OGX_ENDPOINT}/v1/chat/completions",
-            json={
-                "model": VISION_MODEL,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": OCR_PROMPT},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                    ]
-                }],
-                "max_tokens": VISION_MAX_TOKENS,
-            },
-        )
-        resp.raise_for_status()
-        result = resp.json()
+    # The vision call sometimes hangs on the MaaS side: 60 s per attempt, one retry
+    resp = None
+    for attempt in (1, 2):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{OGX_ENDPOINT}/v1/chat/completions",
+                    json={
+                        "model": VISION_MODEL,
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": OCR_PROMPT},
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                            ]
+                        }],
+                        "max_tokens": VISION_MAX_TOKENS,
+                    },
+                )
+                resp.raise_for_status()
+            break
+        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+            logger.warning(f"Vision call failed (attempt {attempt}): {type(e).__name__} {e}")
+            if attempt == 2:
+                raise
+    result = resp.json()
 
     text = result["choices"][0]["message"]["content"]
     # Vision models don't return per-word confidence; use 0.95 as default
