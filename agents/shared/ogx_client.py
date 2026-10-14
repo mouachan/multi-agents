@@ -100,6 +100,7 @@ class OGXClient:
         max_tokens: int = 4096,
         previous_response_id: Optional[str] = None,
         tool_choice: Optional[str] = None,
+        max_tool_calls: Optional[int] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
             "model": model,
@@ -114,6 +115,8 @@ class OGXClient:
             payload["previous_response_id"] = previous_response_id
         if tool_choice and payload["tools"]:
             payload["tool_choice"] = tool_choice
+        if max_tool_calls:
+            payload["max_tool_calls"] = max_tool_calls
 
         full_text: List[str] = []
         tool_calls: List[Dict[str, Any]] = []

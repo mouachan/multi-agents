@@ -291,8 +291,10 @@ class BaseA2AExecutor(AgentExecutor):
             # Only the templates are formatted: the request may contain braces (JSON data)
             step = GUIDED_STEP if i == 1 else GUIDED_NEXT
             step_input = (input_message if i == 1 else "") + step.format(i=i, n=len(forced), tool=tool)
+            # max_tool_calls=1: with tool_choice=required OGX would otherwise call the tool
+            # again on every turn (4 get_reclamation calls in one step)
             done = await self._run(updater, model, instructions, step_input, [tool], response_id,
-                                   tool_choice="required", emit_text=False)
+                                   tool_choice="required", max_tool_calls=1, emit_text=False)
             tool_calls += done.get("tool_calls", [])
             usage = _merge_usage(usage, done.get("usage") or {})
             response_id = done.get("response_id") or response_id
@@ -308,7 +310,7 @@ class BaseA2AExecutor(AgentExecutor):
 
     async def _run(self, updater: TaskUpdater, model, instructions, input_message, tools,
                    previous_response_id, tool_choice: Optional[str] = None,
-                   emit_text: bool = True) -> Dict[str, Any]:
+                   max_tool_calls: Optional[int] = None, emit_text: bool = True) -> Dict[str, Any]:
         """Stream one OGX response, forwarding (masked) text and tool activity as A2A events.
 
         The first chunk starts (or, on a retry, replaces) the "response" artifact.
@@ -348,6 +350,7 @@ class BaseA2AExecutor(AgentExecutor):
             max_tokens=self.settings.ogx_max_tokens,
             previous_response_id=previous_response_id,
             tool_choice=tool_choice,
+            max_tool_calls=max_tool_calls,
         ):
             etype = ev["type"]
             if etype == "text_delta":

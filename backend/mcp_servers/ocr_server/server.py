@@ -123,12 +123,30 @@ OCR_PROMPT = (
 )
 
 
+# The cluster MaaS gateway does not pass request bodies much above ~128 KB (larger vision
+# requests hang, then fail with HTTP 500): page images are sent as grayscale JPEG, shrunk
+# until their base64 form fits (text stays readable: ~1000 chars per page at 850x1100).
+MAX_IMAGE_B64_KB = int(os.getenv("OCR_MAX_IMAGE_B64_KB", "96"))
+
+
+def _encode_image(image: Image.Image) -> str:
+    img = image.convert("L")
+    quality = 85
+    while True:
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        if len(b64) <= MAX_IMAGE_B64_KB * 1024 or min(img.size) < 400:
+            return b64
+        if quality > 60:
+            quality -= 10
+        else:
+            img = img.resize((int(img.width * 0.8), int(img.height * 0.8)))
+
+
 async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
     """Extract text from a PIL Image using the OGX vision model."""
-    # Convert image to base64 PNG
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
+    b64 = _encode_image(image)
 
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
@@ -139,7 +157,7 @@ async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": OCR_PROMPT},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                     ]
                 }],
                 "max_tokens": VISION_MAX_TOKENS,
