@@ -24,4 +24,22 @@ spec:
         secretKeyRef:
           name: {{ include "multi-agents.guardrails.llmKeySecret" . }}
           key: api-key
+---
+# The operator exposes the NeMo server through a public Route without authentication:
+# only the pods of this namespace (agents, backend) may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Values.guardrails.name }}-same-namespace
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.guardrails.name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
 {{- end }}
