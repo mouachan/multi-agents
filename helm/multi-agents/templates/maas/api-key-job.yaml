@@ -85,10 +85,14 @@ spec:
           fi
           TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
           echo "Requesting a MaaS API key for subscription ${SUBSCRIPTION} ..."
-          RESP=$(curl -sk --fail-with-body -X POST "${MAAS_API}" \
+          # Status checked explicitly: the ose-cli curl predates --fail-with-body
+          RESP=$(curl -sk -w '\n%{http_code}' -X POST "${MAAS_API}" \
             -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
             -d "{\"name\":\"{{ $ns }}-ogx\",\"expiresIn\":\"${EXPIRES_IN}\",\"subscription\":\"${SUBSCRIPTION}\"}")
-          KEY=$(echo "${RESP}" | tr -d '\n' | sed -n 's/.*"key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+          CODE=$(echo "${RESP}" | tail -n1)
+          BODY=$(echo "${RESP}" | sed '$d')
+          case "${CODE}" in 2??) ;; *) echo "maas-api returned HTTP ${CODE}: ${BODY}"; exit 1 ;; esac
+          KEY=$(echo "${BODY}" | tr -d '\n' | sed -n 's/.*"key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
           [ -n "${KEY}" ] || { echo "No key in maas-api response"; exit 1; }
           oc create secret generic maas-api-key --from-literal=api-key="${KEY}" --dry-run=client -o yaml \
             | oc label --local -f - ogx.io/watch=true -o yaml | oc apply -f -
