@@ -20,6 +20,13 @@ kind: MCPServer
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
+    {{- if $root.Values.rhoaiCatalog.enabled }}
+    {{- with index $root.Values.rhoaiCatalog.mcpServers $name }}
+    # OpenShift AI MCP deployments view: display name and link to the catalog entry
+    mcp.opendatahub.io/display-name: {{ .displayName | quote }}
+    mcp.opendatahub.io/catalog-server: {{ printf "%s-mcp" $name | quote }}
+    {{- end }}
+    {{- end }}
   name: {{ $server }}
   namespace: {{ $ns }}
   labels:

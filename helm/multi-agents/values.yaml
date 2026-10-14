@@ -191,6 +191,8 @@ mcp:
       VISION_MAX_TOKENS: "2048"
       MAX_PDF_PAGES: "50"
       PDF_DPI: "200"
+      # base64 page image cap: the cluster MaaS gateway hangs on vision requests above ~90 KB
+      OCR_MAX_IMAGE_B64_KB: "60"
     probe:
       livenessInitialDelaySeconds: 30
     resources:
@@ -791,3 +793,67 @@ spiffe:
   clusterSPIFFEID:
     create: true
     className: zero-trust-workload-identity-manager-spire
+
+# =============================================================================
+# OpenShift AI dashboard — AI hub catalogs (Developer Preview) and observability
+# =============================================================================
+rhoaiCatalog:
+  enabled: true
+  # model-catalog (AI hub > Agents / MCP servers) loads the ConfigMaps of this namespace
+  # labelled opendatahub.io/catalog-source=true (the catalog pod restarts to reload them)
+  namespace: rhoai-model-registries
+  repositoryUrl: ""        # optional source link, e.g. https://github.com/<org>/<repo>
+  agents:
+    claims:
+      displayName: Claims Processing Agent
+      description: Insurance claims — OCR, contracts and precedents (RAG), approve/deny/manual_review decisions, payout in an OpenShell sandbox.
+      skills: [process-claim, query-claims]
+      tags: [insurance, claims]
+    tenders:
+      displayName: Tenders Analysis Agent
+      description: BTP tenders (appels d'offres) — OCR, references, history and capabilities, Go/No-Go/A approfondir decisions.
+      skills: [analyze-tender, query-tenders]
+      tags: [btp, tenders]
+    postal:
+      displayName: Postal Services Agent
+      description: Postal complaints (rembourser/reexpedier/rejeter/escalader), parcel tracking and postal information — three profiles.
+      skills: [process-complaint, track-parcel, postal-info, query-complaints]
+      tags: [postal, complaints, tracking]
+  mcpServers:
+    ocr:
+      displayName: Document OCR
+      description: Text extraction from PDF and image documents with the vision model.
+      tools: [ocr_document, list_supported_formats]
+    rag:
+      displayName: Knowledge & similarity search
+      description: pgvector retrieval — user contracts, similar claims/tenders/complaints, references, capabilities, knowledge bases.
+      tools: [retrieve_user_info, retrieve_similar_claims, search_knowledge_base, retrieve_similar_references, retrieve_historical_tenders, retrieve_capabilities, search_courrier_knowledge, retrieve_similar_reclamations]
+    claims:
+      displayName: Claims records
+      description: Insurance claims — list, details, documents, statistics, save decisions.
+      tools: [list_claims, get_claim, get_claim_documents, get_claim_statistics, save_claim_decision]
+    tenders:
+      displayName: Tenders records
+      description: BTP tenders — list, details, documents, statistics, save decisions.
+      tools: [list_tenders, get_tender, get_tender_documents, get_tender_statistics, save_tender_decision]
+    postal:
+      displayName: Postal complaints records
+      description: Postal complaints — list, details, documents, statistics, save decisions.
+      tools: [list_reclamations, get_reclamation, get_reclamation_documents, get_reclamation_statistics, analyze_reclamation, save_reclamation_decision]
+    tracking:
+      displayName: Parcel tracking
+      description: Parcel and mail tracking timelines.
+      tools: [get_tracking, search_tracking]
+    sandbox:
+      displayName: Sandboxed code interpreter
+      description: run_python executes LLM-generated Python in an OpenShell sandbox (no network, Landlock).
+      tools: [run_python]
+  # Gen AI Studio playground MCP list (ConfigMap gen-ai-aa-mcp-servers in the RHOAI apps namespace)
+  playground:
+    enabled: true
+    namespace: redhat-ods-applications
+
+observability:
+  enabled: true
+  # RHOAI monitoring stack (DSCI monitoring): Perses dashboards live next to their datasources
+  monitoringNamespace: redhat-ods-monitoring

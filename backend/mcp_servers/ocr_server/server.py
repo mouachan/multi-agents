@@ -124,9 +124,9 @@ OCR_PROMPT = (
 
 
 # The cluster MaaS gateway does not pass request bodies much above ~128 KB (larger vision
-# requests hang, then fail with HTTP 500): page images are sent as grayscale JPEG, shrunk
+# requests hang, then fail with HTTP 500; 92 KB hung, 48 KB passed in 6 s): page images are sent as grayscale JPEG, shrunk
 # until their base64 form fits (text stays readable: ~1000 chars per page at 850x1100).
-MAX_IMAGE_B64_KB = int(os.getenv("OCR_MAX_IMAGE_B64_KB", "96"))
+MAX_IMAGE_B64_KB = int(os.getenv("OCR_MAX_IMAGE_B64_KB", "60"))
 
 
 def _encode_image(image: Image.Image) -> str:

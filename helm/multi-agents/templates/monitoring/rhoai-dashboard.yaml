@@ -1,0 +1,210 @@
+{{- if .Values.observability.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- /*
+"Multi-agents" tab of the OpenShift AI observability dashboard: PersesDashboard CRs named
+dashboard-<order>-<name> in the monitoring namespace (next to the datasources). OGX and MLflow
+metrics come from the OpenShift user-workload Prometheus (cluster datasource); MaaS counters
+from the RHOAI Prometheus (needs MaaS telemetry on the tenant).
+*/}}
+---
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: dashboard-5-multi-agents
+  namespace: {{ .Values.observability.monitoringNamespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  config:
+    display:
+      name: Multi-agents
+      description: OGX (Responses API, MCP tools), Models-as-a-Service and MLflow for the multi-agents platform
+    duration: 1h
+    variables: []
+    panels:
+      concurrent:
+        kind: Panel
+        spec:
+          display: {name: "Concurrent requests", description: "Requests in flight in OGX"}
+          plugin: {kind: StatChart, spec: {calculation: last, format: {unit: decimal}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum(ogx_concurrent_requests{namespace="{{ $ns }}"})'
+      agentic:
+        kind: Panel
+        spec:
+          display: {name: "Agentic calls / min", description: "Responses API calls that ran tools (A2A agents)"}
+          plugin: {kind: StatChart, spec: {calculation: last, format: {unit: decimal}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum(rate(ogx_responses_agentic_calls_total{namespace="{{ $ns }}"}[5m])) * 60'
+      ttftStat:
+        kind: Panel
+        spec:
+          display: {name: "Time to first token p90", description: "Latency of the first generated token (all models)"}
+          plugin: {kind: StatChart, spec: {calculation: last, format: {unit: seconds}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(ogx_inference_time_to_first_token_seconds_bucket{namespace="{{ $ns }}"}[15m])))'
+      mcpStat:
+        kind: Panel
+        spec:
+          display: {name: "MCP tool calls / min", description: "Tool executions through the MCP Gateway"}
+          plugin: {kind: StatChart, spec: {calculation: last, format: {unit: decimal}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum(rate(ogx_responses_tool_types_used_total{namespace="{{ $ns }}",tool_type="mcp"}[5m])) * 60'
+      requests:
+        kind: Panel
+        spec:
+          display: {name: "OGX requests per second by API", description: "Responses, chat completions, embeddings, files..."}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: requests/sec}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum by (api) (rate(ogx_requests_total{namespace="{{ $ns }}"}[5m]))'
+      latency:
+        kind: Panel
+        spec:
+          display: {name: "OGX latency p90 by API", description: "End-to-end latency of each OGX API (includes tool calls)"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: seconds}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'histogram_quantile(0.9, sum by (le, api) (rate(ogx_request_duration_seconds_bucket{namespace="{{ $ns }}"}[5m])))'
+      inference:
+        kind: Panel
+        spec:
+          display: {name: "LLM inference duration p50 / p90", description: "Model calls through Models-as-a-Service"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: seconds}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(ogx_inference_duration_seconds_bucket{namespace="{{ $ns }}"}[5m])))'
+      tokens:
+        kind: Panel
+        spec:
+          display: {name: "Generation speed (tokens/s, median)", description: "Output tokens per second"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: decimal}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'histogram_quantile(0.5, sum by (le) (rate(ogx_inference_tokens_per_second_bucket{namespace="{{ $ns }}"}[5m])))'
+      tools:
+        kind: Panel
+        spec:
+          display: {name: "Tool usage per second by type", description: "mcp = MCP servers behind the gateway"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: requests/sec}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum by (tool_type) (rate(ogx_responses_tool_types_used_total{namespace="{{ $ns }}"}[5m]))'
+      mlflow:
+        kind: Panel
+        spec:
+          display: {name: "MLflow requests per second", description: "Tracing (OTLP) and Prompt Registry traffic"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: requests/sec}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
+                    query: 'sum(rate(mlflow_http_request_total[5m]))'
+      maas:
+        kind: Panel
+        spec:
+          display: {name: "MaaS authorized requests per second", description: "Limitador counters (needs MaaS telemetry enabled on the tenant)"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: requests/sec}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: data-science-prometheus-datasource}
+                    query: 'sum by (limitador_namespace) (rate(authorized_hits_total[5m]))'
+    layouts:
+      - kind: Grid
+        spec:
+          display: {title: Overview, collapse: {open: true}}
+          items:
+            - {x: 0, y: 0, width: 6, height: 4, content: {"$ref": "#/spec/panels/concurrent"}}
+            - {x: 6, y: 0, width: 6, height: 4, content: {"$ref": "#/spec/panels/agentic"}}
+            - {x: 12, y: 0, width: 6, height: 4, content: {"$ref": "#/spec/panels/ttftStat"}}
+            - {x: 18, y: 0, width: 6, height: 4, content: {"$ref": "#/spec/panels/mcpStat"}}
+      - kind: Grid
+        spec:
+          display: {title: "Agents, tools and models", collapse: {open: true}}
+          items:
+            - {x: 0, y: 0, width: 12, height: 8, content: {"$ref": "#/spec/panels/requests"}}
+            - {x: 12, y: 0, width: 12, height: 8, content: {"$ref": "#/spec/panels/latency"}}
+            - {x: 0, y: 8, width: 12, height: 8, content: {"$ref": "#/spec/panels/inference"}}
+            - {x: 12, y: 8, width: 12, height: 8, content: {"$ref": "#/spec/panels/tokens"}}
+            - {x: 0, y: 16, width: 12, height: 8, content: {"$ref": "#/spec/panels/tools"}}
+            - {x: 12, y: 16, width: 12, height: 8, content: {"$ref": "#/spec/panels/mlflow"}}
+            - {x: 0, y: 24, width: 12, height: 8, content: {"$ref": "#/spec/panels/maas"}}
+---
+# Let the RHOAI monitoring collector (redhat-ods-monitoring) scrape OGX metrics (port 9464);
+# the OGXServer NetworkPolicy only admits the OpenShift monitoring namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rhoai-monitoring-ogx
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Values.ogx.name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.observability.monitoringNamespace }}
+      ports:
+        - port: 9464
+{{- end }}

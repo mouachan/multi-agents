@@ -1,0 +1,122 @@
+{{- if .Values.rhoaiCatalog.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- $registry := include "multi-agents.imageRegistry" . }}
+{{- $cat := .Values.rhoaiCatalog }}
+{{- /*
+OpenShift AI 3.5 AI hub catalogs (Developer Preview): the model-catalog service in
+rhoai-model-registries loads every ConfigMap labelled opendatahub.io/catalog-source=true
+(sources.yaml + YAML catalogs). Agents are browse-only entries (the "running agents" view
+only lists OpenShell Sandboxes); MCP entries describe our servers and their tools.
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multi-agents-catalog
+  namespace: {{ $cat.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    opendatahub.io/catalog-source: "true"
+data:
+  sources.yaml: |
+    agent_catalogs:
+      - name: Multi-agents
+        id: multi_agents_agents
+        type: yaml
+        enabled: true
+        labels: [Multi-agents]
+        properties:
+          yamlCatalogPath: agents.yaml
+    mcp_catalogs:
+      - name: Multi-agents MCP
+        id: multi_agents_mcp
+        type: yaml
+        enabled: true
+        labels: [Multi-agents MCP]
+        properties:
+          yamlCatalogPath: mcp.yaml
+    labels:
+      - name: Multi-agents
+        assetType: agents
+        displayName: Multi-agents A2A agents
+        description: Decoupled A2A agents of the multi-agents platform (claims, tenders, postal)
+      - name: Multi-agents MCP
+        assetType: mcp_servers
+        displayName: Multi-agents MCP servers
+        description: MCP servers federated by the multi-agents MCP Gateway
+  agents.yaml: |
+    source: Multi-agents
+    agents:
+    {{- range $name, $a := $cat.agents }}
+    {{- $img := index $.Values.agents $name "image" }}
+      - name: {{ $name }}-agent
+        displayName: {{ $a.displayName | quote }}
+        description: {{ $a.description | quote }}
+        framework: a2a-sdk
+        labels: {{ concat (list "a2a") $a.tags | toJson }}
+        logo: ""
+        env: []
+        readme: |
+          {{ $a.displayName }} — A2A agent (a2a-sdk, JSON-RPC + SSE streaming on port 8090).
+          Agent card: http://{{ $name }}-agent.{{ $ns }}.svc.cluster.local:8090/.well-known/agent-card.json
+          Skills: {{ join ", " $a.skills }}.
+          Callers authenticate with a SPIFFE JWT-SVID (audience a2a:{{ $name }}-agent).
+        {{- with $cat.repositoryUrl }}
+        repositoryUrl: {{ . | quote }}
+        {{- end }}
+        artifacts:
+          - uri: oci://{{ $registry }}/{{ $img.repository }}:{{ $img.tag }}
+        customProperties:
+          agent_card_url:
+            metadataType: MetadataStringValue
+            string_value: http://{{ $name }}-agent.{{ $ns }}.svc.cluster.local:8090/.well-known/agent-card.json
+          skills:
+            metadataType: MetadataStringValue
+            string_value: {{ join ", " $a.skills | quote }}
+          protocol:
+            metadataType: MetadataStringValue
+            string_value: A2A
+    {{- end }}
+  mcp.yaml: |
+    source: Multi-agents MCP
+    mcp_servers:
+    {{- range $name, $m := $cat.mcpServers }}
+    {{- $cfg := index $.Values.mcp $name }}
+    {{- if $cfg.enabled }}
+      - name: {{ $name }}-mcp
+        provider: Multi-agents
+        version: "1.0.0"
+        description: {{ printf "%s — %s" $m.displayName $m.description | quote }}
+        transports: [http]
+        deploymentMode: local
+        artifacts:
+          - uri: oci://{{ $registry }}/{{ $cfg.image.repository }}:{{ $cfg.image.tag }}
+        runtimeMetadata:
+          defaultPort: 8080
+          mcpPath: /mcp
+        tags: [multi-agents]
+        tools:
+        {{- range $t := $m.tools }}
+          - name: {{ $t }}
+            accessType: {{ if hasPrefix "save_" $t }}read_write{{ else if eq $t "run_python" }}execute{{ else }}read_only{{ end }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- if $cat.playground.enabled }}
+---
+# Gen AI Studio playground: MCP servers offered to the chat (in-cluster Streamable HTTP URLs)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: {{ $cat.playground.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+data:
+  {{- range $name, $m := $cat.mcpServers }}
+  {{- if (index $.Values.mcp $name).enabled }}
+  {{ $name }}-mcp: {{ dict "url" (printf "http://%s-server.%s.svc.cluster.local:8080/mcp" $name $ns) "transport" "streamable-http" "description" $m.description | toJson | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
