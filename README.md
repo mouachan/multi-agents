@@ -760,7 +760,7 @@ models:
     tlsVerify: false         # self-signed gateway certificate on lab clusters
     namespace: models-as-a-service
     subscriptionName: multi-agents
-    tokenRateLimit: {limit: 500000, window: 1h}
+    tokenRateLimit: {limit: 3000000, window: 1h}   # one counter per release; 429 above it
     keyExpiration: 90d
     chatModels: [gpt-oss-120b, llama-scout-17b]
 ```
@@ -770,6 +770,7 @@ How it is wired:
 - OGX registers the chat models on provider `maas` (cluster MaaS gateway) and the embedding model on provider `maas-direct` (external MaaS), because MaaS external models are chat-only.
 - With `models.maas.enabled=false`, OGX calls the external MaaS directly for every model.
 - NeMo cannot skip TLS verification: with `tlsVerify: false` its self-check LLM calls go straight to the external MaaS.
+- `tokenRateLimit` is shared by the backend, the agents and NeMo (one API key). A guided business processing uses ~20-30k tokens and a chat answer ~3-8k; above the limit the gateway answers `429 Too Many Requests`, chats show the error and processings end `failed` (they can be processed again).
 
 ### A2A agents
 
