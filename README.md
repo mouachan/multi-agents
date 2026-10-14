@@ -144,7 +144,7 @@ The platform integrates **NeMo Guardrails** (GA since RHOAI 3.4) deployed by the
 
 - **Input rails**: Presidio PII masking first (the LLM never sees raw personal data), then an LLM-based `self check input` that blocks jailbreak / prompt-injection / abusive messages
 - **Output rails**: Presidio PII masking of the agent's answer
-- **PII masking**: entities are replaced by `[ENTITY_TYPE]` placeholders (e.g. `[EMAIL_ADDRESS]`, `[FR_IBAN]`), including custom French recognizers (`FR_NIR`, `FR_IBAN`, `FR_PHONE`, `FR_PLATE`). The agents rewrite Presidio's `<ENTITY_TYPE>` tags as `[ENTITY_TYPE]`: Llama answers nothing when its input contains `<IBAN_CODE>`-like tags. `PERSON` is masked on input only (on output Presidio's English model tagged ordinary French words as names)
+- **PII masking**: entities are replaced by `[ENTITY_TYPE]` placeholders (e.g. `[EMAIL_ADDRESS]`, `[FR_IBAN]`), including custom French recognizers (`FR_NIR`, `FR_IBAN`, `FR_PHONE`, `FR_PLATE`). The agents rewrite Presidio's `<ENTITY_TYPE>` tags as `[ENTITY_TYPE]`: Llama answers nothing when its input contains `<IBAN_CODE>`-like tags. `PERSON` is not masked: Presidio's English spaCy model is unreliable on French ("Liste les appels" became `<PERSON>`, while real names were missed)
 - **Masked progressive streaming**: when output rails are active, the agent masks the answer sentence by sentence and streams each sentence as soon as it is masked (no unmasked PII ever leaves the agent); tool activity is streamed live
 - **Configurable**: score threshold, entity lists, self-check on/off and fail-open behaviour via the `guardrails.*` Helm values
 

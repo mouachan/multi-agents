@@ -356,9 +356,9 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
 ## 10. Known limitations
 
 * MaaS **external models** are Technology Preview and chat-only (no embeddings).
-* NeMo Presidio runs the **English** spaCy model: French names are poorly detected
-  (and ordinary French words were tagged `PERSON` on output, hence `PERSON` is masked on
-  input only); French identifiers rely on the custom regex recognizers.
+* NeMo Presidio runs the **English** spaCy model, unreliable for French names in both
+  directions ("Liste les appels" tagged `PERSON`, "Marie Martin" missed): `PERSON` is not
+  masked; French identifiers rely on the custom regex recognizers.
 * The external MaaS latency is variable (gpt-oss-120b: 2–70 s per call): agents use
   llama-scout-17b. AWS Classic load balancers close connections idle for 60 s; the chat
   stream sends a `heartbeat` event every 10 s.

@@ -556,9 +556,10 @@ guardrails:
   selfCheckInput: true
   # Presidio PII masking (entities replaced by <ENTITY_TYPE>)
   pii:
-    inputEntities: [PERSON, EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
-    # No PERSON on output: Presidio's English spaCy model tags ordinary French words as
-    # PERSON (answers became "<PERSON>, <PERSON> ..."); names shown come from business data.
+    # No PERSON: Presidio's English spaCy model is unreliable on French text in both
+    # directions ("Liste les appels d'offres" -> "<PERSON> d'offres", while "Marie Martin"
+    # is missed). Structured identifiers are detected reliably (patterns + checksums).
+    inputEntities: [EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
     outputEntities: [EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
     scoreThreshold: 0.4
 
