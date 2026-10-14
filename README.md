@@ -447,35 +447,47 @@ frontend/
 
 ## Local Development
 
-> **Note**: the local `podman compose` stack is **not yet migrated to OGX**. It still runs the legacy LlamaStack container (same Responses API) with LiteMaaS-style endpoints, and does not include the A2A agents, NeMo Guardrails or the MLflow Prompt Registry. Use the OpenShift deployment for the RHOAI 3.5 features.
+The local `podman compose` stack runs the same architecture as RHOAI 3.5: OGX (same image as the `OGXServer`), the three A2A agents, the MCP servers and MLflow 3.14 (tracing + Prompt Registry). Models are called directly on the external MaaS configured in `.env`. NeMo Guardrails, SPIFFE and the MCP Gateway are cluster-only and disabled locally.
 
 ### Quick Start with Podman Compose
 
 ```bash
-# 1. Set your LiteMaaS credentials (required)
-export LITEMAAS_URL=https://your-litemaas-llm-endpoint/v1
-export LITEMAAS_API_KEY=sk-your-key
-export LITEMAAS_EMBEDDING_URL=https://your-litemaas-embedding-endpoint/v1
-export LITEMAAS_EMBEDDING_API_KEY=sk-your-key
+# 1. MaaS credentials and models in .env (git-ignored)
+cat > .env <<'ENV'
+MAAS_BASE_URL=https://<external-maas-host>/v1
+MAAS_API_KEY=sk-your-key
+MAAS_REASONING_MODEL=gpt-oss-120b
+MAAS_VISION_MODEL=llama-scout-17b
+MAAS_EMBEDDING_MODEL=nomic-embed-text-v1-5
+MAAS_EMBEDDING_DIMENSION=768
+ENV
 
-# 2. Start all services
-podman compose up --build
+# 2. The OGX image comes from the Red Hat registry
+podman login registry.redhat.io
+
+# 3. Start all services
+podman compose up -d --build
 ```
+
+OGX registers every model as `<provider_id>/<model_id>`, so local clients use `maas/gpt-oss-120b`, `maas/nomic-embed-text-v1-5`, etc. (`ogx/config.yaml`).
 
 ### What Gets Started
 
 | Service | Port | Description |
 |---------|------|-------------|
 | PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders, 25 reclamations) |
-| LlamaStack (legacy) | 8321 | AI orchestration (Responses API, MCP tool routing) — replaced by OGX on OpenShift |
-| Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator (in-process agent path) |
+| OGX | 8321 | Responses API, MCP tool routing, pgvector, Files API (creates its `ogx` database on start) |
+| Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator (A2A client) |
+| Claims / Tenders / Postal agents | 8091 / 8092 / 8093 | A2A agents (JSON-RPC + SSE streaming) |
+| prompt-sync | — | Versions the agent prompts in MLflow (alias `@production`), then exits |
+| MLflow 3.14 | 5001 | Traces (OTLP) + Prompt Registry |
 | OCR MCP Server | 8081 | Vision-based OCR |
 | RAG MCP Server | 8082 | Vector search + embedding generation |
 | Claims MCP Server | 8083 | Claims CRUD + decision persistence + auto-embedding |
 | Tenders MCP Server | 8084 | Tenders CRUD + decision persistence + auto-embedding |
 | Postal MCP Server | 8085 | Reclamations CRUD + documents + decision saving |
 | Tracking MCP Server | 8086 | Package/mail tracking + postal knowledge base |
-| MinIO | 9000/9001 | S3-compatible document storage |
+| MinIO | 9000/9001 | S3-compatible document storage (Chainguard image: MinIO community images are no longer published) |
 | Frontend (React) | 3000 | Chat UI + domain pages |
 | **data-init** | — | Downloads PDFs, uploads them to the Files API, processes 10+10+10 items |
 
@@ -526,12 +538,16 @@ helm upgrade multi-agents helm/multi-agents \
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000/api/v1
 - **MinIO Console**: http://localhost:9001
+- **MLflow**: http://localhost:5001
+- **OGX**: http://localhost:8321/v1
 
 ### Development Notes
 
 - `docker-compose.yml` is the git-tracked compose file (used by `podman compose`) with placeholder values
-- Set LiteMaaS credentials via environment variables or a `.env` file (git-ignored)
-- Backend has hot-reload enabled (app code mounted as volume)
+- Set the MaaS credentials and model names in the `.env` file (git-ignored)
+- Backend has hot-reload enabled (app code mounted as volume). On macOS the podman machine does not always forward file events: `podman restart multi-agents-backend` if a change is not picked up
+- Agents use the prompt files mounted from `helm/multi-agents/files/cm.*` until `prompt-sync` has published them to MLflow
+- Existing volumes are reused: an MLflow 2.x database is upgraded in place; the old `multi-agents_llamastack_data` volume is no longer used
 - Frontend has hot-reload via Vite dev server
 - MCP servers require a rebuild to pick up code changes: `podman compose up --build <service>`
 
@@ -725,7 +741,6 @@ Models are declared once in the `models:` block of the Helm values and propagate
 | `models.guardrails` | `llama-scout-17b` | NeMo LLM-based rails (self check input) |
 | `models.embedding` | `nomic-embed-text-v1-5` | Embeddings |
 | `models.embeddingDimension` | `768` | pgvector dimension |
-| `models.maxTokens` | `4096` | Max tokens per response |
 
 ```yaml
 models:
@@ -1139,7 +1154,7 @@ oc logs job/<release>-data-init -n <NAMESPACE>
 podman logs multi-agents-data-init
 ```
 
-Common causes: OGX (or the local LlamaStack container) not healthy yet, MCP servers not started.
+Common causes: OGX not healthy yet, MCP servers not started.
 
 ---
 

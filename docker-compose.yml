@@ -1,8 +1,57 @@
 ---
-version: '3.8'
+# Local development stack (podman compose) — same architecture as RHOAI 3.5:
+#   frontend → backend → A2A agents (claims, tenders, postal) → OGX Responses API → MCP servers
+#
+# Models are served by the external MaaS configured in .env (git-ignored):
+#   MAAS_BASE_URL, MAAS_API_KEY, MAAS_REASONING_MODEL, MAAS_VISION_MODEL,
+#   MAAS_EMBEDDING_MODEL, MAAS_EMBEDDING_DIMENSION
+# The OGX image is pulled from registry.redhat.io (podman login registry.redhat.io).
+# Cluster-only features are disabled here: NeMo Guardrails, SPIFFE, MCP Gateway.
+#
+#   podman compose up -d --build
+
+x-postgres-env: &postgres-env
+  POSTGRES_HOST: postgresql
+  POSTGRES_PORT: 5432
+  POSTGRES_DATABASE: multi_agent_db
+  POSTGRES_USER: multi_agent_user
+  POSTGRES_PASSWORD: multi_agents_pass
+
+# OGX 1.2 model identifiers are "<provider_id>/<model_id>" (provider "maas" in ogx/config.yaml)
+x-ogx-env: &ogx-env
+  OGX_ENDPOINT: http://ogx:8321
+  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+  OGX_EMBEDDING_MODEL: maas/${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
+  OGX_EMBEDDING_DIMENSION: ${MAAS_EMBEDDING_DIMENSION:-768}
+  OGX_TIMEOUT: 300
+
+x-mcp-env: &mcp-env
+  <<: [*postgres-env, *ogx-env]
+  HOST: 0.0.0.0
+  PORT: 8080
+  LOG_LEVEL: INFO
+
+x-agent-env: &agent-env
+  AGENT_PORT: 8090
+  OGX_ENDPOINT: http://ogx:8321
+  OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+  OGX_MAX_TOKENS: 4096
+  OGX_TIMEOUT: 300
+  MCP_SERVER_URL_TEMPLATE: http://{server}:8080/mcp
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  PROMPT_ALIAS: production
+  PROMPT_CACHE_TTL: 60
+  PROMPTS_DIRS: /opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator
+  LOG_LEVEL: INFO
+
+x-prompt-volumes: &prompt-volumes
+  - ./helm/multi-agents/files/cm.claims-prompts:/opt/app-root/prompts/claims:ro
+  - ./helm/multi-agents/files/cm.ao-prompts:/opt/app-root/prompts/ao:ro
+  - ./helm/multi-agents/files/cm.courrier-prompts:/opt/app-root/prompts/courrier:ro
+  - ./helm/multi-agents/files/cm.orchestrator-prompts:/opt/app-root/prompts/orchestrator:ro
 
 services:
-  # PostgreSQL with pgvector
+  # PostgreSQL with pgvector (application database + OGX database "ogx", created by the ogx service)
   postgresql:
     image: pgvector/pgvector:pg16
     container_name: multi-agents-postgres
@@ -24,29 +73,39 @@ services:
     networks:
       - multi-agents-network
 
-  # LlamaStack - local orchestrator connecting to LiteMaaS + remote embeddings
-  llamastack:
-    image: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9@sha256:a9e415ce30b0a61ae35ef43870b03ccb193074fdbd02683757f1908343266837
-    container_name: multi-agents-llamastack
+  # OGX (formerly LlamaStack) — Responses API, MCP tool routing, pgvector, Files API
+  ogx:
+    image: registry.redhat.io/rhoai/odh-ogx-core-rhel9:v3.5.1
+    container_name: multi-agents-ogx
     environment:
-      LITEMAAS_URL: ${LITEMAAS_URL:-https://your-llm-endpoint.example.com/v1}
-      LITEMAAS_API_KEY: ${LITEMAAS_API_KEY:-sk-change-me}
-      LITEMAAS_EMBEDDING_URL: ${LITEMAAS_EMBEDDING_URL:-https://your-embedding-endpoint.example.com/v1}
-      LITEMAAS_EMBEDDING_API_KEY: ${LITEMAAS_EMBEDDING_API_KEY:-sk-change-me}
-      LITEMAAS_VISION_URL: ${LITEMAAS_VISION_URL:-https://your-vision-endpoint.example.com/v1}
-      LITEMAAS_VISION_API_KEY: ${LITEMAAS_VISION_API_KEY:-sk-change-me}
-      RUN_CONFIG_PATH: /config/run.yaml
+      RUN_CONFIG_PATH: /etc/ogx/config.yaml
+      MAAS_BASE_URL: ${MAAS_BASE_URL:?set MAAS_BASE_URL in .env}
+      MAAS_API_KEY: ${MAAS_API_KEY:?set MAAS_API_KEY in .env}
+      MAAS_REASONING_MODEL: ${MAAS_REASONING_MODEL:-gpt-oss-120b}
+      MAAS_VISION_MODEL: ${MAAS_VISION_MODEL:-llama-scout-17b}
+      MAAS_EMBEDDING_MODEL: ${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
+      MAAS_EMBEDDING_DIMENSION: ${MAAS_EMBEDDING_DIMENSION:-768}
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ogx
+      POSTGRES_USER: multi_agent_user
+      POSTGRES_PASSWORD: multi_agents_pass
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
     ports:
       - "8321:8321"
-    user: "0"
+    # Create the "ogx" database if missing, then run the image entrypoint
+    entrypoint: ["/bin/sh", "-c", "python /etc/ogx/ensure-db.py && exec /opt/app-root/entrypoint.sh"]
     volumes:
-      - ./llamastack/run.yaml:/config/run.yaml:ro
-      - llamastack_data:/data
+      - ./ogx/config.yaml:/etc/ogx/config.yaml:ro
+      - ./ogx/ensure-db.py:/etc/ogx/ensure-db.py:ro
     depends_on:
       postgresql:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8321/v1/health')\""]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -54,32 +113,29 @@ services:
     networks:
       - multi-agents-network
 
-  # Backend FastAPI
+  # Backend FastAPI (orchestrator + A2A client)
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Containerfile
     container_name: multi-agents-backend
     environment:
+      <<: [*postgres-env, *ogx-env]
       DEBUG: "true"
       ENVIRONMENT: development
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      OGX_ENDPOINT: http://llamastack:8321
-      OGX_DEFAULT_MODEL: litemaas/llama-scout-17b
-      OGX_EMBEDDING_MODEL: litemaas-embedding/nomic-embed-text-v1-5
-      OGX_EMBEDDING_DIMENSION: 768
+      OGX_STREAMING_MODEL: maas/${MAAS_REASONING_MODEL:-gpt-oss-120b}
+      OGX_MAX_TOKENS: 4096
       OCR_SERVER_URL: http://ocr-server:8080
       RAG_SERVER_URL: http://rag-server:8080
       CLAIMS_SERVER_URL: http://claims-server:8080
       TENDERS_SERVER_URL: http://tenders-server:8080
       POSTAL_SERVER_URL: http://postal-server:8080
       TRACKING_SERVER_URL: http://tracking-server:8080
-      GUARDRAILS_SERVER_URL: ${GUARDRAILS_SERVER_URL:-https://guardrails-orchestrator-your-namespace.apps.your-cluster.example.com}
-      # S3/MinIO document storage
+      CLAIMS_AGENT_A2A_URL: http://claims-agent:8090
+      TENDERS_AGENT_A2A_URL: http://tenders-agent:8090
+      POSTAL_AGENT_A2A_URL: http://postal-agent:8090
+      # NeMo Guardrails is cluster-only: empty URL = checks skipped
+      GUARDRAILS_SERVER_URL: ""
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
@@ -91,10 +147,14 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgresql
-      - llamastack
-      - minio
-      - mlflow
+      postgresql:
+        condition: service_healthy
+      ogx:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
     volumes:
       - ./backend/app:/opt/app-root/src/app
       - ./documents:/documents
@@ -102,139 +162,191 @@ services:
       - multi-agents-network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # MCP OCR Server
+  # A2A domain agents (a2a-sdk, JSON-RPC + SSE streaming on port 8090)
+  claims-agent:
+    build:
+      context: .
+      dockerfile: agents/Containerfile
+      args:
+        AGENT: claims-agent
+    container_name: multi-agents-claims-agent
+    environment:
+      <<: *agent-env
+      AGENT_ID: claims
+      AGENT_PUBLIC_URL: http://claims-agent:8090
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-claims-agent
+    ports:
+      - "8091:8090"
+    volumes: *prompt-volumes
+    depends_on:
+      ogx:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  tenders-agent:
+    build:
+      context: .
+      dockerfile: agents/Containerfile
+      args:
+        AGENT: tenders-agent
+    container_name: multi-agents-tenders-agent
+    environment:
+      <<: *agent-env
+      AGENT_ID: tenders
+      AGENT_PUBLIC_URL: http://tenders-agent:8090
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-tenders-agent
+    ports:
+      - "8092:8090"
+    volumes: *prompt-volumes
+    depends_on:
+      ogx:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  postal-agent:
+    build:
+      context: .
+      dockerfile: agents/Containerfile
+      args:
+        AGENT: postal-agent
+    container_name: multi-agents-postal-agent
+    environment:
+      <<: *agent-env
+      AGENT_ID: postal
+      AGENT_PUBLIC_URL: http://postal-agent:8090
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-postal-agent
+    ports:
+      - "8093:8090"
+    volumes: *prompt-volumes
+    depends_on:
+      ogx:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  # Versions the agent prompts in the MLflow Prompt Registry (alias @production).
+  # Agents fall back to the mounted prompt files until the alias exists.
+  prompt-sync:
+    build:
+      context: .
+      dockerfile: agents/Containerfile
+      args:
+        AGENT: claims-agent
+    container_name: multi-agents-prompt-sync
+    command: ["python", "-m", "shared.prompt_sync"]
+    environment:
+      AGENT_ID: prompt-sync
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_EXPERIMENT_NAME: prompt-sync
+      PROMPT_ALIAS: production
+      PROMPT_PROMOTE: "true"
+      HELM_RELEASE_REVISION: local
+      PROMPTS_DIRS: /opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator
+    volumes: *prompt-volumes
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    networks:
+      - multi-agents-network
+
+  # MCP servers (streamable HTTP on /mcp, port 8080)
   ocr-server:
     build:
       context: ./backend/mcp_servers/ocr_server
-      dockerfile: Dockerfile
+      dockerfile: Containerfile
     container_name: multi-agents-ocr-server
     environment:
-      LOG_LEVEL: INFO
-      OGX_ENDPOINT: http://llamastack:8321
-      VISION_MODEL: litemaas-vision/Qwen2.5-VL-7B-Instruct
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
+      <<: *mcp-env
+      OGX_VISION_MODEL: maas/${MAAS_VISION_MODEL:-llama-scout-17b}
     ports:
       - "8081:8080"
     volumes:
       - ./documents:/documents:ro
+    depends_on:
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MCP RAG Server
   rag-server:
     build:
       context: ./backend/mcp_servers
-      dockerfile: rag_server/Dockerfile
+      dockerfile: rag_server/Containerfile
     container_name: multi-agents-rag-server
-    environment:
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      OGX_ENDPOINT: http://llamastack:8321
-      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
-      VECTOR_DIMENSION: 768
-      LOG_LEVEL: INFO
+    environment: *mcp-env
     ports:
       - "8082:8080"
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MCP Claims Server (CRUD)
   claims-server:
     build:
       context: ./backend/mcp_servers
-      dockerfile: claims_server/Dockerfile
+      dockerfile: claims_server/Containerfile
     container_name: multi-agents-claims-server
-    environment:
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      LOG_LEVEL: INFO
+    environment: *mcp-env
     ports:
       - "8083:8080"
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MCP Tenders Server (CRUD)
   tenders-server:
     build:
       context: ./backend/mcp_servers
-      dockerfile: tenders_server/Dockerfile
+      dockerfile: tenders_server/Containerfile
     container_name: multi-agents-tenders-server
-    environment:
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      LOG_LEVEL: INFO
+    environment: *mcp-env
     ports:
       - "8084:8080"
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MCP Postal Server (CRUD)
   postal-server:
     build:
       context: ./backend/mcp_servers
-      dockerfile: postal_server/Dockerfile
+      dockerfile: postal_server/Containerfile
     container_name: multi-agents-postal-server
-    environment:
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      OGX_ENDPOINT: http://llamastack:8321
-      OGX_DEFAULT_MODEL: litemaas/llama-scout-17b
-      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
-      LOG_LEVEL: INFO
+    environment: *mcp-env
     ports:
       - "8085:8080"
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MCP Tracking Server (CRUD)
   tracking-server:
     build:
       context: ./backend/mcp_servers
-      dockerfile: tracking_server/Dockerfile
+      dockerfile: tracking_server/Containerfile
     container_name: multi-agents-tracking-server
-    environment:
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
-      LOG_LEVEL: INFO
+    environment: *mcp-env
     ports:
       - "8086:8080"
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     networks:
       - multi-agents-network
 
-  # MinIO (S3-compatible object storage)
+  # MinIO (S3-compatible object storage: claim documents + OGX Files API)
   minio:
-    image: quay.io/minio/minio:latest
+    # Chainguard rebuild (MinIO community images are no longer published)
+    image: cgr.dev/chainguard/minio:latest-dev@sha256:12706237289ea1df7cf41e84af3251ada57a036838c9b62e7c9a8a76d0092ba5
     container_name: multi-agents-minio
     command: server /data --console-address ":9001"
+    user: "0"  # the minio_data volume may hold files written as root by older images
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
@@ -244,7 +356,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9000/minio/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -252,12 +364,14 @@ services:
     networks:
       - multi-agents-network
 
-  # Data initialization: download PDFs, upload to LlamaStack, process 10+10 via MCP tools
+  # Data initialization: local PDFs (./documents) → OGX Files API, then 10+10 via MCP tools
   data-init:
-    image: python:3.11-slim
+    build:
+      context: ./backend/scripts
+      dockerfile: Containerfile
     container_name: multi-agents-data-init
     depends_on:
-      llamastack:
+      ogx:
         condition: service_healthy
       postgresql:
         condition: service_healthy
@@ -271,27 +385,17 @@ services:
         condition: service_started
       tracking-server:
         condition: service_started
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        pip install --quiet httpx psycopg2-binary mcp &&
-        python /scripts/init_data.py
     environment:
-      OGX_ENDPOINT: http://llamastack:8321
-      EMBEDDING_MODEL: ${OGX_EMBEDDING_MODEL:-litemaas-embedding/nomic-embed-text-v1-5}
+      <<: *postgres-env
+      OGX_ENDPOINT: http://ogx:8321
+      EMBEDDING_MODEL: maas/${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
+      FORCE_REINIT: ${FORCE_REINIT:-false}
       OCR_SERVER_URL: http://ocr-server:8080
       CLAIMS_SERVER_URL: http://claims-server:8080
       TENDERS_SERVER_URL: http://tenders-server:8080
       POSTAL_SERVER_URL: http://postal-server:8080
       TRACKING_SERVER_URL: http://tracking-server:8080
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: multi_agent_db
-      POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
     volumes:
-      - ./backend/scripts:/scripts:ro
       - ./documents:/documents:ro
     networks:
       - multi-agents-network
@@ -300,7 +404,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Containerfile.dev
     container_name: multi-agents-frontend
     ports:
       - "3000:5173"
@@ -318,33 +422,35 @@ services:
     depends_on:
       - backend
 
-  # MLflow Tracking Server (SQLite backend, aligned with RHOAI Developer Preview)
+  # MLflow 3.14 (same minor as RHOAI 3.5): tracing (OTLP /v1/traces) + Prompt Registry.
+  # An existing MLflow 2.x database is upgraded in place on start.
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.19.0
+    image: ghcr.io/mlflow/mlflow:v3.14.0
     container_name: multi-agents-mlflow
     ports:
       - "5001:5000"
     volumes:
       - mlflow_data:/mlflow
-    command: >
-      mlflow server
-        --host 0.0.0.0
-        --port 5000
-        --backend-store-uri sqlite:////mlflow/mlflow.db
-        --default-artifact-root /mlflow/artifacts
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ -f /mlflow/mlflow.db ]; then mlflow db upgrade sqlite:////mlflow/mlflow.db; fi
+        exec mlflow server --host 0.0.0.0 --port 5000 \
+          --backend-store-uri sqlite:////mlflow/mlflow.db \
+          --artifacts-destination /mlflow/artifacts \
+          --allowed-hosts "mlflow,mlflow:5000,localhost,localhost:5000,localhost:5001,127.0.0.1:5000,127.0.0.1:5001"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
       interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
       start_period: 15s
     networks:
       - multi-agents-network
 
 volumes:
   postgres_data:
-    driver: local
-  llamastack_data:
     driver: local
   minio_data:
     driver: local

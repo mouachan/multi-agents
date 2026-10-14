@@ -1,0 +1,146 @@
+# OGX 1.2 run configuration for the local podman compose stack.
+# Mirrors helm/multi-agents/templates/ogx/configmap.yaml, except that every model
+# (chat and embeddings) is reached directly on the external MaaS from .env
+# (MAAS_BASE_URL / MAAS_API_KEY) instead of going through the cluster MaaS gateway.
+version: 2
+distro_name: rh
+apis:
+- inference
+- responses
+- vector_io
+- files
+- file_processors
+- tool_runtime
+
+providers:
+  inference:
+  - provider_id: maas
+    provider_type: remote::vllm
+    config:
+      base_url: ${env.MAAS_BASE_URL}
+      api_token: ${env.MAAS_API_KEY}
+      # 0 = no default: OGX would otherwise add max_tokens next to the
+      # max_completion_tokens derived from the agents' max_output_tokens, and the
+      # MaaS backend rejects requests carrying both.
+      max_tokens: 0
+      network:
+        tls:
+          verify: true
+
+  vector_io:
+  - provider_id: pgvector
+    provider_type: remote::pgvector
+    config:
+      host: ${env.POSTGRES_HOST}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB}
+      user: ${env.POSTGRES_USER}
+      password: ${env.POSTGRES_PASSWORD}
+      distance_metric: COSINE
+      persistence:
+        backend: kv_default
+        namespace: vector_io::pgvector
+
+  responses:
+  - provider_id: builtin
+    provider_type: inline::builtin
+    config:
+      persistence:
+        responses:
+          backend: sql_default
+          table_name: responses
+          max_write_queue_size: 10000
+          num_writers: 4
+
+  files:
+  - provider_id: s3-files
+    provider_type: remote::s3
+    config:
+      bucket_name: claims
+      region: us-east-1
+      endpoint_url: http://minio:9000
+      aws_access_key_id: ${env.AWS_ACCESS_KEY_ID}
+      aws_secret_access_key: ${env.AWS_SECRET_ACCESS_KEY}
+      auto_create_bucket: true
+      metadata_store:
+        backend: sql_default
+        table_name: files_metadata
+
+  file_processors:
+  - provider_id: pypdf
+    provider_type: inline::pypdf
+    config: {}
+
+  tool_runtime:
+  - provider_id: file-search
+    provider_type: inline::file-search
+    config: {}
+  - provider_id: model-context-protocol
+    provider_type: remote::model-context-protocol
+    config: {}
+
+storage:
+  backends:
+    kv_default:
+      type: kv_postgres
+      host: ${env.POSTGRES_HOST}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB}
+      user: ${env.POSTGRES_USER}
+      password: ${env.POSTGRES_PASSWORD}
+      table_name: ogx_kvstore
+    sql_default:
+      type: sql_postgres
+      host: ${env.POSTGRES_HOST}
+      port: ${env.POSTGRES_PORT:=5432}
+      db: ${env.POSTGRES_DB}
+      user: ${env.POSTGRES_USER}
+      password: ${env.POSTGRES_PASSWORD}
+  stores:
+    metadata:
+      backend: kv_default
+      namespace: registry
+    inference:
+      backend: sql_default
+      table_name: inference_store
+      max_write_queue_size: 10000
+      num_writers: 4
+    conversations:
+      backend: sql_default
+      table_name: openai_conversations
+    prompts:
+      backend: sql_default
+      table_name: prompts
+    connectors:
+      backend: sql_default
+      table_name: connectors
+
+vector_stores:
+  default_provider_id: pgvector
+  default_embedding_model:
+    provider_id: maas
+    model_id: ${env.MAAS_EMBEDDING_MODEL}
+  file_ingestion_params:
+    default_chunk_size_tokens: 512
+    default_chunk_overlap_tokens: 128
+
+registered_resources:
+  models:
+  - provider_id: maas
+    model_id: ${env.MAAS_REASONING_MODEL}
+    provider_model_id: ${env.MAAS_REASONING_MODEL}
+    model_type: llm
+  - provider_id: maas
+    model_id: ${env.MAAS_VISION_MODEL}
+    provider_model_id: ${env.MAAS_VISION_MODEL}
+    model_type: llm
+  - provider_id: maas
+    model_id: ${env.MAAS_EMBEDDING_MODEL}
+    provider_model_id: ${env.MAAS_EMBEDDING_MODEL}
+    model_type: embedding
+    metadata:
+      embedding_dimension: ${env.MAAS_EMBEDDING_DIMENSION:=768}
+  vector_stores: []
+
+server:
+  port: 8321
