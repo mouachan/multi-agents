@@ -11,7 +11,9 @@ data:
   init-pg.sh: |
     #!/bin/bash
 
-    POSTGRESQL_ADMIN_PASSWORD="$(cat /cluster-secrets/POSTGRES_ADMIN_PASSWORD)"
+    # The pgvector (docker-library) image makes POSTGRES_USER the superuser with
+    # POSTGRES_PASSWORD (see templates/postgresql/configmap.yaml): connect with it.
+    POSTGRESQL_PASSWORD="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userPasswordKey }})"
     POSTGRESQL_DATABASE="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.databaseKey }})"
     # For pgvector image, use the same user that was created (not postgres)
     POSTGRESQL_USER="$(cat /cluster-secrets/{{ .Values.postgresql.auth.secretKeys.userNameKey }})"
@@ -23,7 +25,7 @@ data:
     OGX_PASSWORD="$(cat /cluster-secrets/OGX_PASSWORD)"
 
     if test -z "$POSTGRESQL_DATABASE" \
-         -o -z "$POSTGRESQL_ADMIN_PASSWORD" \
+         -o -z "$POSTGRESQL_PASSWORD" \
          -o -z "$POSTGRESQL_OWNER" \
          -o -z "$POSTGRESQL_USER" \
          -o -z "$OGX_PASSWORD"; then
@@ -34,7 +36,7 @@ data:
     echo Waiting for postgres ...
     while :
     do
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -c "\\l" && break
         sleep 5
     done
@@ -43,28 +45,28 @@ data:
     # Initialize multi_agent_db (functional database)
     # =========================================================================
     echo Checking for claims database ...
-    if ! PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    if ! PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -c "\\d" 2>&1 \
             | grep "Did not find any relations" >/dev/null; then
         echo " => Database already includes tables, skipping init"
     else
         echo Initializing claims database ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/init.sql
         echo " => Done"
 
         echo Injecting seed data ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -f /scripts/seed.sql
         echo " => Done"
 
         echo Fix Ownership ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql "$POSTGRESQL_DATABASE" -qAt -c \
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'" \
             | while read -r tableName
             do
-                PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+                PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
                     --host postgresql "$POSTGRESQL_DATABASE" -c \
                     "ALTER TABLE \"$tableName\" OWNER TO $POSTGRESQL_OWNER"
             done
@@ -75,45 +77,45 @@ data:
     # Initialize ogx database (technical database for OGX)
     # =========================================================================
     echo Checking if ogx database exists ...
-    if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    if PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql -d "$POSTGRESQL_DATABASE" -lqt | cut -d \| -f 1 | grep -qw "$OGX_DATABASE"; then
         echo " => OGX database already exists, skipping creation"
     else
         echo Creating ogx database ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE DATABASE $OGX_DATABASE;"
         echo " => Done"
     fi
 
     echo Checking if ogx user exists ...
-    if PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    if PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql -d "$POSTGRESQL_DATABASE" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$OGX_USER'" | grep -q 1; then
         echo " => OGX user already exists, updating password"
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql -d "$POSTGRESQL_DATABASE" -c "ALTER ROLE $OGX_USER WITH LOGIN PASSWORD '$OGX_PASSWORD';"
     else
         echo Creating ogx user ...
-        PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
             --host postgresql -d "$POSTGRESQL_DATABASE" -c "CREATE ROLE $OGX_USER WITH LOGIN PASSWORD '$OGX_PASSWORD';"
         echo " => Done"
     fi
 
     echo Granting privileges on ogx database ...
-    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
         --host postgresql -d "$POSTGRESQL_DATABASE" -c "GRANT ALL PRIVILEGES ON DATABASE $OGX_DATABASE TO $OGX_USER;"
 
     echo Granting schema privileges ...
-    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
         --host postgresql -d "$OGX_DATABASE" -c "GRANT USAGE, CREATE ON SCHEMA public TO $OGX_USER;"
 
     echo Setting default privileges for future tables ...
-    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
         --host postgresql -d "$OGX_DATABASE" -c \
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO $OGX_USER;"
     echo " => Done"
 
     echo Installing pgvector extension in ogx database ...
-    PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD" psql -U "$POSTGRESQL_USER" \
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
         --host postgresql -d "$OGX_DATABASE" -c "CREATE EXTENSION IF NOT EXISTS vector;"
     echo " => Done"
 
