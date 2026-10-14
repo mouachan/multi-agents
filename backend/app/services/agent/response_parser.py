@@ -9,8 +9,20 @@ import json
 from typing import Dict, Any, Optional
 
 
+_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+
+
 class ResponseParser:
     """Parse agent responses into structured data."""
+
+    @staticmethod
+    def _loads(raw: str) -> Any:
+        """json.loads that also accepts trailing commas (``"reasoning": "...",\n}``), a
+        frequent LLM slip that otherwise loses the confidence and the reasoning."""
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return json.loads(_TRAILING_COMMA.sub(r"\1", raw))
 
     @staticmethod
     def _extract_balanced_json(text: str, start: int) -> Optional[str]:
@@ -95,7 +107,7 @@ class ResponseParser:
                 json_str = self._extract_balanced_json(response_text, brace_pos)
                 if json_str:
                     try:
-                        parsed = json.loads(json_str)
+                        parsed = self._loads(json_str)
                         if isinstance(parsed, dict):
                             decision_data.update(parsed)
                             return decision_data
@@ -107,7 +119,7 @@ class ResponseParser:
             json_str = self._extract_balanced_json(response_text, m.start())
             if json_str:
                 try:
-                    parsed = json.loads(json_str)
+                    parsed = self._loads(json_str)
                     if isinstance(parsed, dict):
                         decision_data.update(parsed)
                         return decision_data
@@ -119,7 +131,7 @@ class ResponseParser:
             json_str = self._extract_balanced_json(response_text, m.start())
             if json_str and len(json_str) > 50:
                 try:
-                    parsed = json.loads(json_str)
+                    parsed = self._loads(json_str)
                     if isinstance(parsed, dict) and any(
                         k in parsed for k in ['recommendation', 'decision', 'confidence']
                     ):

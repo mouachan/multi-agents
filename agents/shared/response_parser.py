@@ -10,10 +10,22 @@ _JSON_TOOL_CALL_RE = re.compile(
 )
 
 
+_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+
+
 class ResponseParser:
     @staticmethod
     def contains_text_tool_calls(text: str) -> bool:
         return bool(text) and bool(_TEXT_TOOL_CALL_RE.search(text) or _JSON_TOOL_CALL_RE.search(text))
+
+    @staticmethod
+    def _loads(raw: str) -> Any:
+        """json.loads that also accepts trailing commas (``"reasoning": "...",\n}``), a
+        frequent LLM slip that otherwise loses the confidence and the reasoning."""
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return json.loads(_TRAILING_COMMA.sub(r"\1", raw))
 
     @staticmethod
     def _extract_balanced_json(text: str, start: int) -> Optional[str]:
@@ -56,7 +68,7 @@ class ResponseParser:
         code_blocks = re.findall(r"```(?:json)?\s*\n(.*?)\n```", response_text, re.DOTALL)
         for block in code_blocks:
             try:
-                data = json.loads(block.strip())
+                data = self._loads(block.strip())
                 if isinstance(data, dict) and ("recommendation" in data or "decision" in data):
                     return {
                         "recommendation": data.get("recommendation", data.get("decision", "manual_review")),
@@ -77,7 +89,7 @@ class ResponseParser:
                 raw = self._extract_balanced_json(response_text, brace)
                 if raw:
                     try:
-                        data = json.loads(raw)
+                        data = self._loads(raw)
                         return {
                             "recommendation": data.get("recommendation", data.get("decision", "manual_review")),
                             "confidence": float(data.get("confidence", 0.0)),
