@@ -1,10 +1,16 @@
 """
 MCP Sandbox Exec Server - runs LLM-generated Python in an OpenShell sandbox.
 
-Tool run_python(code, timeout_s): each call creates an OpenShell sandbox from the
-code-sandbox image with the policy in SANDBOX_POLICY_FILE (no network, Landlock
-filesystem rules), runs /usr/bin/python3.12 -c <code>, returns stdout/stderr/exit
-code plus the policy denials observed in the output, then deletes the sandbox.
+Tool run_python(code, timeout_s): runs /usr/bin/python3.12 -c <code> in an OpenShell
+sandbox from the code-sandbox image with the policy in SANDBOX_POLICY_FILE (no
+network, Landlock filesystem rules) and returns stdout/stderr/exit code plus the
+policy denials observed in the output.
+
+Creating a sandbox takes ~30 s (pod + volume), so one warm sandbox is created at
+startup and reused (SANDBOX_REUSE=true): calls are serialized, /sandbox and /tmp are
+wiped before each run, and the sandbox is recreated if it disappears. The policy is
+enforced by the kernel on every run either way. SANDBOX_REUSE=false gives one
+throw-away sandbox per call.
 
 OpenShell (NVIDIA, Developer Preview in RHOAI 3.5) enforces the policy in the
 kernel (Landlock, seccomp, network namespace + proxy); the gateway is reached over
@@ -17,6 +23,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -45,6 +52,8 @@ SANDBOX_POLICY_FILE = os.getenv("SANDBOX_POLICY_FILE", "/etc/openshell/policy/co
 SANDBOX_READY_TIMEOUT = float(os.getenv("SANDBOX_READY_TIMEOUT", "120"))
 MAX_EXEC_TIMEOUT = int(os.getenv("SANDBOX_MAX_EXEC_TIMEOUT", "60"))
 MAX_OUTPUT_CHARS = 8000
+SANDBOX_REUSE = os.getenv("SANDBOX_REUSE", "true").lower() == "true"
+CLEANUP = "import shutil,os\nfor d in ('/sandbox','/tmp'):\n    for e in os.listdir(d):\n        p=os.path.join(d,e)\n        shutil.rmtree(p,True) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)"
 PYTHON = "/usr/bin/python3.12"  # exact binary allowed by the policy
 
 # Denials surfaced in the sandbox output (the authoritative OCSF events are in the
@@ -87,25 +96,88 @@ def _denials(stderr: str, stdout: str) -> List[Dict[str, str]]:
     return found[:10]
 
 
-def _run_in_sandbox(code: str, timeout_s: int) -> Dict[str, Any]:
+def _spec() -> openshell_pb2.SandboxSpec:
     spec = openshell_pb2.SandboxSpec()
     spec.template.image = SANDBOX_IMAGE
     json_format.ParseDict(_policy_dict(), spec.policy)
+    return spec
+
+
+def _create(client: SandboxClient) -> str:
     name = f"run-python-{uuid.uuid4().hex[:8]}"
+    client.create(workspace=OPENSHELL_WORKSPACE, spec=_spec(), name=name,
+                  labels={"app": "multi-agents", "tool": "run_python"})
+    client.wait_ready(name, workspace=OPENSHELL_WORKSPACE, timeout_seconds=SANDBOX_READY_TIMEOUT)
+    return name
+
+
+def _delete(client: SandboxClient, name: str) -> None:
+    try:
+        client.delete(name, workspace=OPENSHELL_WORKSPACE, allow_missing=True)
+    except Exception as e:
+        logger.warning(f"Sandbox {name} not deleted: {e}")
+
+
+class WarmSandbox:
+    """One reusable sandbox; recreated when an exec fails because it is gone."""
+
+    def __init__(self) -> None:
+        self.name = ""
+        self.lock = threading.Lock()  # one run at a time in the shared sandbox
+
+    def prewarm(self) -> None:
+        try:
+            with self.lock, _client() as client:
+                self.ensure(client)
+        except Exception as e:
+            logger.warning(f"Sandbox pre-warm failed (will retry on first call): {e}")
+
+    def ensure(self, client: SandboxClient) -> int:
+        """Create the sandbox if needed; returns the time spent waiting for it (ms)."""
+        if self.name:
+            return 0
+        start = time.time()
+        self.name = _create(client)
+        logger.info(f"Warm sandbox {self.name} ready in {time.time() - start:.1f}s")
+        return int((time.time() - start) * 1000)
+
+    def run(self, client: SandboxClient, code: str, timeout_s: int):
+        with self.lock:
+            return self._run(client, code, timeout_s)
+
+    def _run(self, client: SandboxClient, code: str, timeout_s: int):
+        ready_ms = self.ensure(client)
+        try:
+            client.exec(self.name, [PYTHON, "-c", CLEANUP], workspace=OPENSHELL_WORKSPACE,
+                        timeout_seconds=15, workdir="/sandbox")
+        except Exception as e:
+            logger.warning(f"Warm sandbox {self.name} unusable ({e}), recreating")
+            _delete(client, self.name)
+            self.name = ""
+            ready_ms += self.ensure(client)
+        result = client.exec(self.name, [PYTHON, "-c", code], workspace=OPENSHELL_WORKSPACE,
+                             timeout_seconds=timeout_s, workdir="/sandbox")
+        return self.name, ready_ms, result
+
+
+_warm = WarmSandbox()
+if SANDBOX_REUSE and SANDBOX_IMAGE:
+    threading.Thread(target=_warm.prewarm, name="sandbox-prewarm", daemon=True).start()
+
+
+def _run_in_sandbox(code: str, timeout_s: int) -> Dict[str, Any]:
     start = time.time()
     with _client() as client:
-        client.create(workspace=OPENSHELL_WORKSPACE, spec=spec, name=name,
-                      labels={"app": "multi-agents", "tool": "run_python"})
-        try:
-            client.wait_ready(name, workspace=OPENSHELL_WORKSPACE, timeout_seconds=SANDBOX_READY_TIMEOUT)
+        if SANDBOX_REUSE:
+            name, ready_ms, result = _warm.run(client, code, timeout_s)
+        else:
+            name = _create(client)
             ready_ms = int((time.time() - start) * 1000)
-            result = client.exec(name, [PYTHON, "-c", code], workspace=OPENSHELL_WORKSPACE,
-                                 timeout_seconds=timeout_s, workdir="/sandbox")
-        finally:
             try:
-                client.delete(name, workspace=OPENSHELL_WORKSPACE, allow_missing=True)
-            except Exception as e:
-                logger.warning(f"Sandbox {name} not deleted: {e}")
+                result = client.exec(name, [PYTHON, "-c", code], workspace=OPENSHELL_WORKSPACE,
+                                     timeout_seconds=timeout_s, workdir="/sandbox")
+            finally:
+                _delete(client, name)
     return {
         "success": result.exit_code == 0,
         "exit_code": result.exit_code,
@@ -116,6 +188,7 @@ def _run_in_sandbox(code: str, timeout_s: int) -> Dict[str, Any]:
             "name": name,
             "image": SANDBOX_IMAGE,
             "policy": "network deny-all, Landlock (rw: /sandbox, /tmp)",
+            "reused": SANDBOX_REUSE and ready_ms == 0,
             "ready_ms": ready_ms,
             "duration_ms": int((time.time() - start) * 1000),
         },
