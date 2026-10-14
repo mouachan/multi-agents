@@ -8,9 +8,10 @@ metadata:
     opendatahub.io/dashboard: "true"
   annotations:
     # Helm hooks
-    "helm.sh/hook": pre-install,pre-upgrade
+    # pre-install only, never deleted by Helm: a pre-upgrade hook with
+    # before-hook-creation would delete the namespace (and the release) on upgrade
+    "helm.sh/hook": pre-install
     "helm.sh/hook-weight": "-100"
-    "helm.sh/hook-delete-policy": before-hook-creation
     # ArgoCD GitOps
     "argocd.argoproj.io/sync-wave": "-100"
 {{- if .Values.inference.enabled }}
@@ -24,9 +25,10 @@ metadata:
     opendatahub.io/dashboard: "true"
   annotations:
     # Helm hooks
-    "helm.sh/hook": pre-install,pre-upgrade
+    # pre-install only, never deleted by Helm: a pre-upgrade hook with
+    # before-hook-creation would delete the namespace (and the release) on upgrade
+    "helm.sh/hook": pre-install
     "helm.sh/hook-weight": "-100"
-    "helm.sh/hook-delete-policy": before-hook-creation
     # ArgoCD GitOps
     "argocd.argoproj.io/sync-wave": "-100"
 {{- end }}
@@ -41,9 +43,10 @@ metadata:
     opendatahub.io/dashboard: "true"
   annotations:
     # Helm hooks
-    "helm.sh/hook": pre-install,pre-upgrade
+    # pre-install only, never deleted by Helm: a pre-upgrade hook with
+    # before-hook-creation would delete the namespace (and the release) on upgrade
+    "helm.sh/hook": pre-install
     "helm.sh/hook-weight": "-100"
-    "helm.sh/hook-delete-policy": before-hook-creation
     # ArgoCD GitOps
     "argocd.argoproj.io/sync-wave": "-100"
 {{- end }}
