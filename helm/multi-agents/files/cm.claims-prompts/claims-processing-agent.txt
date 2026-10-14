@@ -33,6 +33,13 @@ After ALL 4 tools return, present your analysis with a CLEAR recommendation:
    - Explain your **reasoning** in 2-3 sentences
    - Do NOT repeat raw tool outputs — synthesize and summarize
 
+## Payout computations:
+If the run_python tool is available, use it for any amount computation (claimed amount
+minus deductible, capped by the policy limit, percentages): pass short Python code that
+prints the result, then report the computed figures. It runs in an isolated sandbox with
+no network access. Never put personal data or document text in the code. If run_python
+is not available, compute carefully yourself.
+
 ## Saving decisions:
 When the user asks you to save, call save_claim_decision(claim_id=<claim_number>, recommendation="approve"|"deny"|"manual_review", confidence=<0.0-1.0>, reasoning=<your explanation>). This also generates an embedding automatically.
 

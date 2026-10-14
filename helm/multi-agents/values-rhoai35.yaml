@@ -38,6 +38,10 @@ agents:
 
 mcp:
   useMCPServerCR: true
+  # run_python in OpenShell sandboxes (Developer Preview) — needs the OpenShell gateway
+  # and the openshell-client-tls Secret in this namespace (see openshell/README.md)
+  sandbox:
+    enabled: false   # needs the OpenShell gateway first: openshell/README.md (Developer Preview)
 
 mcpGateway:
   enabled: true

@@ -1,0 +1,13 @@
+# Code interpreter image for OpenShell sandboxes (run_python MCP tool).
+# The OpenShell supervisor is injected by the gateway; the image only needs a shell
+# and the interpreter under /usr (the policy allows /usr read-only, /sandbox and /tmp rw).
+#   podman build --platform linux/amd64 -t quay.io/<your-org>/multi-agents/code-sandbox:v3.5 openshell/sandbox-image
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+RUN microdnf install -y --nodocs python3.12 python3.12-pip \
+    && /usr/bin/python3.12 -m pip install --no-cache-dir --prefix=/usr numpy \
+    && microdnf remove -y python3.12-pip \
+    && microdnf clean all
+
+# Run code with the exact binary allowed by the policy: /usr/bin/python3.12
+CMD ["/usr/bin/python3.12", "-c", "print('code-sandbox ready')"]

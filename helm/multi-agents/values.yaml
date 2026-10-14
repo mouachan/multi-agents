@@ -303,6 +303,46 @@ mcp:
         cpu: 2000m
         memory: 4Gi
 
+  # Code interpreter: run_python executes LLM-generated code in an OpenShell sandbox
+  # (NVIDIA OpenShell, Developer Preview in RHOAI 3.5 — see openshell/README.md).
+  # Prerequisites: Agent Sandbox operator + OpenShell gateway in namespace "openshell",
+  # and the gateway mTLS client bundle copied as Secret <openshell.clientTlsSecret> here.
+  sandbox:
+    enabled: false
+    replicas: 1
+    image:
+      repository: sandbox-exec-server
+      tag: v3.5
+    service:
+      type: ClusterIP
+      port: 8080
+    serviceAccountName: ""
+    env:
+      LOG_LEVEL: "INFO"
+      OPENSHELL_ENDPOINT: "openshell.openshell.svc:8080"
+      OPENSHELL_WORKSPACE: "default"
+      OPENSHELL_TLS_DIR: "/etc/openshell/mtls"
+      SANDBOX_POLICY_FILE: "/etc/openshell/policy/code-sandbox-policy.yaml"
+      SANDBOX_IMAGE: "quay.io/mouachan/multi-agents/code-sandbox:v3.5"
+    storage:
+      - path: /etc/openshell/mtls
+        source:
+          type: Secret
+          secret:
+            secretName: openshell-client-tls
+      - path: /etc/openshell/policy
+        source:
+          type: ConfigMap
+          configMap:
+            name: sandbox-exec-policy
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
 # =============================================================================
 # Backend API
 # =============================================================================
@@ -658,6 +698,11 @@ mcpGateway:
       enabled: true
       prefix: ""
       serviceName: tracking-server
+      servicePort: 8080
+    sandbox:
+      enabled: true
+      prefix: ""
+      serviceName: sandbox-server
       servicePort: 8080
 
   # Kuadrant AuthPolicy (JWT) on the "mcp" listener — rendered only if enabled AND issuerUrl set

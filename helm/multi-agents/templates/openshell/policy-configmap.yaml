@@ -1,0 +1,18 @@
+{{- if .Values.mcp.sandbox.enabled }}
+{{- /*
+OpenShell sandbox policy used by sandbox-server (run_python): no network, Landlock
+filesystem rules. Source: openshell/policies/code-sandbox-policy.yaml (symlinked in files/).
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-exec-policy
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    component: mcp-server
+data:
+  code-sandbox-policy.yaml: |
+    {{- .Files.Get "files/openshell/code-sandbox-policy.yaml" | nindent 4 }}
+{{- end }}

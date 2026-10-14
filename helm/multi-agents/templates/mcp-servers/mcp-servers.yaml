@@ -36,6 +36,11 @@ spec:
     path: /mcp
     env:
       {{- include "multi-agents.mcp.env" (dict "root" $root "name" $name "cfg" $cfg) | nindent 6 }}
+    {{- with $cfg.storage }}
+    # Secret / ConfigMap mounts (e.g. the OpenShell mTLS client bundle for sandbox-server)
+    storage:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   mcp:
     stateless: true
   extraLabels:
@@ -104,6 +109,14 @@ spec:
           protocol: TCP
         env:
           {{- include "multi-agents.mcp.env" (dict "root" $root "name" $name "cfg" $cfg) | nindent 10 }}
+        {{- with $cfg.storage }}
+        volumeMounts:
+          {{- range $i, $s := . }}
+        - name: storage-{{ $i }}
+          mountPath: {{ $s.path }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
         resources:
           {{- toYaml $cfg.resources | nindent 10 }}
         livenessProbe:
@@ -121,6 +134,21 @@ spec:
           periodSeconds: 15
           # default (1s) fails while long tool calls (OCR, embeddings) are running
           timeoutSeconds: 10
+      {{- with $cfg.storage }}
+      volumes:
+        {{- range $i, $s := . }}
+      - name: storage-{{ $i }}
+        {{- if $s.source.secret }}
+        secret:
+          {{- toYaml $s.source.secret | nindent 10 }}
+        {{- else if $s.source.configMap }}
+        configMap:
+          {{- toYaml $s.source.configMap | nindent 10 }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+        {{- end }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

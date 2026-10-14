@@ -3,7 +3,7 @@ MCP servers helpers.
 Server keys under .Values.mcp (each one deployed as <key>-server, port 8080).
 */}}
 {{- define "multi-agents.mcp.serverKeys" -}}
-ocr rag claims tenders postal tracking
+ocr rag claims tenders postal tracking sandbox
 {{- end -}}
 
 {{/*
