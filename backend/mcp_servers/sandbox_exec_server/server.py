@@ -8,7 +8,8 @@ policy denials observed in the output.
 
 Creating a sandbox takes ~30 s (pod + volume), so one warm sandbox is created at
 startup and reused (SANDBOX_REUSE=true): calls are serialized, /sandbox and /tmp are
-wiped before each run, and the sandbox is recreated if it disappears. The policy is
+wiped before each run, and the sandbox is recreated if it disappears. At startup the
+sandboxes left by previous pods are deleted (the server runs as a single replica). The policy is
 enforced by the kernel on every run either way. SANDBOX_REUSE=false gives one
 throw-away sandbox per call.
 
@@ -53,6 +54,10 @@ SANDBOX_READY_TIMEOUT = float(os.getenv("SANDBOX_READY_TIMEOUT", "120"))
 MAX_EXEC_TIMEOUT = int(os.getenv("SANDBOX_MAX_EXEC_TIMEOUT", "60"))
 MAX_OUTPUT_CHARS = 8000
 SANDBOX_REUSE = os.getenv("SANDBOX_REUSE", "true").lower() == "true"
+SANDBOX_LABELS = {"app": "multi-agents", "tool": "run_python"}
+LABEL_SELECTOR = ",".join(f"{k}={v}" for k, v in SANDBOX_LABELS.items())
+PREWARM_ATTEMPTS = 20
+PREWARM_INTERVAL = 15  # seconds; after a cluster restart the gateway may not resolve yet
 CLEANUP = "import shutil,os\nfor d in ('/sandbox','/tmp'):\n    for e in os.listdir(d):\n        p=os.path.join(d,e)\n        shutil.rmtree(p,True) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)"
 PYTHON = "/usr/bin/python3.12"  # exact binary allowed by the policy
 
@@ -105,8 +110,7 @@ def _spec() -> openshell_pb2.SandboxSpec:
 
 def _create(client: SandboxClient) -> str:
     name = f"run-python-{uuid.uuid4().hex[:8]}"
-    client.create(workspace=OPENSHELL_WORKSPACE, spec=_spec(), name=name,
-                  labels={"app": "multi-agents", "tool": "run_python"})
+    client.create(workspace=OPENSHELL_WORKSPACE, spec=_spec(), name=name, labels=SANDBOX_LABELS)
     client.wait_ready(name, workspace=OPENSHELL_WORKSPACE, timeout_seconds=SANDBOX_READY_TIMEOUT)
     return name
 
@@ -118,6 +122,13 @@ def _delete(client: SandboxClient, name: str) -> None:
         logger.warning(f"Sandbox {name} not deleted: {e}")
 
 
+def _delete_orphans(client: SandboxClient) -> None:
+    """Delete the run_python sandboxes left by previous server pods (one replica)."""
+    for ref in client.list_all(workspace=OPENSHELL_WORKSPACE, label_selector=LABEL_SELECTOR):
+        logger.info(f"Deleting orphan sandbox {ref.name}")
+        _delete(client, ref.name)
+
+
 class WarmSandbox:
     """One reusable sandbox; recreated when an exec fails because it is gone."""
 
@@ -126,11 +137,16 @@ class WarmSandbox:
         self.lock = threading.Lock()  # one run at a time in the shared sandbox
 
     def prewarm(self) -> None:
-        try:
-            with self.lock, _client() as client:
-                self.ensure(client)
-        except Exception as e:
-            logger.warning(f"Sandbox pre-warm failed (will retry on first call): {e}")
+        for attempt in range(1, PREWARM_ATTEMPTS + 1):
+            try:
+                with self.lock, _client() as client:
+                    _delete_orphans(client)
+                    self.ensure(client)
+                return
+            except Exception as e:
+                logger.warning(f"Sandbox pre-warm attempt {attempt}/{PREWARM_ATTEMPTS} failed: {e}")
+                time.sleep(PREWARM_INTERVAL)
+        logger.warning("Sandbox pre-warm gave up: the first run_python call creates the sandbox")
 
     def ensure(self, client: SandboxClient) -> int:
         """Create the sandbox if needed; returns the time spent waiting for it (ms)."""
@@ -161,8 +177,6 @@ class WarmSandbox:
 
 
 _warm = WarmSandbox()
-if SANDBOX_REUSE and SANDBOX_IMAGE:
-    threading.Thread(target=_warm.prewarm, name="sandbox-prewarm", daemon=True).start()
 
 
 def _run_in_sandbox(code: str, timeout_s: int) -> Dict[str, Any]:
@@ -268,5 +282,7 @@ if __name__ == "__main__":
     logger.info(f"OpenShell gateway: {OPENSHELL_ENDPOINT} (workspace {OPENSHELL_WORKSPACE})")
     logger.info(f"Sandbox image: {SANDBOX_IMAGE}, policy: {SANDBOX_POLICY_FILE}")
     logger.info("Tools: run_python")
+    if SANDBOX_REUSE and SANDBOX_IMAGE:
+        threading.Thread(target=_warm.prewarm, name="sandbox-prewarm", daemon=True).start()
 
     uvicorn.run(app, host=host, port=port)
