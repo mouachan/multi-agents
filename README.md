@@ -7,6 +7,8 @@ An intelligent multi-agent decision platform powered by AI agents, demonstrating
 - **Postal Mail Processing (Courrier)** — Complaint handling, package tracking, and knowledge base queries
 - **Multi-Agent Orchestrator** — Intent-based routing, chat sessions, and cross-domain agent chaining
 
+It runs on **Red Hat OpenShift AI 3.5**: decoupled **A2A** domain agents, **OGX** Responses API with **MCP** tools, **Models-as-a-Service**, **NeMo Guardrails**, **MLflow** tracing + Prompt Registry, and optional **SPIFFE/SPIRE** agent identity.
+
 ## Table of Contents
 
 - [Business Overview](#business-overview)
@@ -14,7 +16,7 @@ An intelligent multi-agent decision platform powered by AI agents, demonstrating
 - [Backend Architecture](docs/backend-architecture.md) — Processing flows, modular design, and how to add a new agent
 - [Technology Stack](#technology-stack)
 - [Local Development](#local-development)
-- [OpenShift Deployment](#openshift-deployment)
+- [OpenShift Deployment](#openshift-deployment) — see also [RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md)
 - [Configuration](#configuration)
 - [NeMo Guardrails](#nemo-guardrails)
 - [MLflow Tracing](#mlflow-tracing-opentelemetry)
@@ -31,7 +33,7 @@ Many business processes require expert analysis of documents, comparison with hi
 
 ### Use Case 1: Insurance Claims Processing
 
-- Autonomous document processing via vision-based OCR (Qwen2.5-VL)
+- Autonomous document processing via vision-based OCR (multimodal model, `llama-scout-17b` by default)
 - Smart policy matching via semantic search through user contracts
 - Precedent-based reasoning using similar historical claims (RAG)
 - Decision: **Approve / Deny / Manual Review** with confidence score
@@ -49,10 +51,10 @@ Many business processes require expert analysis of documents, comparison with hi
 - Tracks package and mail delivery status via the tracking MCP server
 - Searches an internal postal knowledge base for regulations, procedures, and precedents
 - Generates structured responses with resolution recommendations
-- Three specialized sub-agents:
-  - **courrier-reclamation**: Complaint CRUD, document management, decision saving
-  - **courrier-suivi**: Real-time package/mail tracking
-  - **courrier-info**: Knowledge base search for postal regulations
+- Three specialized profiles of the postal A2A agent:
+  - **courrier_reclamation**: Complaint CRUD, document management, decision saving
+  - **courrier_suivi**: Real-time package/mail tracking
+  - **courrier_info**: Knowledge base search for postal regulations
 
 ### The ReAct Agentic Workflow
 
@@ -85,44 +87,45 @@ Customer Submits Claim
 
 ### Multi-Agent Orchestrator
 
-The platform includes a **multi-agent orchestrator** that classifies user intent via LLM and dispatches requests to the appropriate specialized agent:
+The backend includes a **multi-agent orchestrator** that classifies user intent and dispatches requests to the appropriate **decoupled A2A agent**:
 
 ```
 User Message
     |
     v
-+----------------------------------+
-|     Multi-Agent Orchestrator     |
-|     (Intent Classification)      |
-+----------------------------------+
-    |              |              |
-    v              v              v
-+---------+  +-----------+  +-----------+
-| Claims  |  | Tenders   |  | Courrier  |
-| Agent   |  | Agent     |  | Agent     |
-+---------+  +-----------+  +-----------+
-    |              |              |
-    v              v              v
++------------------------------------------+
+|  Backend — Multi-Agent Orchestrator      |
+|  intent routing + A2A client             |
++------------------------------------------+
+    |  A2A JSON-RPC + streaming (:8090)
+    |  optional SPIFFE JWT-SVID
+    v
++--------------+  +---------------+  +-----------------------------+
+| claims-agent |  | tenders-agent |  | postal-agent                |
+|              |  |               |  | reclamation / info / suivi  |
++--------------+  +---------------+  +-----------------------------+
+    |  NeMo Guardrails on input + output (PII masking, self-check)
+    v
++--------------------------------------------------+
+|  OGX — Responses API (/v1/responses)             |---> RHOAI MaaS (models)
++--------------------------------------------------+
+    |  MCP Streamable HTTP (/mcp), optionally via the MCP Gateway
+    v
 +--------------------------------------------------+
 |              MCP Tool Servers                     |
 | OCR | RAG | Claims | Tenders | Postal | Tracking |
 +--------------------------------------------------+
-    |                                    |
-    v                                    v
-+------------------------------+  +------------------+
-|   S3/MinIO + PostgreSQL      |  | NeMo Guardrails  |
-|   Documents + Decisions      |  | PII + Safety     |
-+------------------------------+  +------------------+
     |
     v
-+------------------------------+
-|   MLflow RHOAI (OTel)        |
-|   Distributed Tracing        |
-+------------------------------+
++------------------------------+  +------------------------------+
+|  PostgreSQL + pgvector       |  |  MLflow (RHOAI)              |
+|  MinIO S3 (documents)        |  |  traces + Prompt Registry    |
++------------------------------+  +------------------------------+
 ```
 
 **Key capabilities**:
-- **SSE Streaming**: Real-time response streaming via `POST /chat/stream` with tool call events, text deltas, and completion notifications
+- **Decoupled A2A agents**: one service per domain (`claims-agent`, `tenders-agent`, `postal-agent`), discovered through their agent card, streaming tool activity and text deltas back to the backend
+- **SSE Streaming**: Real-time response streaming via `POST /api/v1/orchestrator/chat/stream` with tool call events, text deltas, and completion notifications
 - **Decision persistence**: Agents call `save_claim_decision` / `save_tender_decision` / `save_reclamation_decision` MCP tools to persist decisions, update status, and auto-generate embeddings
 - **RAG by precedents**: Similar claims/tenders found via pgvector cosine similarity on OCR text embeddings
 - **Intent-based routing**: Keyword classification routes user messages to the correct domain agent
@@ -130,22 +133,22 @@ User Message
 - **Tool call observability**: Full tool execution traces (name, server, output, error) persisted and displayed in UI
 - **Token consumption tracking**: Per-message and per-session LLM token usage displayed in chat
 - **Bilingual support**: FR/EN language detection and response generation
-- **NeMo Guardrails**: Input/output safety rails + PII masking via Presidio (PERSON, EMAIL, CREDIT_CARD, PHONE, SSN, IBAN)
-- **MLflow tracing**: Distributed tracing via OpenTelemetry → MLflow RHOAI with full span hierarchy
+- **NeMo Guardrails**: Presidio PII masking on agent input and output (including French identifiers) + LLM self-check on input
+- **MLflow**: Distributed tracing via OpenTelemetry and versioned agent prompts (Prompt Registry, alias `@production`)
 
 ### Compliance & Guardrails
 
 #### NeMo Guardrails (TrustyAI)
 
-The platform integrates **NeMo Guardrails** (GA in RHOAI 3.4) deployed via the TrustyAI operator for content safety and PII protection:
+The platform integrates **NeMo Guardrails** (GA since RHOAI 3.4) deployed by the **TrustyAI operator** (`trustyai` component `Managed` in the DataScienceCluster):
 
-- **Input rails**: Self-check input flow — blocks harmful, abusive, or injection-style prompts before they reach the LLM
-- **Output rails**: Self-check output flow — validates bot responses meet moderation policy (no PII leakage, no offensive content)
-- **PII masking**: Presidio-based sensitive data detection on both input and output — automatically masks PERSON, EMAIL_ADDRESS, CREDIT_CARD, PHONE_NUMBER, US_SSN, and IBAN_CODE with `[REDACTED]` tokens
-- **Configurable threshold**: PII detection score threshold configurable via `guardrails.pii.scoreThreshold` (default: 0.3)
-- **Optional LLM detector**: LlamaGuard 3 1B can be enabled as an additional content safety detector (requires GPU)
+- **Input rails**: Presidio PII masking first (the LLM never sees raw personal data), then an LLM-based `self check input` that blocks jailbreak / prompt-injection / abusive messages
+- **Output rails**: Presidio PII masking of the agent's answer
+- **PII masking**: entities are replaced by `<ENTITY_TYPE>` placeholders (e.g. `<PERSON>`, `<EMAIL_ADDRESS>`, `<FR_IBAN>`), including custom French recognizers (`FR_NIR`, `FR_IBAN`, `FR_PHONE`, `FR_PLATE`)
+- **No unmasked streaming**: when output rails are active, the agent buffers the answer until it is masked; tool activity is still streamed live
+- **Configurable**: score threshold, entity lists, self-check on/off and fail-open behaviour via the `guardrails.*` Helm values
 
-NeMo is deployed as a standalone service via the TrustyAI operator (`NemoGuardrails` CRD). It does **not** proxy/encapsulate the LlamaStack — the backend calls NeMo explicitly for input validation before each LLM call in the chat flow. NeMo uses LiteMaaS directly (not LlamaStack) for its self-check prompts. If NeMo is unreachable (timeout 5s), the request is allowed through (fail-open).
+NeMo runs as a standalone service (`NemoGuardrails` CR). It does **not** proxy OGX: each A2A agent calls NeMo's `POST /v1/checks` endpoint explicitly, before and after the OGX call. If NeMo is unreachable, the request is allowed through by default (`guardrails.failOpen: true`).
 
 #### PII Detection & Protection
 
@@ -177,30 +180,37 @@ graph TB
     subgraph "Platform"
         subgraph "Application"
             F["Frontend React<br/>Chat UI + Domain Pages"]
-            B["Backend FastAPI"]
-            ORCH["Multi-Agent Orchestrator<br/>Intent Routing"]
+            B["Backend FastAPI<br/>Orchestrator + A2A client"]
+        end
+
+        subgraph "A2A Agents (a2a-sdk, :8090)"
+            CA["claims-agent"]
+            TA["tenders-agent"]
+            PA["postal-agent<br/>reclamation / info / suivi"]
         end
 
         subgraph "AI Orchestration"
-            LS["LlamaStack 0.7.x<br/>Responses API + MCP routing"]
+            OGX["OGX<br/>Responses API + MCP + pgvector + Files"]
         end
 
         subgraph "Safety & Compliance"
-            NEMO["NeMo Guardrails<br/>Input/Output Rails + PII Masking"]
+            NEMO["NeMo Guardrails<br/>PII masking + self-check input"]
         end
 
-        subgraph "Observability"
-            MLFLOW["MLflow RHOAI<br/>OTel Distributed Tracing"]
+        subgraph "Observability & Prompts"
+            MLFLOW["MLflow RHOAI<br/>OTel tracing + Prompt Registry"]
         end
 
-        subgraph "LiteMaaS — Model as a Service"
-            LLM["Llama-4-Scout-17B<br/>Reasoning + Tool Calling"]
-            VIS["Qwen2.5-VL-7B<br/>Vision OCR"]
-            EMB["nomic-embed-text-v1-5<br/>768-dim embeddings"]
+        subgraph "RHOAI Models-as-a-Service"
+            LLM["gpt-oss-120b<br/>Reasoning + Tool Calling"]
+            VIS["llama-scout-17b<br/>Vision OCR + guardrails"]
         end
 
-        subgraph "MCP Tool Servers"
-            OCR["OCR MCP Server<br/>Qwen2.5-VL vision"]
+        EMB["nomic-embed-text-v1-5<br/>768-dim embeddings<br/>(external MaaS, direct)"]
+
+        subgraph "MCP Tool Servers (MCPServer CRs, /mcp)"
+            GW["MCP Gateway<br/>(optional, Kuadrant)"]
+            OCR["OCR MCP Server"]
             RAG["RAG MCP Server<br/>pgvector similarity"]
             CLAIMS_MCP["Claims MCP Server<br/>CRUD + save_decision"]
             TENDERS_MCP["Tenders MCP Server<br/>CRUD + save_decision"]
@@ -209,26 +219,33 @@ graph TB
         end
 
         subgraph "Data Layer"
-            DB[("PostgreSQL 15<br/>+ pgvector HNSW<br/>+ chat sessions")]
+            DB[("PostgreSQL<br/>+ pgvector HNSW<br/>+ chat sessions")]
             S3["MinIO S3<br/>Document Storage"]
         end
     end
 
     U -->|HTTPS| F
     F -->|REST API| B
-    B --> ORCH
-    B -->|Responses API| LS
+    B -->|A2A JSON-RPC + streaming<br/>SPIFFE JWT-SVID| CA
+    B -->|A2A| TA
+    B -->|A2A| PA
+    CA -->|/v1/checks| NEMO
+    CA -->|Responses API| OGX
+    TA -->|Responses API| OGX
+    PA -->|Responses API| OGX
+    CA -->|prompts + traces| MLFLOW
     B -->|OTel/OTLP| MLFLOW
-    NEMO -->|Safety check| LLM
-    LS -->|Inference| LLM
-    LS -->|Vision| VIS
-    LS -->|Embeddings| EMB
-    LS -->|MCP/SSE| OCR
-    LS -->|MCP/SSE| RAG
-    LS -->|MCP/SSE| CLAIMS_MCP
-    LS -->|MCP/SSE| TENDERS_MCP
-    LS -->|MCP/SSE| POSTAL_MCP
-    LS -->|MCP/SSE| TRACKING_MCP
+    NEMO -->|self check| VIS
+    OGX -->|Inference| LLM
+    OGX -->|Vision| VIS
+    OGX -->|Embeddings| EMB
+    OGX -->|MCP| GW
+    GW --> OCR
+    GW --> RAG
+    GW --> CLAIMS_MCP
+    GW --> TENDERS_MCP
+    GW --> POSTAL_MCP
+    GW --> TRACKING_MCP
     RAG -->|Vector Search| DB
     B -->|CRUD| DB
     B -->|Documents| S3
@@ -237,18 +254,35 @@ graph TB
     POSTAL_MCP -->|Reclamations| DB
     TRACKING_MCP -->|Tracking Data| DB
 
-    style LS fill:#f3e5f5
+    style OGX fill:#f3e5f5
     style NEMO fill:#ffcdd2
     style MLFLOW fill:#bbdefb
     style LLM fill:#e8f5e9
     style VIS fill:#e8f5e9
     style EMB fill:#e8f5e9
-    style ORCH fill:#fff3e0
+    style B fill:#fff3e0
 ```
+
+All three agents call NeMo, OGX and MLflow the same way (only `claims-agent` edges are drawn for readability).
 
 ### Services Architecture
 
 ```
+agents/                               # Decoupled A2A agents (one image per agent)
+├── Containerfile                     # Shared build: --build-arg AGENT=<name>-agent
+├── claims-agent/agent.py             # Profile "claims" + agent card skills
+├── tenders-agent/agent.py            # Profile "tenders"
+├── postal-agent/agent.py             # Profiles courrier_reclamation / courrier_info / courrier_suivi
+└── shared/
+    ├── server.py                     # A2A server (JSON-RPC, agent card, /health)
+    ├── executor.py                   # Generic executor: guardrails → OGX → guardrails
+    ├── ogx_client.py                 # OGX Responses API client (MCP tools, streaming)
+    ├── guardrails.py                 # NeMo /v1/checks client
+    ├── prompts.py                    # MLflow Prompt Registry loader (+ ConfigMap fallback)
+    ├── prompt_sync.py                # Job prompt-sync: version prompts in MLflow
+    ├── spiffe_auth.py                # JWT-SVID validation middleware
+    ├── tracing.py                    # OpenTelemetry → MLflow OTLP exporter
+    └── config.py                     # Settings from env vars
 backend/
 ├── app/
 │   ├── api/                          # Modular HTTP layer (sub-packages)
@@ -279,6 +313,7 @@ backend/
 │   ├── core/                         # Application core
 │   │   ├── config.py                 # Settings from env vars (Pydantic)
 │   │   ├── database.py               # SQLAlchemy async engine & session
+│   │   ├── spiffe.py                 # JWT-SVID for backend → agent calls
 │   │   └── tracing.py                # OpenTelemetry → MLflow OTLP exporter
 │   ├── services/
 │   │   ├── claim_service.py              # Claims orchestration
@@ -288,10 +323,11 @@ backend/
 │   │   ├── agents/                       # Multi-agent layer
 │   │   │   ├── base_agent_service.py     # Common agent pattern
 │   │   │   ├── orchestrator_service.py   # Intent routing & chat sessions
-│   │   │   ├── registry.py              # Dynamic agent registry
+│   │   │   ├── registry.py              # Dynamic agent registry (incl. A2A URLs)
 │   │   │   └── conversation_utils.py    # Chat conversation helpers
 │   │   ├── agent/                        # Shared AI components
-│   │   │   ├── responses_orchestrator.py # LlamaStack Responses API client
+│   │   │   ├── a2a_client.py             # A2A client (streams tasks to the agents)
+│   │   │   ├── responses_orchestrator.py # In-process OGX Responses API path (agents disabled)
 │   │   │   ├── response_parser.py        # Extract structured decisions
 │   │   │   ├── context_builder.py        # Entity → markdown context formatter
 │   │   │   └── reviewer.py              # HITL review logic
@@ -303,14 +339,14 @@ backend/
 │   │   ├── tender.py                     # Tenders model
 │   │   ├── reclamation.py                # Reclamations model
 │   │   └── conversation.py               # Chat conversations model
-│   └── llamastack/                       # Prompts & integration config
+│   └── prompts/                          # Built-in prompts (in-process path)
 │       ├── prompts.py                    # Claims agent prompts
 │       ├── ao_prompts.py                 # Tender agent prompts
 │       ├── courrier_prompts.py           # Courrier/postal agent prompts
 │       └── orchestrator_prompts.py       # Multi-agent router prompts
 ├── mcp_servers/
 │   ├── shared/               # Shared DB module (connection, retry, queries)
-│   ├── ocr_server/           # Document OCR via Qwen2.5-VL vision model
+│   ├── ocr_server/           # Document OCR via the vision model (OGX chat completions)
 │   ├── rag_server/           # Vector search (pgvector) + embedding generation
 │   ├── claims_server/        # Claims CRUD + save_claim_decision + auto-embedding
 │   ├── tenders_server/       # Tenders CRUD + save_tender_decision + auto-embedding
@@ -323,7 +359,7 @@ backend/
 │   ├── generate_tender_pdfs.py           # Generate tender PDF test data
 │   ├── generate_reclamation_pdfs.py      # Generate reclamation PDF test data
 │   ├── seed_database.py                  # Database seeding utility
-│   └── upload_documents_to_llamastack.py # Upload PDFs to LlamaStack Files API
+│   └── upload_documents_to_ogx.py        # Upload PDFs to the OGX Files API
 frontend/
 ├── src/
 │   ├── pages/
@@ -389,24 +425,29 @@ frontend/
 
 | Component | Technology | Details |
 |-----------|-----------|---------|
-| **LLM Inference** | LiteMaaS (Model as a Service) | Llama-4-Scout-17B (llama-scout-17b) |
-| **Vision OCR** | Qwen2.5-VL-7B via LiteMaaS | PDF page images -> structured text extraction |
-| **Embeddings** | nomic-embed-text-v1-5 via LiteMaaS | 768-dim vectors for similarity search |
-| **AI Orchestration** | LlamaStack RHOAI 3.4 (llama-stack 0.7.x) | Responses API, MCP tool routing |
-| **Guardrails** | NeMo Guardrails (TrustyAI operator) | Input/output safety rails + Presidio PII masking |
-| **Tracing** | OpenTelemetry SDK → MLflow RHOAI | OTLP/HTTP distributed tracing with span hierarchy |
+| **Platform** | Red Hat OpenShift AI 3.5 on OpenShift 4.22 | See [RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md) |
+| **LLM Inference** | RHOAI Models-as-a-Service (external models) | `gpt-oss-120b` (agents reasoning + tool calling) |
+| **Vision OCR** | `llama-scout-17b` via MaaS | PDF page images -> structured text extraction |
+| **Embeddings** | `nomic-embed-text-v1-5` (external MaaS, direct) | 768-dim vectors for similarity search |
+| **AI Orchestration** | OGX (formerly LlamaStack), `OGXServer` CR | Responses API, MCP tool routing, pgvector, Files API |
+| **Agents** | A2A (a2a-sdk 1.x) + FastAPI | JSON-RPC binding + streaming, one Deployment per agent |
+| **Guardrails** | NeMo Guardrails (TrustyAI operator) | Presidio PII masking + self-check input |
+| **Tracing & Prompts** | OpenTelemetry SDK → MLflow RHOAI, MLflow Prompt Registry | OTLP/HTTP traces, prompts by alias `@production` |
+| **Agent identity** | Zero Trust Workload Identity Manager (SPIFFE/SPIRE) | Optional JWT-SVID backend → agents |
 | **Backend** | Python 3.12 + FastAPI | REST API + SSE streaming |
 | **Frontend** | React 18 + TypeScript + Tailwind | Chat UI + domain pages |
-| **Database** | PostgreSQL 15 + pgvector (HNSW) | Claims, tenders, reclamations, vectors, chat sessions |
+| **Database** | PostgreSQL + pgvector (HNSW) | Claims, tenders, reclamations, vectors, chat sessions |
 | **Document Storage** | MinIO S3-compatible | PDF documents for claims, tenders & reclamations |
-| **MCP Servers** | FastMCP + SSE transport | OCR, RAG, Claims, Tenders, Postal, Tracking |
-| **Deployment** | Helm 3.x on OpenShift 4.x | Or podman compose for local dev |
+| **MCP Servers** | FastMCP, Streamable HTTP (`/mcp`), `MCPServer` CRs | OCR, RAG, Claims, Tenders, Postal, Tracking (+ optional MCP Gateway) |
+| **Deployment** | Helm 3.x on OpenShift | Or podman compose for local dev (legacy stack) |
 
-**Key architectural choice**: All AI models run as **remote Model-as-a-Service (MaaS)** through LiteMaaS endpoints. No local GPU required. The OCR server sends PDF page images to Qwen2.5-VL via the LlamaStack inference API, eliminating the need for heavy local OCR libraries.
+**Key architectural choice**: All AI models are consumed as **Models-as-a-Service**. No local GPU required. Chat models go through the cluster MaaS gateway (token rate limits, per-namespace API key); embeddings are called directly on the external MaaS because MaaS external models are chat-only. The OCR server sends PDF page images to the vision model through OGX, eliminating the need for heavy local OCR libraries.
 
 ---
 
 ## Local Development
+
+> **Note**: the local `podman compose` stack is **not yet migrated to OGX**. It still runs the legacy LlamaStack container (same Responses API) with LiteMaaS-style endpoints, and does not include the A2A agents, NeMo Guardrails or the MLflow Prompt Registry. Use the OpenShift deployment for the RHOAI 3.5 features.
 
 ### Quick Start with Podman Compose
 
@@ -426,9 +467,9 @@ podman compose up --build
 | Service | Port | Description |
 |---------|------|-------------|
 | PostgreSQL + pgvector | 5433 | Database with schema + seed data (30 claims, 30 tenders, 25 reclamations) |
-| LlamaStack | 8321 | AI orchestration (Responses API, MCP tool routing) |
-| Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator |
-| OCR MCP Server | 8081 | Vision-based OCR via Qwen2.5-VL |
+| LlamaStack (legacy) | 8321 | AI orchestration (Responses API, MCP tool routing) — replaced by OGX on OpenShift |
+| Backend (FastAPI) | 8000 | REST API + SSE streaming + orchestrator (in-process agent path) |
+| OCR MCP Server | 8081 | Vision-based OCR |
 | RAG MCP Server | 8082 | Vector search + embedding generation |
 | Claims MCP Server | 8083 | Claims CRUD + decision persistence + auto-embedding |
 | Tenders MCP Server | 8084 | Tenders CRUD + decision persistence + auto-embedding |
@@ -436,15 +477,15 @@ podman compose up --build
 | Tracking MCP Server | 8086 | Package/mail tracking + postal knowledge base |
 | MinIO | 9000/9001 | S3-compatible document storage |
 | Frontend (React) | 3000 | Chat UI + domain pages |
-| **data-init** | — | Downloads PDFs, uploads to LlamaStack, processes 10+10+10 items |
+| **data-init** | — | Downloads PDFs, uploads them to the Files API, processes 10+10+10 items |
 
 ### Automatic Data Initialization
 
-On first startup, the `data-init` service automatically:
+On first startup, the `data-init` service (a Job on OpenShift) automatically:
 
 1. **Downloads PDF documents** from the GitHub repository archive (31 claims + 31 tenders + 25 reclamations, each with FR + EN bilingual versions)
-2. **Uploads PDFs to LlamaStack Files API** and updates `document_path` in database with file IDs (`file-xxx`)
-3. **Processes 10 claims** via MCP tools: OCR (Qwen2.5-VL) + save_claim_decision (with embedding)
+2. **Uploads PDFs to the Files API** (OGX on OpenShift) and updates `document_path` in database with file IDs (`file-xxx`)
+3. **Processes 10 claims** via MCP tools: OCR (vision model) + save_claim_decision (with embedding)
 4. **Processes 10 tenders** via MCP tools: OCR + save_tender_decision (with embedding)
 5. **Processes 10 reclamations** via MCP tools: OCR + save_reclamation_decision (with embedding)
 
@@ -453,7 +494,7 @@ After init completes, you'll have:
 - 31 tenders: 21 pending, 4 go, 3 no_go, 3 needs_deeper_review
 - 25 reclamations: 15 pending, 10 processed with decisions
 
-The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside Docker images.
+The init is **idempotent** — it checks if `document_path` already contains file IDs before running. PDF documents live in the `documents/` directory of the repository, never inside container images.
 
 ### Force Re-initialization (FORCE_REINIT)
 
@@ -465,8 +506,9 @@ FORCE_REINIT=true podman compose up data-init
 
 # OpenShift (via Helm)
 helm upgrade multi-agents helm/multi-agents \
+  --reuse-values \
   --set dataInit.forceReinit=true \
-  -n multi-agent
+  -n <NAMESPACE>
 ```
 
 **What FORCE_REINIT does:**
@@ -487,8 +529,8 @@ helm upgrade multi-agents helm/multi-agents \
 
 ### Development Notes
 
-- `docker-compose.yml` is the git-tracked version with placeholder values
-- Set LiteMaaS credentials via environment variables or a `.env` file
+- `docker-compose.yml` is the git-tracked compose file (used by `podman compose`) with placeholder values
+- Set LiteMaaS credentials via environment variables or a `.env` file (git-ignored)
 - Backend has hot-reload enabled (app code mounted as volume)
 - Frontend has hot-reload via Vite dev server
 - MCP servers require a rebuild to pick up code changes: `podman compose up --build <service>`
@@ -507,47 +549,72 @@ podman compose up --build
 
 ### Prerequisites
 
-1. **OpenShift 4.x** with Helm 3.12+
-2. **RHOAI 3.4** with TrustyAI operator (for NeMo Guardrails) and MLflow (for tracing)
-3. **LiteMaaS endpoints** for LLM inference, vision OCR, and embeddings (no local GPU needed)
-4. **Container registry** access (Quay.io, Docker Hub, or internal)
+1. **OpenShift 4.22** with Helm 3.12+
+2. **Red Hat OpenShift AI 3.5** with the `ogx`, `aigateway` (Models-as-a-Service), `mlflowoperator`, `trustyai` (NeMo Guardrails) and `mcplifecycleoperator` components `Managed`
+3. **Red Hat Connectivity Link** (Kuadrant) and the **MCP Gateway** operator; optionally **Zero Trust Workload Identity Manager** for SPIFFE
+4. An **external OpenAI-compatible MaaS** serving `gpt-oss-120b`, `llama-scout-17b` and `nomic-embed-text-v1-5` (no local GPU needed)
+5. **Container registry** access (e.g. `quay.io/<your-org>`)
+
+The step-by-step platform setup (operators, DataScienceCluster patch, SPIRE operands, sizing) is in **[RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md)**.
+
+### Red Hat OpenShift AI 3.5
+
+| Feature | RHOAI 3.5 component | Chart templates |
+|---|---|---|
+| Responses API, MCP tools, pgvector, Files | **OGX** (`OGXServer`) | `templates/ogx/` |
+| LLM access, token rate limits, API keys | **Models-as-a-Service** (`ExternalProvider`, `ExternalModel`, `MaaSModelRef`, `MaaSSubscription`, `MaaSAuthPolicy`) | `templates/maas/` |
+| Decoupled agents | **A2A** agents (port 8090) | `templates/agents/` |
+| MCP servers + federated endpoint | **MCP lifecycle operator** (`MCPServer`) + **MCP Gateway** | `templates/mcp-servers/`, `templates/mcp-gateway/` |
+| PII masking, jailbreak check | **NeMo Guardrails** (`NemoGuardrails`, TrustyAI) | `templates/guardrails/` |
+| Traces, versioned prompts | **MLflow** (tracing + Prompt Registry) | `templates/mlflow/` |
+| Agent identity without a mesh | **SPIFFE/SPIRE** via ZTWIM (`ClusterSPIFFEID`) | `templates/spiffe/` |
+
+`helm/multi-agents/values-rhoai35.yaml` enables all of these features on top of `values.yaml`. Sizing: the application requests ~8 vCPU / ~24 GiB; see the setup guide for cluster topologies.
+
+### Build images
+
+Images are cross-built on a Mac with Podman (`linux/amd64`) and pushed to a registry:
+
+```bash
+podman login quay.io
+QUAY_REPO=quay.io/<your-org>/multi-agents IMAGE_TAG=v3.5 ./scripts/build-all.sh --push
+```
 
 ### Deploy
 
 All sensitive values and cluster-specific settings are passed via `--set` flags (never committed to git).
 
 ```bash
-helm install multi-agents helm/multi-agents \
+helm upgrade --install multi-agents helm/multi-agents \
   -n <NAMESPACE> --create-namespace --timeout 10m \
+  -f helm/multi-agents/values-rhoai35.yaml \
   --set global.namespace=<NAMESPACE> \
-  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
-  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
-  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
-  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
-  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
-  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
-  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
-  --set secrets.postgresPassword="<DB_PASSWORD>" \
-  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
-  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>" \
-  --set mlflow.enabled=true \
-  --set mlflow.workspace=<NAMESPACE>
+  --set global.clusterDomain=<apps.cluster-domain> \
+  --set global.imageRegistry=quay.io/<your-org>/multi-agents \
+  --set models.external.host=<external-maas-host> \
+  --set secrets.maasExternalApiKey=<external-maas-api-key> \
+  --set secrets.postgresPassword=<DB_PASSWORD> \
+  --set secrets.postgresAdminPassword=<DB_ADMIN_PASSWORD> \
+  --set secrets.ogxDbPassword=<OGX_DB_PASSWORD> \
+  --set minio.rootPassword=<MINIO_PASSWORD>
 ```
 
 **Parameters:**
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `global.namespace` | Target namespace (must match `-n` flag) | `multi-agent` |
-| `global.clusterDomain` | OpenShift apps domain | `apps.cluster-xxx.sandbox.opentlc.com` |
-| `llamastack.litemaas.url` | LLM inference endpoint | `https://litellm-prod.apps.maas.example.com/v1` |
-| `llamastack.litemaas.embeddingUrl` | Embedding endpoint | Same or different from LLM URL |
-| `llamastack.litemaas.visionUrl` | Vision model endpoint (OCR) | `https://litellm-vision.apps.example.com/v1` |
-| `secrets.litemaas*ApiKey` | API keys for each MaaS endpoint | `sk-...` |
-| `secrets.postgres*Password` | Database passwords | Any strong password |
-| `mlflow.enabled` | Enable tracing + auto-create RBAC | `true` |
-| `mlflow.workspace` | RHOAI workspace (namespace) | Same as namespace |
-| `guardrails.enabled` | Enable NeMo Guardrails | `true` (default) |
+| `global.namespace` | Target namespace (must match `-n` flag) | `multi-agents` |
+| `global.clusterDomain` | OpenShift apps domain | `<apps.cluster-domain>` |
+| `global.imageRegistry` | Registry + path of the application images | `quay.io/<your-org>/multi-agents` |
+| `models.external.host` | FQDN of the external OpenAI-compatible MaaS | `<external-maas-host>` |
+| `secrets.maasExternalApiKey` | API key of the external MaaS (`ExternalProvider` credential + embeddings) | `<external-maas-api-key>` |
+| `secrets.maasApiKey` | Cluster MaaS key; empty = minted by Job `maas-api-key` | `""` |
+| `secrets.postgres*Password`, `secrets.ogxDbPassword` | Database passwords | Any strong password |
+| `minio.rootPassword` | MinIO root password | Any strong password |
+| `agents.enabled` | Deploy the A2A agents (otherwise in-process Responses API path) | `true` |
+| `guardrails.enabled` | Deploy NeMo Guardrails | `true` |
+| `mlflow.enabled` | Tracing + Prompt Registry + RBAC | `true` |
+| `spiffe.enabled` | JWT-SVID between backend and agents (requires ZTWIM) | `true` in `values-rhoai35.yaml` |
 
 ### Multi-namespace deployment
 
@@ -555,92 +622,85 @@ Deploy multiple independent instances on the same cluster by changing the namesp
 
 ```bash
 # Instance 1
-helm install multi-agents helm/multi-agents \
-  -n multi-agent --create-namespace --timeout 10m \
-  --set global.namespace=multi-agent \
-  --set global.clusterDomain="apps.cluster-xxx.sandbox.opentlc.com" \
-  --set llamastack.litemaas.url="..." \
-  --set secrets.litemaasApiKey="..." \
-  --set secrets.postgresPassword="..." \
+helm upgrade --install multi-agents helm/multi-agents \
+  -n multi-agents --create-namespace --timeout 10m \
+  -f helm/multi-agents/values-rhoai35.yaml \
+  --set global.namespace=multi-agents \
+  --set global.clusterDomain=<apps.cluster-domain> \
+  --set models.external.host=<external-maas-host> \
+  --set secrets.maasExternalApiKey=<external-maas-api-key> \
   ...
 
-# Instance 2 (different namespace, can use different API keys)
-helm install multi-agents helm/multi-agents \
-  -n test-multi-agent --create-namespace --timeout 10m \
-  --set global.namespace=test-multi-agent \
+# Instance 2 (different namespace and MaaS subscription)
+helm upgrade --install multi-agents helm/multi-agents \
+  -n test-multi-agents --create-namespace --timeout 10m \
+  -f helm/multi-agents/values-rhoai35.yaml \
+  --set global.namespace=test-multi-agents \
+  --set models.maas.subscriptionName=test-multi-agents \
   ...
 ```
 
-Each instance gets its own PostgreSQL, MinIO, LlamaStack, MCP servers, NeMo Guardrails, and routes. The only shared resources are the LiteMaaS endpoints (external) and the container registry.
-
-### RHOAI 3.4 / LlamaStack 0.7.x compatibility
-
-The Helm chart is compatible with **RHOAI 3.4** which ships **llama-stack 0.7.1+rhaiv.1**. Key changes from RHOAI 3.3:
-
-| Change | RHOAI 3.3 (llama-stack 0.4.x) | RHOAI 3.4 (llama-stack 0.7.x) |
-|--------|-------------------------------|-------------------------------|
-| Agent API | `agents` API | `responses` API |
-| Provider type | `inline::meta-reference` | `inline::builtin` |
-| Provider config key | `agents` | `responses` |
-| Guardrails | TrustyAI FMS (`remote::trustyai_fms`) | NeMo Guardrails (TrustyAI operator) |
-| Tracing | MLflow Python SDK | OpenTelemetry SDK → MLflow OTLP |
-| ConfigMap key | `config.yaml` | `config.yaml` (unchanged) |
-| vLLM provider URL | `base_url` | `base_url` (unchanged) |
-
-The LlamaStack configmap (`templates/llamastack/configmap.yaml`) handles all of these automatically. LiteMaaS URLs are injected via Helm template values, while secrets (API keys, DB passwords) use `${env.XXX}` variable substitution from the LlamaStackDistribution CRD environment variables.
-
-**Important**: The embedding `provider_model_id` must match the model name registered on the LiteLLM proxy exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). This is configurable via `llamastack.embedding.providerModelId` in values.
+Each instance gets its own PostgreSQL, MinIO, OGX server, A2A agents, MCP servers, NeMo Guardrails, MaaS API key and routes. `MaaSSubscription` / `MaaSAuthPolicy` live in the shared `models-as-a-service` namespace, so give each instance its own `models.maas.subscriptionName`. The external MaaS and the container registry are shared.
 
 ### Quick start (after cloning)
 
 ```bash
-git clone https://github.com/mouachan/multi-agents.git
+git clone https://github.com/<your-org>/multi-agents.git
 cd multi-agents
 
-helm install multi-agents helm/multi-agents \
+helm upgrade --install multi-agents helm/multi-agents \
   -n <NAMESPACE> --create-namespace --timeout 10m \
+  -f helm/multi-agents/values-rhoai35.yaml \
   --set global.namespace=<NAMESPACE> \
-  --set global.clusterDomain="<CLUSTER_DOMAIN>" \
-  --set llamastack.litemaas.url="<LITEMAAS_LLM_URL>" \
-  --set llamastack.litemaas.embeddingUrl="<LITEMAAS_EMBEDDING_URL>" \
-  --set llamastack.litemaas.visionUrl="<LITEMAAS_VISION_URL>" \
-  --set secrets.litemaasApiKey="<LITEMAAS_API_KEY>" \
-  --set secrets.litemaasEmbeddingApiKey="<LITEMAAS_EMBEDDING_API_KEY>" \
-  --set secrets.litemaasVisionApiKey="<LITEMAAS_VISION_API_KEY>" \
-  --set secrets.postgresPassword="<DB_PASSWORD>" \
-  --set secrets.postgresAdminPassword="<DB_ADMIN_PASSWORD>" \
-  --set secrets.llamastackPassword="<LLAMASTACK_DB_PASSWORD>" \
-  --set mlflow.enabled=true \
-  --set mlflow.workspace=<NAMESPACE>
+  --set global.clusterDomain=<apps.cluster-domain> \
+  --set global.imageRegistry=quay.io/<your-org>/multi-agents \
+  --set models.external.host=<external-maas-host> \
+  --set secrets.maasExternalApiKey=<external-maas-api-key> \
+  --set secrets.postgresPassword=<DB_PASSWORD> \
+  --set secrets.postgresAdminPassword=<DB_ADMIN_PASSWORD> \
+  --set secrets.ogxDbPassword=<OGX_DB_PASSWORD> \
+  --set minio.rootPassword=<MINIO_PASSWORD>
 
 # Wait ~5 min for all pods to be ready, then access:
-echo "Frontend: https://frontend-<NAMESPACE>.<CLUSTER_DOMAIN>"
+echo "Frontend: https://$(oc get route frontend -n <NAMESPACE> -o jsonpath='{.spec.host}')"
 ```
 
 ### Verify
 
 ```bash
-oc get pods -n <NAMESPACE>
-oc get routes -n <NAMESPACE>
+NS=<NAMESPACE>
+oc get pods -n $NS
+oc get routes -n $NS
+
+# RHOAI 3.5 objects
+oc get ogxserver,nemoguardrails,mcpserver,externalmodel,maasmodelref -n $NS
+oc get maassubscription,maasauthpolicy -n models-as-a-service
+
+# A2A agent cards
+for a in claims tenders postal; do
+  oc exec -n $NS deploy/backend -- curl -s http://$a-agent:8090/.well-known/agent-card.json | head -c 200; echo
+done
+
+# Prompts versioned in MLflow
+oc logs -n $NS job/prompt-sync
 
 # Check data initialization completed
-oc logs -l job-name -n <NAMESPACE>
+oc get jobs -n $NS
 
 # Verify file IDs in database
-oc exec postgresql-0 -n <NAMESPACE> -- \
+oc exec postgresql-0 -n $NS -- \
   psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT claim_number, document_path FROM claims WHERE document_path LIKE 'file-%' LIMIT 5;"
 
 # Verify embeddings
-oc exec postgresql-0 -n <NAMESPACE> -- \
+oc exec postgresql-0 -n $NS -- \
   psql -U multi_agent_user -d multi_agent_db -c \
   "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
 
-# Check NeMo Guardrails
-oc get nemoguardrails -n <NAMESPACE>
-
-# Check MLflow traces
-oc logs deployment/backend -n <NAMESPACE> | grep -i "trace exported"
+# NeMo masking (input rails)
+oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/checks \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"llama-scout-17b","messages":[{"role":"user","content":"Mon IBAN est FR76 3000 6000 0112 3456 7890 189"}],"guardrails":{"config_id":"multi-agents"}}'
 ```
 
 ### Access
@@ -654,73 +714,127 @@ echo "Backend:  https://$(oc get route backend -n <NAMESPACE> -o jsonpath='{.spe
 
 ## Configuration
 
-### LiteMaaS Models
+### Models (MaaS)
 
-Models are configured via Helm values (OpenShift) or environment variables (local):
+Models are declared once in the `models:` block of the Helm values and propagated to OGX, the agents, the MCP servers and NeMo:
 
-| Model | Role | Provider |
-|-------|------|----------|
-| `litemaas/llama-scout-17b` | Default LLM (reasoning + tool calling) | LiteMaaS |
-| `litemaas-vision/Qwen2.5-VL-7B-Instruct` | Vision OCR (PDF page images) | LiteMaaS |
-| `litemaas/nomic-embed-text-v1-5` | Embeddings (768-dim) | LiteMaaS |
-
-> **Note**: LLM, vision, and embedding models can point to different LiteMaaS endpoints. In the LlamaStack config, each model is registered under its own provider (`litemaas`, `litemaas-vision`), each with its own `base_url` and `api_token`. This allows mixing endpoints — e.g., LLM on one endpoint, vision on another.
-
-Model IDs are fully configurable via Helm values:
+| Key | Default | Role |
+|-----|---------|------|
+| `models.reasoning` | `gpt-oss-120b` | Agents reasoning + tool calling (`OGX_DEFAULT_MODEL`) |
+| `models.vision` | `llama-scout-17b` | OCR of PDF page images (`OGX_VISION_MODEL`) |
+| `models.guardrails` | `llama-scout-17b` | NeMo LLM-based rails (self check input) |
+| `models.embedding` | `nomic-embed-text-v1-5` | Embeddings |
+| `models.embeddingDimension` | `768` | pgvector dimension |
+| `models.maxTokens` | `4096` | Max tokens per response |
 
 ```yaml
-llamastack:
-  litemaas:
-    url: "https://your-litemaas-llm-endpoint/v1"
-    embeddingUrl: "https://your-litemaas-embedding-endpoint/v1"
-    visionUrl: "https://your-litemaas-vision-endpoint/v1"
-    defaultModel: "litemaas/llama-scout-17b"
-    embeddingModel: "litemaas/nomic-embed-text-v1-5"
-    visionModel: "litemaas-vision/Qwen2.5-VL-7B-Instruct"
-  embedding:
-    dimension: 768
-    providerModelId: "nomic-embed-text-v1-5"  # Must match LiteLLM proxy model name exactly
-  vision:
-    providerModelId: "Qwen2.5-VL-7B-Instruct"
+models:
+  reasoning: gpt-oss-120b
+  vision: llama-scout-17b
+  guardrails: llama-scout-17b
+  embedding: nomic-embed-text-v1-5
+  embeddingDimension: 768
+  external:
+    host: "REPLACE_WITH_EXTERNAL_MAAS_HOST"   # FQDN only; key: --set secrets.maasExternalApiKey=...
+  maas:
+    enabled: true            # route chat models through the cluster MaaS gateway
+    gatewayUrl: ""           # default https://maas.<clusterDomain>/v1
+    tlsVerify: false         # self-signed gateway certificate on lab clusters
+    namespace: models-as-a-service
+    subscriptionName: multi-agents
+    tokenRateLimit: {limit: 500000, window: 1h}
+    keyExpiration: 90d
+    chatModels: [gpt-oss-120b, llama-scout-17b]
 ```
 
-### Agent Prompts
+How it is wired:
+- With `models.maas.enabled=true`, the chart creates an `ExternalProvider` (credential `secrets.maasExternalApiKey`), one `ExternalModel` + `MaaSModelRef` per entry of `chatModels`, and a `MaaSSubscription` + `MaaSAuthPolicy` for the namespace ServiceAccounts. Job `maas-api-key` mints an `sk-oai-` key into Secret `maas-api-key` (unless `secrets.maasApiKey` is set).
+- OGX registers the chat models on provider `maas` (cluster MaaS gateway) and the embedding model on provider `maas-direct` (external MaaS), because MaaS external models are chat-only.
+- With `models.maas.enabled=false`, OGX calls the external MaaS directly for every model.
+- NeMo cannot skip TLS verification: with `tlsVerify: false` its self-check LLM calls go straight to the external MaaS.
 
-Prompts are defined in `backend/app/llamastack/prompts.py` (claims), `ao_prompts.py` (tenders), and `courrier_prompts.py` (postal/courrier). On OpenShift, they are overridden via ConfigMap-mounted files at `/app/prompts/`, `/app/prompts-ao/`, and `/app/prompts-courrier/`. Both sources must be kept in sync.
+### A2A agents
+
+The backend talks to three decoupled agents built on **a2a-sdk 1.x** (JSON-RPC binding, streaming), one Deployment + Service + ServiceAccount each, on port **8090**:
+
+| Agent | Profiles (selected by `metadata.profile`) | Prompt names |
+|---|---|---|
+| `claims-agent` | `claims` | `claims-processing-agent` |
+| `tenders-agent` | `tenders` | `ao-processing-agent` |
+| `postal-agent` | `courrier_reclamation`, `courrier_info`, `courrier_suivi` | `courrier-reclamation-instructions`, `courrier-info-instructions`, `courrier-suivi-instructions` |
+
+Each agent exposes its agent card at `/.well-known/agent-card.json` (readiness probe), `GET /health`, and the JSON-RPC endpoint on `/`. The backend discovers the agents through `CLAIMS_AGENT_A2A_URL`, `TENDERS_AGENT_A2A_URL` and `POSTAL_AGENT_A2A_URL` (set by Helm when `agents.enabled=true`); when they are unset it falls back to the in-process OGX Responses API path.
+
+**Message metadata** sent by the backend (all optional):
+
+| Key | Description |
+|---|---|
+| `profile` | Agent profile (backend agent id, e.g. `claims`, `courrier_info`) |
+| `mode` | `chat` (conversational wrapper prompt) or `process` (batch processing + decision parsing) |
+| `language` | `fr` / `en`, enforced through the `orchestrator-language-rule` prompt |
+| `previous_response_id` | OGX response id used to chain the conversation |
+| `instructions_override` | Session custom prompt (replaces the registry prompt) |
+
+**Execution**: NeMo input rails → OGX `/v1/responses` with the profile's MCP tools → NeMo output rails. MCP tools are reached through the MCP Gateway (`MCP_GATEWAY_URL`) when `mcpGateway.enabled`, otherwise per server (`http://<server>.<ns>.svc.cluster.local:8080/mcp`).
+
+**Streaming events**: tool activity is sent as `working` status updates (`event: tool_call | tool_result`, `name`, `server`, `status`), text as `response` artifact chunks (a non-append chunk replaces the text with its masked version). The final status message carries `output`, `decision`, `tool_calls`, `response_id`, `model`, `usage`, `prompt {name, version, source}` and `guardrails {input, output}`. The backend A2A client normalizes them into the same `tool_call` / `tool_result` / `text_delta` / `text_replace` / `done` events as the Responses API stream.
+
+**SPIFFE (optional, `spiffe.enabled`)**: the backend fetches a JWT-SVID for audience `a2a:<agent>-agent` from the SPIFFE CSI Workload API socket and sends it as `Authorization: Bearer`. Each agent validates it against its local SPIRE agent and only accepts the caller `/ns/<ns>/sa/backend` (401 without/invalid token, 403 for another identity). The agent card and `/health` stay public.
+
+### Agent prompts (MLflow Prompt Registry)
+
+- **Source of truth**: `helm/multi-agents/files/cm.*-prompts/*.txt` — one prompt per file, prompt name = file name without `.txt`.
+- **Versioning**: on every `helm install/upgrade`, Job `prompt-sync` (`python -m shared.prompt_sync`) registers a new MLflow prompt version for each changed file and moves the alias `production` to it (`mlflow.prompts.promoteOnSync: true`). Set it to `false` to keep versions promoted from the MLflow UI across upgrades.
+- **Loading**: agents load `prompts:/<name>@production` with a 60 s cache (`mlflow.prompts.cacheTtlSeconds`), so promoting another version in the MLflow UI is live within a minute, without restart.
+- **Fallback**: ConfigMap-mounted file, then the last value successfully loaded. Each MLflow trace records `prompt.name`, `prompt.version` and `prompt.source`.
+- The in-process backend path (agents disabled) uses the prompts in `backend/app/prompts/`, overridden by the ConfigMap files mounted at `/app/prompts/`, `/app/prompts-ao/`, `/app/prompts-courrier/` and `/app/prompts-orchestrator/`.
 
 Each agent prompt distinguishes between **information queries** (detail, list, show) that call only CRUD tools, and **processing requests** (process, traiter, evaluate) that trigger the full workflow (OCR + RAG + decision).
 
 ### Backend Environment Variables
 
 ```yaml
-# LlamaStack
-LLAMASTACK_ENDPOINT: http://llamastack:8321
-LLAMASTACK_DEFAULT_MODEL: litemaas/llama-scout-17b
-LLAMASTACK_EMBEDDING_MODEL: nomic-embed-text
+# OGX
+OGX_ENDPOINT: http://ogx-service.<NAMESPACE>.svc.cluster.local:8321
+OGX_DEFAULT_MODEL: gpt-oss-120b
+OGX_STREAMING_MODEL: gpt-oss-120b
+OGX_EMBEDDING_MODEL: nomic-embed-text-v1-5
+OGX_EMBEDDING_DIMENSION: "768"
+OGX_TIMEOUT: "300"
+OGX_MAX_RETRIES: "3"
+OGX_MAX_TOKENS: "4096"
+
+# A2A agents (unset = in-process Responses API path)
+CLAIMS_AGENT_A2A_URL: http://claims-agent.<NAMESPACE>.svc.cluster.local:8090
+TENDERS_AGENT_A2A_URL: http://tenders-agent.<NAMESPACE>.svc.cluster.local:8090
+POSTAL_AGENT_A2A_URL: http://postal-agent.<NAMESPACE>.svc.cluster.local:8090
 
 # MCP Servers
-OCR_SERVER_URL: http://ocr-server:8080
-RAG_SERVER_URL: http://rag-server:8080
-CLAIMS_SERVER_URL: http://claims-server:8080
-TENDERS_SERVER_URL: http://tenders-server:8080
-POSTAL_SERVER_URL: http://postal-server:8080
-TRACKING_SERVER_URL: http://tracking-server:8080
+OCR_SERVER_URL: http://ocr-server.<NAMESPACE>.svc.cluster.local:8080
+RAG_SERVER_URL: http://rag-server.<NAMESPACE>.svc.cluster.local:8080
+CLAIMS_SERVER_URL: http://claims-server.<NAMESPACE>.svc.cluster.local:8080
+TENDERS_SERVER_URL: http://tenders-server.<NAMESPACE>.svc.cluster.local:8080
+POSTAL_SERVER_URL: http://postal-server.<NAMESPACE>.svc.cluster.local:8080
+TRACKING_SERVER_URL: http://tracking-server.<NAMESPACE>.svc.cluster.local:8080
 
-# NeMo Guardrails (optional)
-GUARDRAILS_SERVER_URL: http://claims-guardrails:80
-GUARDRAILS_MODEL_NAME: llama-scout-17b  # must match LiteMaaS model name, NOT the NeMo config ID
+# NeMo Guardrails (in-process path only; the agents use GUARDRAILS_ENDPOINT)
+GUARDRAILS_SERVER_URL: http://multi-agents-guardrails.<NAMESPACE>.svc.cluster.local:8080
+GUARDRAILS_MODEL_NAME: llama-scout-17b
 
 # MLflow Tracing (optional — disabled when empty)
-MLFLOW_TRACKING_URI: https://mlflow.redhat-ods-applications.svc.cluster.local:8443
+MLFLOW_TRACKING_URI: https://mlflow.redhat-ods-applications.svc:8443/mlflow
 MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
-MLFLOW_RHOAI_WORKSPACE: multi-agent
+MLFLOW_RHOAI_WORKSPACE: <NAMESPACE>
+
+# SPIFFE (set by Helm when spiffe.enabled)
+SPIFFE_ENDPOINT_SOCKET: unix:///spiffe-workload-api/spire-agent.sock
 
 # PII Detection
 ENABLE_PII_DETECTION: "true"
 PII_REDACTION_MODE: "dual"  # "dual" = original + redacted, "redact_only" = redacted only
 
 # S3/MinIO
-S3_ENDPOINT_URL: http://minio:9000
+S3_ENDPOINT_URL: http://<release>-minio.<NAMESPACE>.svc.cluster.local:9000
 S3_ACCESS_KEY_ID: admin
 S3_SECRET_ACCESS_KEY: ***
 
@@ -732,6 +846,8 @@ POSTGRES_USER: multi_agent_user
 POSTGRES_PASSWORD: ***
 ```
 
+The A2A agents use their own variables (`AGENT_ID`, `OGX_ENDPOINT`, `OGX_DEFAULT_MODEL`, `MCP_GATEWAY_URL` or `MCP_SERVER_URL_TEMPLATE`, `GUARDRAILS_ENDPOINT`, `GUARDRAILS_CONFIG_ID`, `GUARDRAILS_MODEL`, `GUARDRAILS_FAIL_OPEN`, `MLFLOW_TRACKING_URI`, `MLFLOW_WORKSPACE`, `PROMPT_ALIAS`, `PROMPT_CACHE_TTL`, `SPIFFE_ALLOWED_IDS`), all set by `templates/agents/agents.yaml`.
+
 ### Frontend Configuration
 
 Frontend uses nginx reverse proxy — no environment variables needed. API calls go to `/api/v1/...` (relative path), nginx routes to backend.
@@ -742,115 +858,135 @@ Frontend uses nginx reverse proxy — no environment variables needed. API calls
 
 ### Architecture
 
-NeMo Guardrails is deployed via the **TrustyAI operator** as a `NemoGuardrails` CRD. It runs as a **standalone service** — the backend calls it explicitly for input validation before each LLM call. NeMo does NOT proxy/encapsulate LlamaStack.
+NeMo Guardrails is deployed by the **TrustyAI operator** as a `NemoGuardrails` CR (`guardrails.name`, default `multi-agents-guardrails`). It runs as a **standalone service** on port **80** (`http://<guardrails.name>.<ns>.svc.cluster.local`). Each A2A agent calls it explicitly; NeMo does NOT proxy OGX.
 
 ```
 User Input
     |
     v
-+---------------------------+       +---------------------------+
-|    Backend Orchestrator   |       |    NeMo Guardrails        |
-|                           |       |  ┌─────────────────────┐  |
-|  1. Check input ─────────────────>│  Input Rails          │  |
-|     POST /v1/guardrail/   |       |  │  - self check input │  |
-|           checks          |<──────│  │  - mask PII (input) │  |
-|                           |       |  └─────────────────────┘  |
-|  2. If blocked → refuse   |       +---------------------------+
-|     If allowed ↓          |
-|                           |       +---------------------------+
-|  3. Call LlamaStack ─────────────>|    LlamaStack             |
-|     POST /v1/responses    |<──────|    (Responses API)        |
-|                           |       +---------------------------+
-|  4. PII redaction (local) |
-|     regex-based masking   |
-+---------------------------+
++------------------------------+       +---------------------------+
+|  A2A agent (executor)        |       |    NeMo Guardrails        |
+|                              |       |  (POST /v1/checks)        |
+|  1. Input rails ─────────────────────>  mask sensitive data     |
+|     role=user                |<──────   self check input        |
+|     blocked → refusal (FR/EN)|       |                           |
+|     modified → masked text   |       |                           |
+|                              |       |                           |
+|  2. OGX /v1/responses        |       |                           |
+|     + MCP tools (streamed)   |       |                           |
+|                              |       |                           |
+|  3. Output rails ────────────────────>  mask sensitive data     |
+|     role=assistant           |<──────                           |
+|     text buffered until      |       +---------------------------+
+|     masked                   |
++------------------------------+
     |
     v
-Bot Response (safe, PII-redacted)
+Bot Response (PII masked)
 ```
 
-**Important**: The `model` field in NeMo API calls must be the actual LLM model name (e.g. `llama-scout-17b`), not the config ID. NeMo uses this model for self-check prompts via LiteMaaS. The NeMo service listens on port **80** (not 8000/8080). The guardrail check endpoint is `/v1/guardrail/checks` (singular, not `/v1/guardrails/checks`).
+Request / response of `POST /v1/checks` (no LLM generation, only the rails):
+
+```json
+// request
+{"model": "llama-scout-17b",
+ "messages": [{"role": "user", "content": "..."}],
+ "guardrails": {"config_id": "multi-agents"}}
+// response
+{"status": "passed | modified | blocked", "content": "<text after rails>", "rail": "<rail name>"}
+```
+
+A `user` message triggers the input rails, an `assistant`-only message the output rails. The `model` field is the LLM used by `self check input` (`models.guardrails`); `config_id` is `guardrails.configId`. When `agents.enabled=false`, the backend's in-process path runs its own input check (`GUARDRAILS_SERVER_URL`) before calling OGX; the PII masking described here applies to the A2A agents.
 
 ### Rails Configuration
 
-**Input rails**:
-- `self check input` — LLM-based prompt that checks if user input is harmful, abusive, or attempts injection attacks
-- `mask sensitive data on input` — Presidio-based PII detection and masking on incoming text
+**Input rails** (in order):
+- `mask sensitive data on input` — Presidio masking, so the LLM never sees raw PII
+- `self check input` — LLM-based check that blocks jailbreak / prompt injection / abusive or off-role messages (`guardrails.selfCheckInput`, one extra LLM call per message)
 
 **Output rails**:
-- `self check output` — LLM-based prompt that validates bot response meets moderation policy
-- `mask sensitive data on output` — Presidio-based PII masking on outgoing text
+- `mask sensitive data on output` — Presidio masking of the agent's answer
 
 ### PII Entities Detected
 
 | Entity | Example |
 |--------|---------|
-| PERSON | "Jean Dupont" → `[REDACTED]` |
-| EMAIL_ADDRESS | "jean@email.com" → `[REDACTED]` |
-| CREDIT_CARD | "4111-1111-1111-1111" → `[REDACTED]` |
-| PHONE_NUMBER | "+33 6 12 34 56 78" → `[REDACTED]` |
-| US_SSN | "123-45-6789" → `[REDACTED]` |
-| IBAN_CODE | "FR76 3000 6000..." → `[REDACTED]` |
+| PERSON | "Jean Dupont" → `<PERSON>` |
+| EMAIL_ADDRESS | "jean@email.com" → `<EMAIL_ADDRESS>` |
+| PHONE_NUMBER | international numbers → `<PHONE_NUMBER>` |
+| IBAN_CODE | IBAN (generic) → `<IBAN_CODE>` |
+| CREDIT_CARD | "4111-1111-1111-1111" → `<CREDIT_CARD>` |
+| FR_NIR | French social security number → `<FR_NIR>` |
+| FR_IBAN | "FR76 3000 6000 ..." → `<FR_IBAN>` |
+| FR_PHONE | "06 12 34 56 78", "+33 6 ..." → `<FR_PHONE>` |
+| FR_PLATE | French license plate (SIV) → `<FR_PLATE>` |
+
+The `FR_*` entities are custom regex recognizers defined in the NeMo ConfigMap. Presidio runs the English spaCy model: French names are detected heuristically, French identifiers through the custom recognizers.
 
 ### Helm Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `guardrails.enabled` | Deploy NeMo Guardrails | `true` |
-| `guardrails.name` | NemoGuardrails CR name | `claims-guardrails` |
+| `guardrails.name` | NemoGuardrails CR / Service name | `multi-agents-guardrails` |
+| `guardrails.configId` | NeMo config id sent by the agents | `multi-agents` |
 | `guardrails.replicas` | Number of replicas | `1` |
-| `guardrails.pii.scoreThreshold` | Presidio detection confidence threshold | `0.3` |
-| `guardrails.llamaGuard.enabled` | Deploy LlamaGuard 3 1B detector (requires GPU) | `false` |
+| `guardrails.failOpen` | Allow the request when NeMo is unreachable | `true` |
+| `guardrails.selfCheckInput` | Enable the LLM `self check input` rail | `true` |
+| `guardrails.pii.inputEntities` / `outputEntities` | Presidio entities masked on input / output | see table above |
+| `guardrails.pii.scoreThreshold` | Presidio detection confidence threshold | `0.4` |
 
 ### Helm Templates
 
-- `templates/guardrails/nemoguardrails.yaml` — `NemoGuardrails` CRD (TrustyAI operator)
-- `templates/guardrails/nemo-configmap.yaml` — NeMo config (models, rails, prompts, PII entities)
-- `templates/guardrails/detector-inferenceservice.yaml` — Optional LlamaGuard InferenceService (GPU)
+- `templates/guardrails/nemoguardrails.yaml` — `NemoGuardrails` CR (TrustyAI operator)
+- `templates/guardrails/nemo-configmap.yaml` — NeMo config (`config.yaml`: model, recognizers, rails, self-check prompt; `rails.co`)
 
 ---
 
 ## MLflow Tracing (OpenTelemetry)
 
-The backend supports distributed tracing via **OpenTelemetry** with traces exported to **MLflow RHOAI** (GenAI apps & agents tab). Tracing is optional — disabled by default, activated when `MLFLOW_TRACKING_URI` is set.
+The backend and the A2A agents export distributed traces via **OpenTelemetry** to **MLflow RHOAI** (GenAI apps & agents tab). Tracing is enabled by `mlflow.enabled` (default `true`) and is silently disabled when `MLFLOW_TRACKING_URI` is empty.
 
-**How it works**: The backend uses the OpenTelemetry SDK with an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Each agent call produces a trace with spans for the orchestrator, agent, tool calls, and LLM response. Authentication uses the pod's ServiceAccount token, TLS uses OpenShift's `service-ca.crt`.
+**How it works**: The OpenTelemetry SDK uses an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Authentication uses the pod's ServiceAccount token, the RHOAI workspace (namespace) is sent as a header, TLS uses OpenShift's `service-ca.crt`. The backend writes to `mlflow.experimentName`; each agent to `<experimentName>-<agent>` (e.g. `multi-agent-orchestrator-claims-agent`).
 
-**Span hierarchy** (visible in MLflow "GenAI apps & agents"):
+**Span hierarchy of an agent call** (visible in MLflow "GenAI apps & agents"):
 
 ```
-{agent_id} | {message}       (root)
-└── agent-{agent_id}         (agent span)
-    ├── tool:{tool_name}     (one span per MCP tool call)
-    └── llm-response         (LLM inference span)
+<agent>/<profile> | <message>   (AGENT, root)
+├── guardrails                  (GUARDRAIL)
+├── tool:<name>                 (TOOL, one per MCP call)
+└── llm-response                (CHAT_MODEL, token usage)
 ```
 
-Each span includes: `response.id`, input/output text, tool call details, token usage, and agent decision metadata.
+Each span includes: `response.id`, input/output text, tool call details, token usage, prompt name/version/source and agent decision metadata.
 
 **Enable via Helm**:
 
 ```bash
 helm upgrade multi-agents helm/multi-agents \
+  --reuse-values \
   --set mlflow.enabled=true \
-  --set mlflow.workspace=<NAMESPACE>
+  --set mlflow.workspace=<NAMESPACE> \
+  -n <NAMESPACE>
 ```
 
 **Helm parameters**:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `mlflow.enabled` | Enable tracing + auto-create RBAC RoleBinding | `false` |
-| `mlflow.trackingUri` | MLflow RHOAI internal URL | `https://mlflow.redhat-ods-applications.svc.cluster.local:8443` |
-| `mlflow.experimentName` | MLflow experiment name | `multi-agent-orchestrator` |
-| `mlflow.workspace` | RHOAI workspace (namespace) | `""` |
+| `mlflow.enabled` | Tracing + Prompt Registry + RBAC RoleBinding | `true` |
+| `mlflow.trackingUri` | MLflow RHOAI internal URL (keep the `/mlflow` prefix) | `https://mlflow.redhat-ods-applications.svc:8443/mlflow` |
+| `mlflow.experimentName` | MLflow experiment name (agents append `-<agent>`) | `multi-agent-orchestrator` |
+| `mlflow.workspace` | RHOAI workspace (namespace) | release namespace |
+| `mlflow.prompts.alias` | Prompt alias loaded by the agents | `production` |
+| `mlflow.prompts.cacheTtlSeconds` | Prompt cache in the agents | `60` |
+| `mlflow.prompts.promoteOnSync` | Move the alias on every `helm upgrade` | `true` |
 
-**RBAC (RHOAI 3.4)**: The Helm chart automatically creates a RoleBinding for the `mlflow-operator-mlflow-integration` ClusterRole when `mlflow.enabled=true`. This grants the backend's ServiceAccount access to MLflow pseudo-resources (`experiments`, `datasets`, `registeredmodels`) in the `mlflow.kubeflow.org` API group. Without this, trace exports fail with `403 Forbidden`.
+**RBAC**: the chart creates RoleBinding `mlflow-integration` to the `mlflow-operator-mlflow-integration` ClusterRole for the `backend`, `prompt-sync` and `<name>-agent` ServiceAccounts. This grants access to MLflow pseudo-resources (`experiments`, `datasets`, `registeredmodels`) in the `mlflow.kubeflow.org` API group. Without it, trace exports and prompt loading fail with `403 Forbidden`.
 
 **Experiment creation**: The backend auto-resolves the experiment ID at startup with retry logic (5 attempts, 3s delay). If the experiment doesn't exist, the backend **auto-creates it**. If MLflow is unreachable after all retries, tracing is disabled gracefully.
 
 **Graceful shutdown**: The backend flushes all pending OTel spans on shutdown via `TracerProvider.force_flush()` to avoid trace loss from the `BatchSpanProcessor` buffer.
-
-**Reusability**: When agents are separated into individual services, each service only needs `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http` packages and the same env vars (`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`, `MLFLOW_RHOAI_WORKSPACE`). No MLflow SDK or custom code required — OTel context propagation handles cross-service trace correlation automatically.
 
 **Local development**: Set `MLFLOW_TRACKING_URI` in your `.env` file to point to your MLflow instance. Without it, tracing is silently disabled.
 
@@ -870,7 +1006,7 @@ helm upgrade multi-agents helm/multi-agents \
 
 5. **Tenders**: Same workflow for construction tenders — Go/No-Go/Needs Deeper Review decisions.
 
-6. **Guardrails**: PII detected during processing is flagged with a `GuardrailsAlert` badge. Try sending a prompt injection in the chat — NeMo blocks it.
+6. **Guardrails**: Send a message containing an email or a French IBAN in the chat — the agent only sees and returns `<EMAIL_ADDRESS>` / `<FR_IBAN>`. Try a prompt injection — NeMo blocks it with a localized refusal.
 
 ### Via API
 
@@ -899,39 +1035,38 @@ curl -N -X POST "$BACKEND/api/v1/orchestrator/chat/stream" \
 
 ## Troubleshooting
 
-### LlamaStack Cannot Connect to LiteMaaS
+### OGX Cannot Reach the Models
 
 **Check**:
 ```bash
-# Verify LlamaStack health
-curl http://localhost:8321/v1/health
+oc get ogxserver -n <NAMESPACE>
+oc get pods -n <NAMESPACE> | grep ogx
+oc logs <ogx-pod> -n <NAMESPACE> | grep -iE "error|401|403|model"
 
-# Check LlamaStack logs for model connection errors
-podman logs multi-agents-llamastack
-
-# On OpenShift
-oc logs -l app=llama-stack -n <NAMESPACE>
+# MaaS objects and API key
+oc get externalmodel,maasmodelref -n <NAMESPACE>
+oc get maassubscription,maasauthpolicy -n models-as-a-service
+oc logs job/maas-api-key -n <NAMESPACE>
+oc get secret maas-api-key -n <NAMESPACE>
 ```
 
-**Solution**: Verify `LITEMAAS_URL` and `LITEMAAS_API_KEY` environment variables are set correctly.
+Common causes:
+- **401/403 from the MaaS gateway**: the `maas-api-key` Secret is missing or expired (`models.maas.keyExpiration`), or the `MaaSSubscription` does not list the model.
+- **Embedding errors**: embeddings are served by the external MaaS (`maas-direct` provider) — check `models.external.host` and `secrets.maasExternalApiKey`. The model id must match exactly (`nomic-embed-text-v1-5` with hyphens, not dots).
+- **TLS errors**: with a self-signed MaaS gateway keep `models.maas.tlsVerify: false`.
 
-### LlamaStack CrashLoopBackOff on RHOAI 3.4
+### A2A Agent Calls Fail
 
-Common causes and fixes:
+```bash
+oc get pods -l component=a2a-agent -n <NAMESPACE>
+oc logs deploy/claims-agent -n <NAMESPACE>
+oc exec -n <NAMESPACE> deploy/backend -- curl -s http://claims-agent:8090/health
+```
 
-1. **"Could not resolve config"** — The configmap key must be `config.yaml`. The RHOAI operator mounts the configmap at `/etc/llama-stack/` and the entrypoint expects `config.yaml`.
-
-2. **"You must provide a URL in config.yaml"** — llama-stack 0.7.x uses `base_url` in the vLLM provider config. Check `templates/llamastack/configmap.yaml`.
-
-3. **"Object already exists"** — Model already registered in PostgreSQL kvstore from a previous run. Clean up:
-   ```bash
-   oc exec postgresql-0 -n <NAMESPACE> -- \
-     psql -U multi_agent_user -d multi_agent_db -c \
-     "DELETE FROM llamastack_kvstore WHERE key LIKE '%model%';"
-   ```
-   Then restart the LlamaStack pod.
-
-4. **Embedding 401/403 errors** — The `provider_model_id` must match the LiteLLM proxy model name exactly (e.g., `nomic-embed-text-v1-5` with hyphens, not `nomic-embed-text-v1.5` with dots). Check your LiteLLM proxy's `/models` endpoint to confirm the exact model name.
+Common issues:
+- **401 / 403 with SPIFFE enabled**: the backend has no SPIFFE CSI socket (ZTWIM not installed, or installed in `openshift-operators`), or the caller is not `/ns/<ns>/sa/backend`.
+- **Unknown profile**: the backend agent id must match a profile of the agent (see [A2A agents](#a2a-agents)).
+- **Empty prompt**: MLflow unreachable and no ConfigMap fallback — check `oc logs job/prompt-sync`.
 
 ### RAG Returns No Similar Claims
 
@@ -943,13 +1078,13 @@ oc exec postgresql-0 -n <NAMESPACE> -- \
   "SELECT COUNT(*) FROM claim_documents WHERE embedding IS NOT NULL;"
 ```
 
-**Solution**: Ensure `data-init` service completed successfully. Embeddings are auto-generated when saving decisions via MCP tools.
+**Solution**: Ensure `data-init` completed successfully. Embeddings are auto-generated when saving decisions via MCP tools.
 
 ### OCR Fails or Times Out
 
-The OCR server sends PDF page images to Qwen2.5-VL via LlamaStack. If it fails:
-- Check LlamaStack logs for inference errors
-- Verify the vision model `litemaas-vision/Qwen2.5-VL-7B-Instruct` is accessible
+The OCR server sends PDF page images to the vision model (`models.vision`) through OGX `/v1/chat/completions`. If it fails:
+- Check the OCR server and OGX logs for inference errors
+- Verify the vision model is listed in `models.maas.chatModels`
 - Each page takes ~5-10 seconds, multi-page documents take longer
 
 ### NeMo Guardrails Not Working
@@ -959,47 +1094,51 @@ The OCR server sends PDF page images to Qwen2.5-VL via LlamaStack. If it fails:
 oc get nemoguardrails -n <NAMESPACE>
 
 # Check guardrails pod logs
-oc logs -l app=claims-guardrails -n <NAMESPACE>
+oc get pods -n <NAMESPACE> | grep guardrails
+oc logs <guardrails-pod> -n <NAMESPACE>
 
-# Verify ConfigMap is mounted
-oc describe nemoguardrails claims-guardrails -n <NAMESPACE>
+# Verify the config is mounted
+oc describe nemoguardrails multi-agents-guardrails -n <NAMESPACE>
 ```
 
 Common issues:
-- **LiteMaaS 401**: The `model` field in NeMo API calls must be the LLM model name (e.g. `llama-scout-17b`), NOT the NeMo config ID (`claims-guardrails`). NeMo passes this model name to LiteMaaS — if it doesn't match an allowed model, LiteMaaS returns 401.
-- **Wrong port**: NeMo service listens on port **80** (service port) → targetPort 8000. Use `http://claims-guardrails:80`, not `:8000` or `:8080`.
-- **Wrong endpoint**: The guardrail check endpoint is `/v1/guardrail/checks` (singular), not `/v1/guardrails/checks` (plural).
-- **Pod not starting**: TrustyAI operator must be installed (`oc get csv -n redhat-ods-applications | grep trustyai`)
+- **Wrong endpoint or port**: the service listens on port **80** (`http://<guardrails.name>.<ns>.svc.cluster.local`) and the agents call `POST /v1/checks`.
+- **Model 401**: the `model` field must be the LLM name (`models.guardrails`, e.g. `llama-scout-17b`), not the config id.
+- **Unknown config**: `guardrails.config_id` must equal `guardrails.configId` (`multi-agents`).
+- **Pod not starting**: the `trustyai` component must be `Managed` in the DataScienceCluster.
 
 ### MLflow Traces Not Appearing
 
 ```bash
-# Check backend logs for trace export
-oc logs deployment/backend -n <NAMESPACE> | grep -i "mlflow\|otlp\|trace"
+# Check backend / agent logs for trace export
+oc logs deployment/backend -n <NAMESPACE> | grep -iE "mlflow|otlp|trace"
+oc logs deployment/claims-agent -n <NAMESPACE> | grep -iE "mlflow|otlp|trace|prompt"
 
 # Verify RBAC
-oc get rolebinding mlflow-backend-integration -n <NAMESPACE>
+oc get rolebinding mlflow-integration -n <NAMESPACE>
 
-# Verify experiment exists
-SA_TOKEN=$(oc create token default -n <NAMESPACE>)
-curl -k -H "Authorization: Bearer $SA_TOKEN" \
-  -H "x-]mlflow-workspace: <NAMESPACE>" \
-  "https://mlflow.redhat-ods-applications.svc.cluster.local:8443/api/2.0/mlflow/experiments/list"
+# MLflow URL (must keep the /mlflow prefix)
+oc get mlflow mlflow -o jsonpath='{.status.address.url}{"\n"}'
 ```
 
 Common issues:
-- **403 Forbidden**: Missing `mlflow-operator-mlflow-integration` RoleBinding — set `mlflow.enabled=true` in Helm values
-- **RESOURCE_DOES_NOT_EXIST**: Experiment not created — the backend auto-creates it at startup, but if that fails check LiteMaaS/MLflow connectivity
+- **403 Forbidden**: Missing `mlflow-integration` RoleBinding — set `mlflow.enabled=true` in Helm values
+- **404 on `/v1/traces` or prompts**: the tracking URI lost its `/mlflow` prefix
+- **RESOURCE_DOES_NOT_EXIST**: Experiment not created — the backend auto-creates it at startup, check MLflow connectivity
 - **Connection refused at startup**: MLflow not ready when backend starts — the retry logic (5 attempts, 3s delay) handles this automatically. Check logs for `Resolved experiment → ID X`
-- **Traces lost on shutdown**: Fixed — the backend now calls `TracerProvider.force_flush()` before exit
 
-### Data Init Service Fails
+### Data Init Fails
 
 ```bash
+# OpenShift
+oc get jobs -n <NAMESPACE>
+oc logs job/<release>-data-init -n <NAMESPACE>
+
+# Local
 podman logs multi-agents-data-init
 ```
 
-Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers not started.
+Common causes: OGX (or the local LlamaStack container) not healthy yet, MCP servers not started.
 
 ---
 
@@ -1008,25 +1147,40 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 ### ReAct Streaming Intermediate Steps
 
 - **Status**: Intermediate reasoning steps (thoughts between tool calls) not stored
-- **Cause**: LlamaStack bug — requires upstream fix for streaming persistence
-- **Workaround**: Check LlamaStack pod logs for full trace
+- **Cause**: Upstream limitation of the Responses API streaming persistence
+- **Workaround**: Check the MLflow traces and the OGX pod logs for the full trace
 
-### Current Version: v3.4
+### Known limitations (RHOAI 3.5)
 
-**What's new in v3.4**:
-- **RHOAI 3.4 / llama-stack 0.7.x compatibility**: Full migration from llama-stack 0.4.x (RHOAI 3.3) to 0.7.1 (RHOAI 3.4)
-- **Responses API**: Replaced deprecated `agents` API with `responses` API — new `inline::builtin` provider replaces `inline::meta-reference`
-- **NeMo Guardrails**: Replaced TrustyAI FMS guardrails (`remote::trustyai_fms`) with NeMo Guardrails (GA in RHOAI 3.4) — input/output safety rails + PII masking via Presidio
-- **Guardrails input check in chat**: NeMo now validates user input in the orchestrator chat flow (both sync and streaming) before calling the LLM. Blocked messages return a localized refusal (FR/EN). Fail-open with 5s timeout.
-- **MLflow RBAC**: Helm chart auto-creates `mlflow-operator-mlflow-integration` RoleBinding for trace export access to MLflow pseudo-resources (`mlflow.kubeflow.org` API group)
+- MaaS **external models** are Technology Preview and chat-only (no embeddings).
+- NeMo's OpenAI client cannot skip TLS verification: with `models.maas.tlsVerify=false` the guardrails LLM calls the external MaaS directly.
+- `MCPServer` has no `imagePullPolicy`: bump image tags on rebuilds.
+- The local `podman compose` stack is not yet migrated to OGX / A2A agents.
+
+### Current Version: v3.5
+
+**What's new in v3.5** (Red Hat OpenShift AI 3.5):
+- **OGX**: `OGXServer` serves the Responses API (same `/v1/responses` API as before); kv/sql stores on PostgreSQL, pgvector, S3 files
+- **Decoupled A2A agents**: `claims-agent`, `tenders-agent`, `postal-agent` (a2a-sdk 1.x, JSON-RPC + streaming); the backend becomes an orchestrator + A2A client, with the in-process path kept as fallback
+- **Models-as-a-Service**: chat models (`gpt-oss-120b`, `llama-scout-17b`) through the cluster MaaS gateway with a namespace subscription and minted API key; embeddings from the external MaaS
+- **MCP**: servers on Streamable HTTP `/mcp`, deployed as `MCPServer` CRs, optionally federated by the MCP Gateway
+- **NeMo Guardrails** in the agents: Presidio PII masking on input and output with French recognizers, `self check input`, buffered output
+- **MLflow Prompt Registry**: prompts versioned by Job `prompt-sync`, loaded by alias `@production` with live promotion
+- **SPIFFE/SPIRE** (ZTWIM): JWT-SVID between backend and agents, no service mesh
+- **All images bumped to v3.5**, including the three agent images
+
+**What was in v3.4**:
+- **RHOAI 3.4 compatibility**: Responses API replaced the deprecated `agents` API
+- **NeMo Guardrails**: Replaced TrustyAI FMS guardrails with NeMo Guardrails (GA in RHOAI 3.4) — input/output safety rails + PII masking via Presidio
+- **Guardrails input check in chat**: NeMo validates user input in the orchestrator chat flow (both sync and streaming) before calling the LLM. Blocked messages return a localized refusal (FR/EN). Fail-open with 5s timeout.
+- **MLflow RBAC**: Helm chart auto-creates the `mlflow-operator-mlflow-integration` RoleBinding for trace export access to MLflow pseudo-resources (`mlflow.kubeflow.org` API group)
 - **Resilient tracing**: Experiment ID resolution with retry logic (5 attempts, 3s delay), auto-create experiment if missing, graceful flush on shutdown
 - **Enhanced tracing**: `response.id` and agent decision metadata (decision, recommendation, entity info) added to OTel spans
 - **Harmonized truncation**: All trace output fields truncated at 2000 chars (was 500)
-- **All images bumped to v3.4**: backend, frontend, data-init, and all 6 MCP servers
 
 **What was in v3.3** (backend only):
 - **OpenTelemetry tracing**: Replaced MLflow Python SDK with OpenTelemetry SDK + OTLP/HTTP exporter for distributed tracing
-- **Reusable tracing architecture**: Each future separated agent only needs OTel SDK + env vars — no MLflow-specific code required
+- **Reusable tracing architecture**: Each separated agent only needs OTel SDK + env vars — no MLflow-specific code required
 - **Removed MLflow SDK dependency**: `mlflow[auth]` replaced by lightweight `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http`
 - **Removed MLflow workspace plugin**: `mlflow_rhoai_workspace.py` no longer needed — workspace header injected directly in OTLP headers
 
@@ -1038,9 +1192,8 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - **25 reclamation seed data**: Database seeded with 25 postal reclamations across multiple categories (lost packages, damaged mail, delivery delays, etc.)
 - **Backend API refactoring**: API routes split from monolithic files into modular sub-packages (`api/claims/`, `api/tenders/`, `api/postal/`, `api/hitl/`, etc.)
 - **Reclamation model**: New `reclamation` database model with full CRUD, processing pipeline, and decision persistence
-- **Helm chart**: Added `mcp.postal` and `mcp.tracking` sections, LlamaStack tool_groups for postal/tracking, courrier-prompts ConfigMap
+- **Helm chart**: Added `mcp.postal` and `mcp.tracking` sections, tool groups for postal/tracking, courrier-prompts ConfigMap
 - **Token usage metadata**: Decision metadata now includes `tokens_used` tracking
-- **All images bumped to v3**: backend, frontend, data-init, ocr-server, rag-server, claims-server, tenders-server, postal-server, tracking-server
 
 **What was in v2.1** (backend v2.1, frontend v2.3):
 - **HITL domain-agnostic**: Human-in-the-Loop review now works for both claims AND tenders (was claims-only). Uses the existing `AgentRegistry` with HITL metadata — zero new files
@@ -1049,12 +1202,12 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 
 **What was in v2.0**:
 - Switched default LLM to `llama-scout-17b` (Llama-4-Scout-17B)
-- Multi-provider LlamaStack config: LLM, vision, and embedding can each point to different endpoints
+- Multi-provider inference config: LLM, vision, and embedding can each point to different endpoints
 - Fixed RAG server health check — no longer calls embedding API on every K8s probe
 - Fixed embedding model name mismatch (`nomic-embed-text-v1-5` with hyphens, not dots)
 
 **What was in v1.0**:
-- RHOAI 3.3 / llama-stack 0.4.x compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
+- RHOAI 3.3 compatibility (`base_url`, `config.yaml` key, dynamic model IDs)
 - Multi-namespace Helm deployment support
 - Route timeout 300s on frontend and backend
 - Configurable embedding model ID and dimension via Helm values
@@ -1063,15 +1216,16 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - End-to-end claim processing via multi-agent chat (4 parallel tool calls)
 - End-to-end tender / Appels d'Offres processing via multi-agent chat (5 parallel tool calls)
 - End-to-end postal/reclamation processing via multi-agent chat
+- Decoupled A2A agents with real streaming (tool activity + text deltas)
 - SSE streaming responses (real-time tool calls + text deltas)
-- Vision-based OCR via Qwen2.5-VL (replaces EasyOCR)
+- Vision-based OCR via a multimodal MaaS model (replaces EasyOCR)
 - RAG by precedents: similar claims/tenders via pgvector HNSW cosine similarity
 - Auto-embedding generation on decision save (no separate pipeline)
 - Automatic data initialization (87+ bilingual PDFs from GitHub archive, 30 processed items with OCR + decisions + embeddings)
 - Decision persistence via MCP tools (save_claim_decision, save_tender_decision, save_reclamation_decision)
 - Postal/courrier domain: complaint handling, package tracking, knowledge base queries
-- NeMo Guardrails: input/output safety rails + Presidio PII masking (PERSON, EMAIL, CREDIT_CARD, PHONE, SSN, IBAN)
-- MLflow distributed tracing via OpenTelemetry (orchestrator → agent → tool span hierarchy)
+- NeMo Guardrails: Presidio PII masking on input/output (incl. French identifiers) + self-check input
+- MLflow distributed tracing via OpenTelemetry and versioned prompts (Prompt Registry)
 - S3/MinIO document storage
 - PII detection & redaction with audit trail
 - HITL review workflow — domain-agnostic for claims & tenders (ask agent, approve, reject, request info)
@@ -1080,22 +1234,26 @@ Common causes: LlamaStack not healthy yet (increase retry timeout), MCP servers 
 - Tool call observability (collapsible traces with output/error per tool)
 - Token consumption tracking (per-message and per-session)
 - Bilingual support FR/EN
-- Local development with podman compose
-- Helm deployment on OpenShift (RHOAI 3.4 / llama-stack 0.7.x compatible)
+- Local development with podman compose (legacy stack)
+- Helm deployment on OpenShift (RHOAI 3.5)
 
 ### Image Versions
 
 | Component | Image | Version |
 |-----------|-------|---------|
-| Backend | `quay.io/mouachan/multi-agents/backend` | **v3.4** |
-| Frontend | `quay.io/mouachan/multi-agents/frontend` | **v3.4** |
-| Claims MCP Server | `quay.io/mouachan/multi-agents/claims-server` | **v3.4** |
-| Tenders MCP Server | `quay.io/mouachan/multi-agents/tenders-server` | **v3.4** |
-| OCR MCP Server | `quay.io/mouachan/multi-agents/ocr-server` | **v3.4** |
-| RAG MCP Server | `quay.io/mouachan/multi-agents/rag-server` | **v3.4** |
-| Postal MCP Server | `quay.io/mouachan/multi-agents/postal-server` | **v3.4** |
-| Tracking MCP Server | `quay.io/mouachan/multi-agents/tracking-server` | **v3.4** |
-| Data Init Job | `quay.io/mouachan/multi-agents/data-init` | **v3.4** |
+| Backend | `quay.io/<your-org>/multi-agents/backend` | **v3.5** |
+| Frontend | `quay.io/<your-org>/multi-agents/frontend` | **v3.5** |
+| Claims A2A Agent | `quay.io/<your-org>/multi-agents/claims-agent` | **v3.5** |
+| Tenders A2A Agent | `quay.io/<your-org>/multi-agents/tenders-agent` | **v3.5** |
+| Postal A2A Agent | `quay.io/<your-org>/multi-agents/postal-agent` | **v3.5** |
+| Claims MCP Server | `quay.io/<your-org>/multi-agents/claims-server` | **v3.5** |
+| Tenders MCP Server | `quay.io/<your-org>/multi-agents/tenders-server` | **v3.5** |
+| OCR MCP Server | `quay.io/<your-org>/multi-agents/ocr-server` | **v3.5** |
+| RAG MCP Server | `quay.io/<your-org>/multi-agents/rag-server` | **v3.5** |
+| Postal MCP Server | `quay.io/<your-org>/multi-agents/postal-server` | **v3.5** |
+| Tracking MCP Server | `quay.io/<your-org>/multi-agents/tracking-server` | **v3.5** |
+| Data Init Job | `quay.io/<your-org>/multi-agents/data-init` | **v3.5** |
 
 **In Progress**:
 - OpenShift OAuth authentication
+- Migration of the local `podman compose` stack to OGX and the A2A agents
