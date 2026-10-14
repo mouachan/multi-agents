@@ -232,11 +232,16 @@ async def _process_reclamation_job(db: AsyncSession, reclamation_id: UUID, proce
         "instructions": COURRIER_RECLAMATION_INSTRUCTIONS,
     }
 
+    # Processing workflow (the decision is saved below, so no save_* tool)
+    tools = ["get_reclamation", "get_reclamation_documents", "get_tracking",
+             "retrieve_similar_reclamations", "search_courrier_knowledge"]
+
     # Process reclamation with agent service
     result = await reclamation_service.process_reclamation_with_agent(
         db=db,
         reclamation_id=str(reclamation_id),
         agent_config=agent_config,
+        tools=tools,
     )
 
     # Save decision

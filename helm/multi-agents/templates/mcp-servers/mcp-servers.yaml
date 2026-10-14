@@ -40,6 +40,7 @@ spec:
       # Writable /tmp: the operator sets readOnlyRootFilesystem, and the OCR server
       # renders PDF pages there ("No usable temporary directory found")
       - path: /tmp
+        permissions: ReadWrite   # mounts default to read-only
         source:
           type: EmptyDir
           emptyDir: {}

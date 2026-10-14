@@ -46,17 +46,18 @@ logger = logging.getLogger(__name__)
 CHAT_WRAPPER_PROMPT = "chat-agent-wrapper"
 LANGUAGE_RULE_PROMPT = "orchestrator-language-rule"
 EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
-# Batch processing: the backend parses the decision from this block (chat prompts forbid JSON).
-# Appended to the user message: at the end of the system instructions Llama skipped the tools.
-DECISION_OUTPUT = """
-
-## Automated processing
-This request comes from the automated processing pipeline, not from a chat.
-1. First run the workflow of your instructions: call the tools (document OCR,
-   retrieval of contracts, references and precedents...) and wait for their results.
-   Never decide without them.
-2. Then write your analysis based on the tool results.
-3. Finally, end your answer with exactly one JSON code block:
+# Batch processing (mode=process): a guided workflow. Llama-scout writes several tool calls
+# as Python-like text ("[get_tender(...), ocr_document(...)]") when it wants many tools at
+# once, which the MaaS does not parse (OGX then fails on the arguments). With one tool
+# offered per step and tool_choice=required it always emits structured calls.
+OPTIONAL_TOOLS = {"run_python", "search_knowledge_base", "search_courrier_knowledge"}
+GUIDED_STEP = ("\n\nAutomated processing, step {i}/{n}: call the {tool} tool now for this "
+               "request, with the identifiers given above.")
+GUIDED_NEXT = "Step {i}/{n}: call the {tool} tool now for this request."
+# The backend parses the decision from this block (chat prompts forbid JSON)
+GUIDED_FINAL = """All workflow tools have returned. This request comes from the automated processing
+pipeline, not from a chat: write your analysis based on the tool results{optional}, then end
+your answer with exactly one JSON code block:
 ```json
 {{"recommendation": <one of {values}>, "confidence": <number between 0.0 and 1.0>, "reasoning": "<2 to 4 sentences>"}}
 ```"""
@@ -175,9 +176,6 @@ class BaseA2AExecutor(AgentExecutor):
             }))
             return
         llm_input = gin.text
-        values = meta.get("decision_values")
-        if meta.get("mode") == "process" and values:
-            llm_input += DECISION_OUTPUT.format(values=", ".join(f'"{v}"' for v in values))
 
         try:
             instructions, prompt_info = await self._instructions(profile, meta)
@@ -187,8 +185,12 @@ class BaseA2AExecutor(AgentExecutor):
             tools = [t for t in profile.tools if t in requested] if requested else profile.tools
             previous_response_id = meta.get("previous_response_id")
 
+            run = self._run
+            if process and meta.get("decision_values") and tools:
+                values = ", ".join(f'"{v}"' for v in meta["decision_values"])
+                run = lambda u, m, i, inp, t, prev: self._guided(u, m, i, inp, t, prev, values)
             try:
-                result = await self._run(updater, model, instructions, llm_input, tools, previous_response_id)
+                result = await run(updater, model, instructions, llm_input, tools, previous_response_id)
             except RuntimeError as e:
                 # OGX failed (e.g. malformed tool-call arguments): retry once, with the other
                 # model when one is configured
@@ -199,7 +201,7 @@ class BaseA2AExecutor(AgentExecutor):
                     f"fallback to {fallback}", metadata={"event": "fallback", "from": model, "to": fallback,
                                                          "reason": str(e)[:200]}))
                 model = fallback
-                result = await self._run(updater, model, instructions, llm_input, tools, previous_response_id)
+                result = await run(updater, model, instructions, llm_input, tools, previous_response_id)
 
             # Retry once if the model wrote tool calls as plain text
             if not result["tool_calls"] and self.parser.contains_text_tool_calls(result["output"]):
@@ -275,8 +277,38 @@ class BaseA2AExecutor(AgentExecutor):
             }),
         )
 
+    async def _guided(self, updater: TaskUpdater, model, instructions, input_message, tools,
+                      previous_response_id, values: str) -> Dict[str, Any]:
+        """Batch processing: one OGX call per workflow tool (tool_choice=required, chained by
+        previous_response_id, no text shown), then the final analysis + JSON decision, where
+        the optional tools (e.g. run_python for the payout) remain available."""
+        forced = [t for t in tools if t not in OPTIONAL_TOOLS and not t.startswith("save_")]
+        optional = [t for t in tools if t in OPTIONAL_TOOLS]
+        tool_calls: List[Dict[str, Any]] = []
+        usage: Dict[str, Any] = {}
+        response_id = previous_response_id
+        for i, tool in enumerate(forced, 1):
+            # Only the templates are formatted: the request may contain braces (JSON data)
+            step = GUIDED_STEP if i == 1 else GUIDED_NEXT
+            step_input = (input_message if i == 1 else "") + step.format(i=i, n=len(forced), tool=tool)
+            done = await self._run(updater, model, instructions, step_input, [tool], response_id,
+                                   tool_choice="required", emit_text=False)
+            tool_calls += done.get("tool_calls", [])
+            usage = _merge_usage(usage, done.get("usage") or {})
+            response_id = done.get("response_id") or response_id
+        final_input = GUIDED_FINAL.format(
+            values=values,
+            optional=f" (you may use {', '.join(optional)} if useful)" if optional else "")
+        if not forced:
+            final_input = input_message + "\n\n" + final_input
+        final = await self._run(updater, model, instructions, final_input, optional, response_id)
+        final["tool_calls"] = tool_calls + final.get("tool_calls", [])
+        final["usage"] = _merge_usage(usage, final.get("usage") or {})
+        return final
+
     async def _run(self, updater: TaskUpdater, model, instructions, input_message, tools,
-                   previous_response_id) -> Dict[str, Any]:
+                   previous_response_id, tool_choice: Optional[str] = None,
+                   emit_text: bool = True) -> Dict[str, Any]:
         """Stream one OGX response, forwarding (masked) text and tool activity as A2A events.
 
         The first chunk starts (or, on a retry, replaces) the "response" artifact.
@@ -288,7 +320,7 @@ class BaseA2AExecutor(AgentExecutor):
         verdict: Dict[str, Any] = {"allowed": True, "status": "passed", "rail": None, "error": None}
 
         async def emit(chunk: str) -> None:
-            if not chunk or not verdict["allowed"]:
+            if not chunk or not verdict["allowed"] or not emit_text:
                 return
             if self._mask_stream and chunk.strip():
                 core = chunk.strip()
@@ -315,6 +347,7 @@ class BaseA2AExecutor(AgentExecutor):
             tools=tools,
             max_tokens=self.settings.ogx_max_tokens,
             previous_response_id=previous_response_id,
+            tool_choice=tool_choice,
         ):
             etype = ev["type"]
             if etype == "text_delta":
@@ -339,7 +372,7 @@ class BaseA2AExecutor(AgentExecutor):
             elif etype == "done":
                 done = ev
         await emit(pending)
-        if not sent and done.get("output"):
+        if not sent and done.get("output") and emit_text:
             # No text deltas (non-streamed answer): send the whole output once
             await emit(done["output"])
         done["streamed_output"] = "".join(sent)
