@@ -15,7 +15,7 @@ x-postgres-env: &postgres-env
   POSTGRES_PORT: 5432
   POSTGRES_DATABASE: multi_agent_db
   POSTGRES_USER: multi_agent_user
-  POSTGRES_PASSWORD: multi_agents_pass
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
 
 # OGX 1.2 model identifiers are "<provider_id>/<model_id>" (provider "maas" in ogx/config.yaml)
 x-ogx-env: &ogx-env
@@ -58,7 +58,7 @@ services:
     environment:
       POSTGRES_DB: multi_agent_db
       POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     ports:
       - "5433:5432"
     volumes:
@@ -89,7 +89,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ogx
       POSTGRES_USER: multi_agent_user
-      POSTGRES_PASSWORD: multi_agents_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
     ports:

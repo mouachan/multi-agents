@@ -15,7 +15,7 @@ Environment variables:
     POSTGRES_PORT        - PostgreSQL port (default: 5432)
     POSTGRES_DATABASE    - Database name (default: multi_agent_db)
     POSTGRES_USER        - Database user (default: multi_agent_user)
-    POSTGRES_PASSWORD    - Database password (default: multi_agents_pass)
+    POSTGRES_PASSWORD    - Database password (required)
 """
 
 import os
@@ -32,7 +32,7 @@ PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
+PG_PASS = os.getenv("POSTGRES_PASSWORD", "")
 
 MAX_RETRIES = 30
 RETRY_DELAY = 5

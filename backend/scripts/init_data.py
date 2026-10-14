@@ -58,7 +58,7 @@ PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
 PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
+PG_PASS = os.getenv("POSTGRES_PASSWORD", "")
 
 DOCUMENTS_DIR = "/tmp/documents"
 MAX_RETRIES = 60

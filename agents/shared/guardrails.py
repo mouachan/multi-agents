@@ -78,16 +78,24 @@ class Guardrails:
             "messages": [{"role": role, "content": text}],
             "guardrails": {"config_id": self.config_id},
         }
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(f"{self.endpoint}/v1/checks", json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            kind = "input" if role == "user" else "output"
-            logger.warning("NeMo %s rails call failed (%s): %s", kind,
-                           "fail-open" if self.fail_open else "fail-closed", e)
-            return GuardrailResult(self.fail_open, text, status="error", error=str(e))
+        data = None
+        for attempt in (1, 2):  # one retry: timeouts and 5xx happen while NeMo or the MaaS warms up
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.post(f"{self.endpoint}/v1/checks", json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                break
+            except Exception as e:
+                transient = isinstance(e, httpx.TransportError) or (
+                    isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500)
+                if attempt == 1 and transient:
+                    continue
+                kind = "input" if role == "user" else "output"
+                error = f"{type(e).__name__}: {e}".rstrip(": ")
+                logger.warning("NeMo %s rails call failed (%s): %s", kind,
+                               "fail-open" if self.fail_open else "fail-closed", error)
+                return GuardrailResult(self.fail_open, text, status="error", error=error)
 
         status = data.get("status", "passed")
         rail = data.get("rail")

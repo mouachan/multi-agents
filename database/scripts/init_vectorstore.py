@@ -27,7 +27,7 @@ POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgresql.multi-agents.svc.cluster.
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "multi_agent_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "multi_agents_pass")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
 
 OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "http://ogx-service.multi-agents.svc.cluster.local:8321")
 VECTOR_STORE_NAME = "claims_vector_db"
