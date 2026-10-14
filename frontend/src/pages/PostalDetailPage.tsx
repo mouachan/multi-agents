@@ -57,7 +57,7 @@ export default function PostalDetailPage() {
           { label: t('postal.submittedOn'), value: formatDateTime(r.submitted_at, locale) },
           { label: t('postal.processedIn'), value: r.total_processing_time_ms ? `${(r.total_processing_time_ms / 1000).toFixed(1)} s` : '—' },
         ]}
-        actions={(r.status === 'pending' || r.status === 'rejected') && (
+        actions={['pending', 'rejected', 'processing'].includes(r.status) && (
           <ProcessButton onProcess={() => postalApi.process(r.id)} onStarted={reload} />
         )}
       />

@@ -34,7 +34,7 @@ from app.services.tender_service import TenderService
 from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
-from app.services.agents.background import run_in_background
+from app.services.agents.background import is_running, run_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,9 @@ async def process_tender(
             raise HTTPException(status_code=404, detail="Tender not found")
 
         # If tender is already being processed, return 202 Accepted instead of 409 error
-        if tender.status == models.TenderStatus.processing:
+        # (a "processing" status without a running job is stale: seed data or a restart)
+        job_name = f"process-tender-{tender_id}"
+        if tender.status == models.TenderStatus.processing and is_running(job_name):
             return Response(
                 status_code=202,
                 content=json.dumps({
@@ -234,7 +236,7 @@ async def process_tender(
         # Agent processing takes minutes: run it in the background, the UI polls the status
         tender.status = models.TenderStatus.processing
         await db.commit()
-        run_in_background(f"process-tender-{tender_id}", _process_tender_job, tender_id, process_request)
+        run_in_background(job_name, _process_tender_job, tender_id, process_request)
 
         return schemas.ProcessTenderResponse(
             tender_id=tender_id,

@@ -61,7 +61,7 @@ export default function TenderDetailPage() {
           { label: t('tenders.submittedOn'), value: formatDateTime(tender.submitted_at, locale) },
           { label: t('tenders.processedIn'), value: tender.total_processing_time_ms ? `${(tender.total_processing_time_ms / 1000).toFixed(1)} s` : '—' },
         ]}
-        actions={(tender.status === 'pending' || tender.status === 'failed') && (
+        actions={['pending', 'failed', 'processing'].includes(tender.status) && (
           <ProcessButton onProcess={() => tendersApi.process(tender.id)} onStarted={reload} />
         )}
       >

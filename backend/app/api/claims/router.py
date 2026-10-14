@@ -42,7 +42,7 @@ from app.services.claim_service import ClaimService
 from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
-from app.services.agents.background import run_in_background
+from app.services.agents.background import is_running, run_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,9 @@ async def process_claim(
             raise HTTPException(status_code=404, detail="Claim not found")
 
         # If claim is already being processed, return 202 Accepted instead of 409 error
-        if claim.status == models.ClaimStatus.processing:
+        # (a "processing" status without a running job is stale: seed data or a restart)
+        job_name = f"process-claim-{claim_id}"
+        if claim.status == models.ClaimStatus.processing and is_running(job_name):
             return Response(
                 status_code=202,
                 content=json.dumps({
@@ -335,7 +337,7 @@ async def process_claim(
         # Agent processing takes minutes: run it in the background, the UI polls the status
         claim.status = models.ClaimStatus.processing
         await db.commit()
-        run_in_background(f"process-claim-{claim_id}", _process_claim_job, claim_id, process_request)
+        run_in_background(job_name, _process_claim_job, claim_id, process_request)
 
         return schemas.ProcessClaimResponse(
             claim_id=claim_id,

@@ -3,7 +3,8 @@ import { Play } from 'lucide-react'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { Button } from '../ui/Button'
 
-/** Starts the agent processing of a pending (or failed) item; the page then polls its status. */
+/** Starts the agent processing of a pending, failed or stale "processing" item (the backend
+ * answers 202 while a job is really running); the page then polls its status. */
 export function ProcessButton({ onProcess, onStarted, disabled }: {
   onProcess: () => Promise<unknown>
   onStarted: () => void

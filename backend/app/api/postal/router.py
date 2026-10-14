@@ -38,7 +38,7 @@ from app.prompts.courrier_prompts import (
 from app.services.document_storage import get_document
 from app.services.reclamation_service import ReclamationService
 
-from app.services.agents.background import run_in_background
+from app.services.agents.background import is_running, run_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +274,9 @@ async def process_reclamation(
             raise HTTPException(status_code=404, detail="Reclamation not found")
 
         # If reclamation is already being processed, return 202 Accepted
-        if reclamation.status == models.ReclamationStatus.processing:
+        # (a "processing" status without a running job is stale: seed data or a restart)
+        job_name = f"process-reclamation-{reclamation_id}"
+        if reclamation.status == models.ReclamationStatus.processing and is_running(job_name):
             return Response(
                 status_code=202,
                 content=json.dumps({
@@ -289,7 +291,7 @@ async def process_reclamation(
         # Agent processing takes minutes: run it in the background, the UI polls the status
         reclamation.status = models.ReclamationStatus.processing
         await db.commit()
-        run_in_background(f"process-reclamation-{reclamation_id}", _process_reclamation_job, reclamation_id, process_request)
+        run_in_background(job_name, _process_reclamation_job, reclamation_id, process_request)
 
         return schemas.ProcessReclamationResponse(
             reclamation_id=reclamation_id,

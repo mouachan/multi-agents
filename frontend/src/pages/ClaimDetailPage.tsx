@@ -58,7 +58,7 @@ export default function ClaimDetailPage() {
           { label: t('claims.processed'), value: formatDateTime(claim.processed_at, locale) },
           { label: t('claims.duration'), value: formatDuration(claim.total_processing_time_ms) },
         ]}
-        actions={(claim.status === 'pending' || claim.status === 'failed') && (
+        actions={['pending', 'failed', 'processing'].includes(claim.status) && (
           <ProcessButton onProcess={() => claimsApi.process(claim.id)} onStarted={reload} />
         )}
       />
