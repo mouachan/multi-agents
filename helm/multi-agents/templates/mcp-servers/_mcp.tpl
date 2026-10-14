@@ -27,16 +27,16 @@ Usage: include "multi-agents.mcp.env" (dict "root" $ "name" "claims" "cfg" .Valu
 - name: OGX_ENDPOINT
   value: {{ include "multi-agents.mcp.ogxEndpoint" $root | quote }}
 - name: OGX_DEFAULT_MODEL
-  value: {{ $root.Values.models.reasoning | quote }}
+  value: {{ include "multi-agents.ogx.chatModel" $root.Values.models.reasoning | quote }}
 - name: OGX_EMBEDDING_MODEL
-  value: {{ $root.Values.models.embedding | quote }}
+  value: {{ include "multi-agents.ogx.embeddingModel" $root | quote }}
 - name: OGX_EMBEDDING_DIMENSION
   value: {{ $root.Values.models.embeddingDimension | quote }}
 - name: OGX_TIMEOUT
   value: {{ $root.Values.mcp.ogx.timeout | quote }}
 {{- if eq .name "ocr" }}
 - name: OGX_VISION_MODEL
-  value: {{ $root.Values.models.vision | quote }}
+  value: {{ include "multi-agents.ogx.chatModel" $root.Values.models.vision | quote }}
 {{- end }}
 {{- range $k, $v := .cfg.env }}
 - name: {{ $k }}

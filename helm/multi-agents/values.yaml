@@ -110,7 +110,6 @@ models:
   guardrails: llama-scout-17b      # NeMo LLM-based rails (fast)
   embedding: nomic-embed-text-v1-5
   embeddingDimension: 768
-  maxTokens: 4096
 
   # External OpenAI-compatible MaaS that actually serves the models
   external:
@@ -426,9 +425,11 @@ minio:
   enabled: true
 
   # Image configuration
+  # MinIO community images are no longer published (quay.io/minio and Docker Hub
+  # removed in 2026): Chainguard rebuild, "-dev" variant for the bash entrypoint.
   image:
-    repository: quay.io/minio/minio
-    tag: latest
+    repository: cgr.dev/chainguard/minio
+    tag: "latest-dev@sha256:12706237289ea1df7cf41e84af3251ada57a036838c9b62e7c9a8a76d0092ba5"
 
   # Root credentials
   rootUser: "admin"

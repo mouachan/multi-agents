@@ -143,6 +143,19 @@ OGX (RHOAI 3.5, formerly LlamaStack) — OGXServer Service is <name>-service:832
 http://{{ .Values.ogx.name }}-service.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8321
 {{- end -}}
 
+{{/*
+OGX model identifiers: OGX 1.2 registers every model as "<provider_id>/<model_id>"
+(see templates/ogx/configmap.yaml). Chat models use provider "maas", embeddings "maas-direct".
+Usage: include "multi-agents.ogx.chatModel" .Values.models.reasoning
+*/}}
+{{- define "multi-agents.ogx.chatModel" -}}
+maas/{{ . }}
+{{- end -}}
+
+{{- define "multi-agents.ogx.embeddingModel" -}}
+maas-direct/{{ .Values.models.embedding }}
+{{- end -}}
+
 {{/* Cluster MaaS gateway (OpenAI-compatible, body-based routing on "model") */}}
 {{- define "multi-agents.maas.gatewayUrl" -}}
 {{- .Values.models.maas.gatewayUrl | default (printf "https://maas.%s/v1" (include "multi-agents.clusterDomain" .)) -}}

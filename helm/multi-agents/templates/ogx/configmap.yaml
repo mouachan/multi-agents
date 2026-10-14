@@ -32,7 +32,10 @@ data:
         config:
           base_url: {{ include "multi-agents.maas.chatUrl" . | quote }}
           api_token: ${env.MAAS_API_KEY}
-          max_tokens: {{ .Values.models.maxTokens }}
+          # 0 = no default: OGX would otherwise add max_tokens next to the
+          # max_completion_tokens derived from the agents' max_output_tokens, and the
+          # MaaS backend rejects requests carrying both. Per-call limit: agents.maxTokens.
+          max_tokens: 0
           tls_verify: {{ if .Values.models.maas.enabled }}{{ .Values.models.maas.tlsVerify }}{{ else }}true{{ end }}
       - provider_id: maas-direct
         provider_type: remote::vllm

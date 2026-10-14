@@ -24,9 +24,9 @@ data:
   DATABASE_MAX_OVERFLOW: "20"
 
   OGX_ENDPOINT: {{ quote (include "multi-agents.ogx.endpoint" .) }}
-  OGX_DEFAULT_MODEL: {{ .Values.models.reasoning | quote }}
-  OGX_STREAMING_MODEL: {{ .Values.models.reasoning | quote }}
-  OGX_EMBEDDING_MODEL: {{ .Values.models.embedding | quote }}
+  OGX_DEFAULT_MODEL: {{ include "multi-agents.ogx.chatModel" .Values.models.reasoning | quote }}
+  OGX_STREAMING_MODEL: {{ include "multi-agents.ogx.chatModel" .Values.models.reasoning | quote }}
+  OGX_EMBEDDING_MODEL: {{ include "multi-agents.ogx.embeddingModel" . | quote }}
   OGX_EMBEDDING_DIMENSION: {{ .Values.models.embeddingDimension | quote }}
   OGX_TIMEOUT: "300"
   OGX_MAX_RETRIES: "3"

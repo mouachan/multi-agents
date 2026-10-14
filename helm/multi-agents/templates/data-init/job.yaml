@@ -29,7 +29,7 @@ spec:
             - name: OGX_ENDPOINT
               value: {{ quote (include "multi-agents.ogx.endpoint" .) }}
             - name: EMBEDDING_MODEL
-              value: {{ .Values.models.embedding | quote }}
+              value: {{ include "multi-agents.ogx.embeddingModel" . | quote }}
             - name: OCR_SERVER_URL
               value: "http://ocr-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
             - name: CLAIMS_SERVER_URL

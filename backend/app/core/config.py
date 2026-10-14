@@ -45,9 +45,9 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Construct PostgreSQL database URL."""
+        """Construct PostgreSQL database URL (explicit psycopg2: SQLAlchemy 2.1 defaults to psycopg 3)."""
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
         )
 

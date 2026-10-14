@@ -27,7 +27,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: create-bucket
-          image: quay.io/minio/mc:latest
+          image: cgr.dev/chainguard/minio-client:latest-dev@sha256:799f7e86017c3ee8d00f6372e1ee28dd73453f271d5b306a47af8e8a408a777a
           command:
             - /bin/bash
             - -c
