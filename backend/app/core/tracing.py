@@ -132,9 +132,10 @@ def init_mlflow():
         resource = Resource.create({"service.name": "multi-agent-orchestrator"})
         _provider = TracerProvider(resource=resource)
         _provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(_provider)
+        # Private provider: only our explicit spans go to MLflow (a global provider would
+        # also export library HTTP spans without inputs/outputs)
 
-        _tracer = trace.get_tracer("multi-agent-orchestrator")
+        _tracer = _provider.get_tracer("multi-agent-orchestrator")
         _enabled = True
         logger.info(
             f"OTel tracing enabled → {endpoint} (experiment={experiment_id})"

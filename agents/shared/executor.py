@@ -5,6 +5,8 @@ Request metadata (A2A Message.metadata, all optional) sent by the backend:
     mode                  "chat" (conversational wrapper) or "process" (batch processing,
                           OGX_PROCESS_MODEL)
     tools                 subset of the profile tools to use (never extends the profile)
+    decision_values       allowed recommendations (mode=process): the user message asks for a
+                          final JSON block {recommendation, confidence, reasoning}
     language              "fr" | "en" — enforced via the language-rule prompt
     previous_response_id  OGX response id to chain the conversation
     instructions_override session custom prompt (replaces the registry prompt)
@@ -44,6 +46,20 @@ logger = logging.getLogger(__name__)
 CHAT_WRAPPER_PROMPT = "chat-agent-wrapper"
 LANGUAGE_RULE_PROMPT = "orchestrator-language-rule"
 EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
+# Batch processing: the backend parses the decision from this block (chat prompts forbid JSON).
+# Appended to the user message: at the end of the system instructions Llama skipped the tools.
+DECISION_OUTPUT = """
+
+## Automated processing
+This request comes from the automated processing pipeline, not from a chat.
+1. First run the workflow of your instructions: call the tools (document OCR,
+   retrieval of contracts, references and precedents...) and wait for their results.
+   Never decide without them.
+2. Then write your analysis based on the tool results.
+3. Finally, end your answer with exactly one JSON code block:
+```json
+{{"recommendation": <one of {values}>, "confidence": <number between 0.0 and 1.0>, "reasoning": "<2 to 4 sentences>"}}
+```"""
 # End of a sentence: punctuation (or a newline) followed by whitespace
 SENTENCE_END = re.compile(r"[.!?:;\n](?=\s)")
 TEXT_TOOL_CALL_RETRY = (
@@ -159,6 +175,9 @@ class BaseA2AExecutor(AgentExecutor):
             }))
             return
         llm_input = gin.text
+        values = meta.get("decision_values")
+        if meta.get("mode") == "process" and values:
+            llm_input += DECISION_OUTPUT.format(values=", ".join(f'"{v}"' for v in values))
 
         try:
             instructions, prompt_info = await self._instructions(profile, meta)
@@ -171,11 +190,10 @@ class BaseA2AExecutor(AgentExecutor):
             try:
                 result = await self._run(updater, model, instructions, llm_input, tools, previous_response_id)
             except RuntimeError as e:
-                # OGX failed (e.g. malformed tool-call arguments): retry once with the other model
+                # OGX failed (e.g. malformed tool-call arguments): retry once, with the other
+                # model when one is configured
                 fallback = next((m for m in (self.settings.ogx_process_model, self.settings.ogx_default_model)
-                                 if m and m != model), None)
-                if not fallback:
-                    raise
+                                 if m and m != model), model)
                 logger.warning("OGX response failed with %s (%s) — retrying with %s", model, e, fallback)
                 await updater.update_status(TaskState.TASK_STATE_WORKING, _message(
                     f"fallback to {fallback}", metadata={"event": "fallback", "from": model, "to": fallback,

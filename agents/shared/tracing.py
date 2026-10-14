@@ -72,8 +72,10 @@ def init(settings: AgentSettings) -> None:
         )
         provider = TracerProvider(resource=Resource.create({"service.name": f"{settings.agent_id}-agent"}))
         provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(provider)
-        _tracer = trace.get_tracer(f"{settings.agent_id}-agent")
+        # Private provider: only our explicit spans go to MLflow. As the global provider it
+        # also exported library HTTP spans (probes, agent-card fetches), which flooded
+        # the experiment with traces without inputs/outputs.
+        _tracer = provider.get_tracer(f"{settings.agent_id}-agent")
         logger.info("Tracing enabled → MLflow experiment %s", experiment_id)
     except Exception as e:
         logger.warning("Tracing init failed: %s", e, exc_info=True)

@@ -36,11 +36,17 @@ spec:
     path: /mcp
     env:
       {{- include "multi-agents.mcp.env" (dict "root" $root "name" $name "cfg" $cfg) | nindent 6 }}
-    {{- with $cfg.storage }}
-    # Secret / ConfigMap mounts (e.g. the OpenShell mTLS client bundle for sandbox-server)
     storage:
+      # Writable /tmp: the operator sets readOnlyRootFilesystem, and the OCR server
+      # renders PDF pages there ("No usable temporary directory found")
+      - path: /tmp
+        source:
+          type: EmptyDir
+          emptyDir: {}
+      {{- with $cfg.storage }}
+      # Secret / ConfigMap mounts (e.g. the OpenShell mTLS client bundle for sandbox-server)
       {{- toYaml . | nindent 6 }}
-    {{- end }}
+      {{- end }}
   mcp:
     stateless: true
   extraLabels:

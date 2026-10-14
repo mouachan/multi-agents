@@ -106,10 +106,9 @@ postgresql:
 # =============================================================================
 models:
   reasoning: llama-scout-17b       # agents (tool calling, reasoning)
-  # Batch processing of claims/tenders/complaints (OCR + RAG + decision): the stronger
-  # model; it runs in the background so its latency is not felt. On an OGX failure the
-  # agents retry once with the other model.
-  processing: gpt-oss-120b
+  # Optional model for batch processing (claims/tenders/complaints); empty = reasoning.
+  # On an OGX failure the agents retry once with the other model.
+  processing: ""                # same as reasoning (gpt-oss-120b failed multi-step tool calling on the external MaaS)
   vision: llama-scout-17b          # OCR (multimodal)
   guardrails: llama-scout-17b      # NeMo LLM-based rails (fast)
   embedding: nomic-embed-text-v1-5

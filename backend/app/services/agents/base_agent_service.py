@@ -204,7 +204,8 @@ class BaseAgentService(ABC):
                     base_url=agent_def.a2a_url,
                     message=processing_message,
                     context_id=f"{self.get_entity_type()}-{entity_id}",
-                    metadata={"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools()},
+                    metadata={"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools(),
+                              "decision_values": agent_def.decision_values},
                 )
                 if result.get("status") != "completed":
                     raise RuntimeError(result.get("output") or f"A2A task {result.get('status')}")

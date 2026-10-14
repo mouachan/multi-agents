@@ -20,7 +20,7 @@ global:
 
 models:
   reasoning: llama-scout-17b    # chat: ~2 s per agent turn on the external MaaS (gpt-oss-120b: 2-70 s)
-  processing: gpt-oss-120b      # background processing: stronger multi-step reasoning
+  processing: ""                # same as reasoning (gpt-oss-120b failed multi-step tool calling on the external MaaS)
   vision: llama-scout-17b
   guardrails: llama-scout-17b
   embedding: nomic-embed-text-v1-5
