@@ -10,6 +10,7 @@ import json
 import logging
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -61,8 +62,10 @@ def init(settings: AgentSettings) -> None:
             return
         headers = mlflow_auth.headers(settings)
         headers["x-mlflow-experiment-id"] = experiment_id
+        # The OTLP receiver is mounted at the server root, not under the UI prefix (/mlflow on RHOAI)
+        uri = urlsplit(settings.mlflow_tracking_uri)
         exporter = OTLPSpanExporter(
-            endpoint=f"{settings.mlflow_tracking_uri.rstrip('/')}/v1/traces",
+            endpoint=f"{uri.scheme}://{uri.netloc}/v1/traces",
             headers=headers,
             certificate_file=mlflow_auth.ca_bundle(),
             timeout=30,

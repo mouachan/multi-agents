@@ -16,6 +16,7 @@ Span hierarchy visible in MLflow "GenAI apps & agents":
 import json
 import logging
 import os
+from urllib.parse import urlsplit
 import time
 from typing import Dict, List, Optional
 
@@ -112,7 +113,9 @@ def init_mlflow():
             logger.warning("Tracing disabled: could not resolve or create MLflow experiment")
             return
 
-        endpoint = f"{settings.mlflow_tracking_uri.rstrip('/')}/v1/traces"
+        # The OTLP receiver is mounted at the server root, not under the UI prefix (/mlflow on RHOAI)
+        uri = urlsplit(settings.mlflow_tracking_uri)
+        endpoint = f"{uri.scheme}://{uri.netloc}/v1/traces"
 
         otlp_headers = _build_auth_headers()
         otlp_headers["x-mlflow-experiment-id"] = experiment_id
