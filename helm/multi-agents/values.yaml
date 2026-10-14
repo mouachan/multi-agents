@@ -129,8 +129,11 @@ models:
     namespace: models-as-a-service    # where MaaSSubscription / MaaSAuthPolicy live
     subscriptionName: multi-agents
     priority: 10
+    # One counter for the whole release (backend, agents, NeMo share the key). A guided
+    # business processing uses ~20-30k tokens, a chat answer ~3-8k: 3M/h is about 100
+    # processings an hour. Above it the gateway answers 429 (Too Many Requests).
     tokenRateLimit:
-      limit: 500000
+      limit: 3000000
       window: 1h
     # MaaS API key (sk-oai-...) used by OGX and NeMo. Leave empty to let the
     # maas-api-key Job mint one with its ServiceAccount token (expires: keyExpiration).
