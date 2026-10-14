@@ -4,7 +4,9 @@ Data initialization script for multi-agents platform.
 
 Downloads PDFs from GitHub, uploads to OGX Files API,
 and processes 10 claims + 10 tenders via MCP server tools
-(OCR + decision saving with embeddings).
+(OCR + decision saving with embeddings), then embeds the reference data searched
+by the RAG tools. On initialized data it only retries missing OCR texts and
+embeddings.
 
 Usage:
     python init_data.py
@@ -636,6 +638,120 @@ async def process_reclamations(decisions: list[dict]):
     logger.info(f"Processed {len(decisions)} reclamations")
 
 
+# ============================================================================
+# Catch-up: precedent OCR texts and embeddings (also run on initialized data)
+# ============================================================================
+
+# Text embedded for each table searched by the RAG tools (rag_server); the MCP servers
+# embed the first 2000 characters of a document's OCR text with the same model.
+EMBEDDING_SOURCES = {
+    "company_references": "concat_ws(E'\\n', project_name, nature_travaux, maitre_ouvrage, region, description)",
+    "historical_tenders": "concat_ws(E'\\n', nature_travaux, maitre_ouvrage, region, description, raison_resultat)",
+    "company_capabilities": "concat_ws(E'\\n', category, name, description, details)",
+    "knowledge_base": "concat_ws(E'\\n\\n', title, content)",
+    "courrier_knowledge_base": "concat_ws(E'\\n\\n', title, content)",
+    "user_contracts": "concat_ws(E'\\n', contract_type, full_text)",
+    "claim_documents": "raw_ocr_text",
+    "tender_documents": "raw_ocr_text",
+    "reclamation_documents": "raw_ocr_text",
+}
+EMBED_BATCH = 16  # the MaaS rejects large embedding batches (413)
+EMBED_MAX_CHARS = 2000
+OCR_CONCURRENCY = 3
+
+
+def precedents_without_ocr() -> list:
+    """Claim and tender numbers of the seeded precedents that have no OCR text yet
+    (e.g. the vision model was unreachable during the first init)."""
+    conn = get_pg_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT c.claim_number FROM claims c WHERE c.claim_number = ANY(%s) AND NOT EXISTS
+               (SELECT 1 FROM claim_documents d WHERE d.claim_id = c.id AND d.raw_ocr_text <> '')""",
+            ([d["claim_number"] for d in CLAIM_DECISIONS],),
+        )
+        missing = [r[0] for r in cur.fetchall()]
+        cur.execute(
+            """SELECT t.tender_number FROM tenders t WHERE t.tender_number = ANY(%s) AND NOT EXISTS
+               (SELECT 1 FROM tender_documents d WHERE d.tender_id = t.id AND d.raw_ocr_text <> '')""",
+            ([d["tender_number"] for d in TENDER_DECISIONS],),
+        )
+        return missing + [r[0] for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+async def ocr_precedents(numbers: list):
+    """OCR the given claims/tenders (the OCR server stores the text in *_documents)."""
+    semaphore = asyncio.Semaphore(OCR_CONCURRENCY)
+
+    async def ocr(number: str):
+        async with semaphore:
+            try:
+                start = time.time()
+                result = await call_mcp_tool(OCR_SERVER_URL, "ocr_document", {"document_id": number}, timeout=180.0)
+                logger.info(f"  OCR {number}: success={result.get('success', False)} ({time.time() - start:.1f}s)")
+            except Exception as e:
+                logger.error(f"  OCR error for {number}: {e}")
+
+    await asyncio.gather(*(ocr(n) for n in numbers))
+
+
+async def backfill_embeddings():
+    """Embed every RAG row that has text but no embedding (idempotent)."""
+    model = os.getenv("EMBEDDING_MODEL", "")
+    if not model:
+        logger.warning("EMBEDDING_MODEL is not set: embeddings not generated")
+        return
+    conn = get_pg_conn()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        async with httpx.AsyncClient(timeout=60) as client:
+            for table, source in EMBEDDING_SOURCES.items():
+                cur.execute(
+                    f"SELECT id, LEFT({source}, %s) FROM {table} "
+                    f"WHERE embedding IS NULL AND COALESCE({source}, '') <> ''",
+                    (EMBED_MAX_CHARS,),
+                )
+                rows = cur.fetchall()
+                done = 0
+                for i in range(0, len(rows), EMBED_BATCH):
+                    batch = rows[i:i + EMBED_BATCH]
+                    try:
+                        resp = await client.post(
+                            f"{OGX_ENDPOINT}/v1/embeddings",
+                            json={"model": model, "input": [text.strip() for _, text in batch]},
+                        )
+                        resp.raise_for_status()
+                        vectors = [d["embedding"] for d in sorted(resp.json()["data"], key=lambda d: d["index"])]
+                    except Exception as e:
+                        logger.error(f"  Embeddings for {table} failed: {e}")
+                        break
+                    for (row_id, _), vector in zip(batch, vectors):
+                        cur.execute(
+                            f"UPDATE {table} SET embedding = CAST(%s AS vector) WHERE id = %s",
+                            ("[" + ",".join(map(str, vector)) + "]", row_id),
+                        )
+                    done += len(batch)
+                if rows:
+                    logger.info(f"  {table}: {done}/{len(rows)} embeddings created")
+    finally:
+        conn.close()
+
+
+async def catch_up():
+    """Complete an existing initialization: OCR of the precedents, then embeddings."""
+    missing = precedents_without_ocr()
+    if missing:
+        logger.info(f"{len(missing)} precedents have no OCR text: {', '.join(missing)}")
+        await wait_for_mcp_servers()
+        await ocr_precedents(missing)
+    logger.info("Generating missing embeddings...")
+    await backfill_embeddings()
+
+
 def log_summary():
     """Print final summary of data state."""
     conn = get_pg_conn()
@@ -706,7 +822,8 @@ async def main():
             logger.info(f"Already initialized, but {len(missing)} English documents are not linked yet")
             download_documents(DOCUMENTS_ARCHIVE_URL)
             await link_english_documents(missing)
-        logger.info("Skipping init (already done). Exiting.")
+        await catch_up()
+        logger.info("Already initialized: catch-up done. Exiting.")
         return
 
     # Step 3: Wait for MCP servers
@@ -733,7 +850,12 @@ async def main():
     logger.info("Step 8: Processing 10 reclamations (OCR + decision)...")
     await process_reclamations(RECLAMATION_DECISIONS)
 
-    # Step 9: Summary
+    # Step 9: OCR retries and embeddings of the reference data (references, capabilities,
+    # knowledge bases, contracts) searched by the RAG tools
+    logger.info("Step 9: Catch-up (OCR retries, embeddings)...")
+    await catch_up()
+
+    # Step 10: Summary
     total_elapsed = time.time() - total_start
     logger.info("=" * 60)
     logger.info(f"DATA INITIALIZATION COMPLETED in {total_elapsed:.0f}s")

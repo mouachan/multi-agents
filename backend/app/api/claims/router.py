@@ -43,6 +43,7 @@ from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
 from app.services.agents.background import is_running, run_in_background
+from app.services.document_embeddings import embed_document
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,8 @@ async def _process_claim_job(db: AsyncSession, claim_id: UUID, process_request) 
         claim_id=str(claim_id),
         decision_data=result["decision"]
     )
+    # Searchable as a precedent by the RAG tools
+    await embed_document(db, "claim", str(claim_id))
 
     # Check for PII in claim content if enabled (log only, don't block)
     if settings.enable_pii_detection:

@@ -35,6 +35,7 @@ from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
 from app.services.agents.background import is_running, run_in_background
+from app.services.document_embeddings import embed_document
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,8 @@ async def _process_tender_job(db: AsyncSession, tender_id: UUID, process_request
         tender_id=str(tender_id),
         decision_data=result["decision"]
     )
+    # Searchable as a precedent by the RAG tools
+    await embed_document(db, "tender", str(tender_id))
 
     recommendation = result["decision"].get("recommendation", "a_approfondir")
 

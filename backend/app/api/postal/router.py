@@ -39,6 +39,7 @@ from app.services.document_storage import get_document
 from app.services.reclamation_service import ReclamationService
 
 from app.services.agents.background import is_running, run_in_background
+from app.services.document_embeddings import embed_document
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +251,8 @@ async def _process_reclamation_job(db: AsyncSession, reclamation_id: UUID, proce
         reclamation_id=str(reclamation_id),
         decision_data=result["decision"],
     )
+    # Searchable as a precedent by the RAG tools
+    await embed_document(db, "reclamation", str(reclamation_id))
 
 
 @router.post("/{reclamation_id}/process", response_model=schemas.ProcessReclamationResponse)
