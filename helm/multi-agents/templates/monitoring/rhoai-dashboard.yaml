@@ -3,8 +3,8 @@
 {{- /*
 "Multi-agents" tab of the OpenShift AI observability dashboard: PersesDashboard CRs named
 dashboard-<order>-<name> in the monitoring namespace (next to the datasources). OGX and MLflow
-metrics come from the OpenShift user-workload Prometheus (cluster datasource); MaaS counters
-from the RHOAI Prometheus (needs MaaS telemetry on the tenant).
+metrics come from the OpenShift user-workload Prometheus (cluster datasource); MaaS (Limitador)
+counters from the RHOAI Prometheus, per <namespace>/<model> token rate limit.
 */}}
 ---
 apiVersion: perses.dev/v1alpha2
@@ -155,7 +155,7 @@ spec:
       maas:
         kind: Panel
         spec:
-          display: {name: "MaaS authorized requests per second", description: "Limitador counters (needs MaaS telemetry enabled on the tenant)"}
+          display: {name: "MaaS requests per second by model", description: "Limitador authorized calls for this namespace's subscription (namespace/model)"}
           plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: requests/sec}}}}
           queries:
             - kind: TimeSeriesQuery
@@ -164,7 +164,20 @@ spec:
                   kind: PrometheusTimeSeriesQuery
                   spec:
                     datasource: {kind: PrometheusDatasource, name: data-science-prometheus-datasource}
-                    query: 'sum by (limitador_namespace) (rate(authorized_hits_total[5m]))'
+                    query: 'sum by (limitador_namespace) (rate(authorized_calls_total{limitador_namespace=~"{{ $ns }}/.*"}[5m]))'
+      maasTokens:
+        kind: Panel
+        spec:
+          display: {name: "MaaS tokens per second by model", description: "Tokens counted by the MaaS token rate limit (TokenRateLimitPolicy hits)"}
+          plugin: {kind: TimeSeriesChart, spec: {legend: {position: bottom}, yAxis: {format: {unit: decimal}}}}
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource: {kind: PrometheusDatasource, name: data-science-prometheus-datasource}
+                    query: 'sum by (limitador_namespace) (rate(authorized_hits_total{limitador_namespace=~"{{ $ns }}/.*"}[5m]))'
     layouts:
       - kind: Grid
         spec:
@@ -185,6 +198,7 @@ spec:
             - {x: 0, y: 16, width: 12, height: 8, content: {"$ref": "#/spec/panels/tools"}}
             - {x: 12, y: 16, width: 12, height: 8, content: {"$ref": "#/spec/panels/mlflow"}}
             - {x: 0, y: 24, width: 12, height: 8, content: {"$ref": "#/spec/panels/maas"}}
+            - {x: 12, y: 24, width: 12, height: 8, content: {"$ref": "#/spec/panels/maasTokens"}}
 ---
 # Let the RHOAI monitoring collector (redhat-ods-monitoring) scrape OGX metrics (port 9464);
 # the OGXServer NetworkPolicy only admits the OpenShift monitoring namespaces

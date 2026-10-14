@@ -354,8 +354,9 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
   `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
   (`multi_agents_agents`, `multi_agents_mcp`).
 * **Observe & monitor → Multi-agents** (Perses): OGX requests, latency, time to first
-  token, tokens/s, tool and agentic calls, MLflow requests, MaaS authorized hits.
-  MaaS counters need the tenant telemetry:
+  token, tokens/s, tool and agentic calls, MLflow requests, MaaS requests and tokens
+  (Limitador counters per `<namespace>/<model>`). The tenant telemetry adds `model` and
+  `subscription` labels to the MaaS metrics:
 
   ```bash
   oc patch maastenantconfig default-tenant -n models-as-a-service --type=merge \
