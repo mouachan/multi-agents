@@ -7,6 +7,7 @@ Extends BaseAgentService with claim-specific logic:
 - PII shield integration
 """
 import logging
+import re
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from uuid import UUID
@@ -181,12 +182,16 @@ class ClaimService(BaseAgentService):
                 logger.debug("No guardrails server URL configured, skipping PII check")
                 return {"violations_found": False, "detections": []}
 
+            # Sent as an assistant message so only the output rails run (Presidio
+            # masking, no LLM self-check). PII comes back as status "modified" with
+            # entities replaced by <ENTITY_TYPE> placeholders.
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
-                    f"{guardrails_url}/v1/guardrail/checks",
+                    f"{guardrails_url}/v1/checks",
                     json={
                         "model": settings.guardrails_model_name,
-                        "messages": [{"role": "user", "content": text}],
+                        "messages": [{"role": "assistant", "content": text}],
+                        "guardrails": {"config_id": settings.guardrails_config_id},
                     },
                     timeout=30.0,
                 )
@@ -196,21 +201,38 @@ class ClaimService(BaseAgentService):
                     return {"violations_found": False, "detections": []}
 
                 result = response.json()
-                status = result.get("status", "allowed")
+                status = result.get("status", "passed")
 
-                if status == "blocked":
-                    detections = result.get("rails_info", {}).get("detections", [])
-                    logger.info(f"PII/safety violation in claim {claim_id}: {len(detections)} detections")
+                if status == "modified" and result.get("content"):
+                    detections = self._pii_detections_from_mask(text, result["content"])
+                    logger.info(f"PII found in claim {claim_id}: {len(detections)} detections")
                     return {
-                        "violations_found": True,
+                        "violations_found": bool(detections),
                         "detections": detections,
-                        "summary": result.get("rails_info", {}),
+                        "summary": {"status": status, "rail": result.get("rail")},
                     }
 
         except Exception as e:
             logger.error(f"Error checking NeMo Guardrails: {e}", exc_info=True)
 
         return {"violations_found": False, "detections": []}
+
+    @staticmethod
+    def _pii_detections_from_mask(original: str, masked: str) -> List[Dict[str, Any]]:
+        """Rebuild detections by aligning the masked text (<ENTITY_TYPE> placeholders) on the original."""
+        parts = re.split(r"<([A-Z][A-Z0-9_]*)>", masked)
+        entities = parts[1::2]
+        if not entities:
+            return []
+        pattern = "".join(
+            re.escape(part) if i % 2 == 0 else "(.+?)" for i, part in enumerate(parts)
+        )
+        match = re.fullmatch(pattern, original, flags=re.DOTALL)
+        spans = match.groups() if match else [""] * len(entities)
+        return [
+            {"text": span.strip(), "detection_type": entity}
+            for entity, span in zip(entities, spans)
+        ]
 
     async def save_pii_detections(
         self,

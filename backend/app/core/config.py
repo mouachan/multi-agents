@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     tenders_server_url: str  # TENDERS_SERVER_URL (required)
     postal_server_url: str = ""  # POSTAL_SERVER_URL
     tracking_server_url: str = ""  # TRACKING_SERVER_URL
-    guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional)
+    guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional, NeMo Service on port 80)
+    guardrails_config_id: str = "multi-agents"  # GUARDRAILS_CONFIG_ID (NeMo config served by the CR)
     guardrails_model_name: str = "llama-scout-17b"  # GUARDRAILS_MODEL_NAME
 
     # MLflow tracing (RHOAI)

@@ -817,8 +817,9 @@ TENDERS_SERVER_URL: http://tenders-server.<NAMESPACE>.svc.cluster.local:8080
 POSTAL_SERVER_URL: http://postal-server.<NAMESPACE>.svc.cluster.local:8080
 TRACKING_SERVER_URL: http://tracking-server.<NAMESPACE>.svc.cluster.local:8080
 
-# NeMo Guardrails (in-process path only; the agents use GUARDRAILS_ENDPOINT)
-GUARDRAILS_SERVER_URL: http://multi-agents-guardrails.<NAMESPACE>.svc.cluster.local:8080
+# NeMo Guardrails (backend: claim PII detection + in-process chat check; the agents use GUARDRAILS_ENDPOINT)
+GUARDRAILS_SERVER_URL: http://multi-agents-guardrails.<NAMESPACE>.svc.cluster.local
+GUARDRAILS_CONFIG_ID: multi-agents
 GUARDRAILS_MODEL_NAME: llama-scout-17b
 
 # MLflow Tracing (optional — disabled when empty)
@@ -896,7 +897,7 @@ Request / response of `POST /v1/checks` (no LLM generation, only the rails):
 {"status": "passed | modified | blocked", "content": "<text after rails>", "rail": "<rail name>"}
 ```
 
-A `user` message triggers the input rails, an `assistant`-only message the output rails. The `model` field is the LLM used by `self check input` (`models.guardrails`); `config_id` is `guardrails.configId`. When `agents.enabled=false`, the backend's in-process path runs its own input check (`GUARDRAILS_SERVER_URL`) before calling OGX; the PII masking described here applies to the A2A agents.
+A `user` message triggers the input rails, an `assistant`-only message the output rails. The `model` field is the LLM used by `self check input` (`models.guardrails`); `config_id` is `guardrails.configId`. The backend calls the same endpoint (`GUARDRAILS_SERVER_URL`) in two places: during claim processing it sends the customer data as an `assistant` message (masking only, no LLM call) and records each `<ENTITY_TYPE>` placeholder as a PII detection shown in the claim view; when `agents.enabled=false`, its in-process chat path runs the input rails before calling OGX. The PII masking of chat messages applies to the A2A agents.
 
 ### Rails Configuration
 

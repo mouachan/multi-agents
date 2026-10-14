@@ -799,10 +799,11 @@ class OrchestratorService:
         try:
             async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
                 resp = await client.post(
-                    f"{guardrails_url}/v1/guardrail/checks",
+                    f"{guardrails_url}/v1/checks",
                     json={
                         "model": settings.guardrails_model_name,
                         "messages": [{"role": "user", "content": message}],
+                        "guardrails": {"config_id": settings.guardrails_config_id},
                     },
                 )
                 if resp.status_code == 200:
