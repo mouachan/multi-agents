@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 CHAT_WRAPPER_PROMPT = "chat-agent-wrapper"
 LANGUAGE_RULE_PROMPT = "orchestrator-language-rule"
+EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
 # End of a sentence: punctuation (or a newline) followed by whitespace
 SENTENCE_END = re.compile(r"[.!?:;\n](?=\s)")
 TEXT_TOOL_CALL_RETRY = (
@@ -170,6 +171,15 @@ class BaseA2AExecutor(AgentExecutor):
                 retry = await self._run(updater, model, instructions, TEXT_TOOL_CALL_RETRY,
                                         profile.tools, result["response_id"])
                 retry["usage"] = _merge_usage(result["usage"], retry["usage"])
+                result = retry
+
+            # Retry once if the model returned an empty answer (seen with Llama on some prompts)
+            if not result["streamed_output"].strip() and result["guardrails_output"]["allowed"]:
+                logger.warning("Empty answer — retrying once")
+                retry = await self._run(updater, model, instructions, EMPTY_ANSWER_RETRY,
+                                        profile.tools, result["response_id"])
+                retry["usage"] = _merge_usage(result["usage"], retry["usage"])
+                retry["tool_calls"] = result["tool_calls"] + retry["tool_calls"]
                 result = retry
 
             gout = result["guardrails_output"]
