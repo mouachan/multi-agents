@@ -308,7 +308,7 @@ What the chart creates for the RHOAI 3.5 features:
 | `templates/spiffe/` | `ClusterSPIFFEID` |
 | `templates/openshell/` | Sandbox policy ConfigMap for `run_python` (`mcp.sandbox`, needs the OpenShell gateway — see [openshell/README.md](openshell/README.md)) |
 | `templates/rhoai/` | ConfigMap `multi-agents-catalog` in `rhoai-model-registries` (agents + MCP catalog sources), ConfigMap `gen-ai-aa-mcp-servers` (playground) |
-| `templates/monitoring/` | `PersesDashboard` `dashboard-5-multi-agents` in `redhat-ods-monitoring`, NetworkPolicy for the OGX metrics port |
+| `templates/monitoring/` | `PersesDashboard` `dashboard-5-multi-agents` in `redhat-ods-monitoring` (see [section 10](#10-metrics-dashboard-perses)) |
 
 Models: chat models go through the **cluster MaaS** (`https://maas.<apps-domain>/v1`,
 API key bound to the `multi-agents` subscription). MaaS external models are chat-only,
@@ -355,8 +355,8 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
   (`multi_agents_agents`, `multi_agents_mcp`).
 * **Observe & monitor → Multi-agents** (Perses): OGX requests, latency, time to first
   token, tokens/s, tool and agentic calls, MLflow requests, MaaS requests and tokens
-  (Limitador counters per `<namespace>/<model>`). The tenant telemetry adds `model` and
-  `subscription` labels to the MaaS metrics:
+  (Limitador counters per `<namespace>/<model>`); how it is built: [section 10](#10-metrics-dashboard-perses).
+  The tenant telemetry adds `model` and `subscription` labels to the MaaS metrics:
 
   ```bash
   oc patch maastenantconfig default-tenant -n models-as-a-service --type=merge \
@@ -394,7 +394,62 @@ precedents on every upgrade; the backend embeds each processed document.
 
 ---
 
-## 10. Known limitations
+## 10. Metrics dashboard (Perses)
+
+The *Multi-agents* tab of **Observe & monitor** in the OpenShift AI dashboard is a
+`PersesDashboard` created by the chart (`templates/monitoring/rhoai-dashboard.yaml`,
+`observability.enabled`, default `true`).
+
+**How OpenShift AI finds it.** With DSCI monitoring `Managed` (section 5, Cluster
+Observability Operator), RHOAI runs Perses in `redhat-ods-monitoring` and shows the
+`PersesDashboard` CRs of that namespace named `dashboard-<order>-<name>` as tabs, ordered by
+`<order>`, titled by `spec.config.display.name`. The built-in tabs use 0-4
+(`dashboard-0-cluster-admin`, `dashboard-1-model`, ..., `dashboard-4-llm-d-performance-admin`);
+ours is `dashboard-5-multi-agents` (`apiVersion: perses.dev/v1alpha2`, `spec.config` holds
+`display`, `duration`, `panels`, `layouts`). The namespace is
+`observability.monitoringNamespace`.
+
+**Where the metrics come from.** Panels reference the Perses datasources that RHOAI creates
+in the same namespace:
+
+| Datasource | Backend | Metrics used |
+|---|---|---|
+| `cluster-prometheus-datasource` | OpenShift Thanos querier (needs user workload monitoring, section 2) | `ogx_*` (scraped through the `ServiceMonitor` the OGXServer creates, port 9464), `mlflow_http_request_total` |
+| `data-science-prometheus-datasource` | RHOAI Thanos querier (`redhat-ods-monitoring`) | Limitador `authorized_calls_total` (requests) and `authorized_hits_total` (tokens under a `TokenRateLimitPolicy`), label `limitador_namespace=<namespace>/<model>` |
+
+**Panels.** OGX queries are filtered on the release namespace.
+
+| Panel | Query (simplified) |
+|---|---|
+| Concurrent requests | `sum(ogx_concurrent_requests)` |
+| Agentic calls / min | `rate(ogx_responses_agentic_calls_total[5m]) * 60` |
+| Time to first token p90 | `histogram_quantile(0.9, ogx_inference_time_to_first_token_seconds_bucket)` |
+| MCP tool calls / min | `rate(ogx_responses_tool_types_used_total{tool_type="mcp"}[5m]) * 60` |
+| OGX requests / latency by API | `ogx_requests_total`, `ogx_request_duration_seconds_bucket` by `api` |
+| LLM inference duration, generation speed | `ogx_inference_duration_seconds_bucket`, `ogx_inference_tokens_per_second_bucket` |
+| Tool usage by type | `ogx_responses_tool_types_used_total` by `tool_type` |
+| MLflow requests | `mlflow_http_request_total` |
+| MaaS requests / tokens by model | `authorized_calls_total`, `authorized_hits_total` by `limitador_namespace` |
+
+**Add or change a panel.** Add an entry under `spec.config.panels` (`TimeSeriesChart` or
+`StatChart`, a `PrometheusTimeSeriesQuery` with one of the datasources above) and reference
+it in a `layouts` grid item (`$ref: "#/spec/panels/<key>"`, 24 columns wide), then
+`helm upgrade --reset-then-reuse-values`. Test a query first:
+
+```bash
+TQ=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}')
+curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$TQ/api/v1/query" \
+  --data-urlencode 'query=sum by (api) (rate(ogx_requests_total{namespace="<namespace>"}[5m]))'
+```
+
+**Empty panels.** OGX and MaaS panels only show data once requests have been made (rates
+over 5 min). Check that `ogx-service-monitor` exists in the release namespace and that
+`enableUserWorkload: true` is set; MaaS panels read the RHOAI Prometheus, not the OpenShift
+one.
+
+---
+
+## 11. Known limitations
 
 * MaaS **external models** are Technology Preview and chat-only (no embeddings).
 * NeMo Presidio runs the **English** spaCy model, unreliable for French names in both

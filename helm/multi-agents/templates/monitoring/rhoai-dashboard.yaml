@@ -3,8 +3,9 @@
 {{- /*
 "Multi-agents" tab of the OpenShift AI observability dashboard: PersesDashboard CRs named
 dashboard-<order>-<name> in the monitoring namespace (next to the datasources). OGX and MLflow
-metrics come from the OpenShift user-workload Prometheus (cluster datasource); MaaS (Limitador)
-counters from the RHOAI Prometheus, per <namespace>/<model> token rate limit.
+metrics come from the OpenShift user-workload Prometheus (cluster datasource; OGX is scraped
+through the ServiceMonitor of the OGXServer); MaaS (Limitador) counters from the RHOAI
+Prometheus, per <namespace>/<model> token rate limit. See RHOAI-3.5-SETUP.md, section 10.
 */}}
 ---
 apiVersion: perses.dev/v1alpha2
@@ -199,26 +200,4 @@ spec:
             - {x: 12, y: 16, width: 12, height: 8, content: {"$ref": "#/spec/panels/mlflow"}}
             - {x: 0, y: 24, width: 12, height: 8, content: {"$ref": "#/spec/panels/maas"}}
             - {x: 12, y: 24, width: 12, height: 8, content: {"$ref": "#/spec/panels/maasTokens"}}
----
-# Let the RHOAI monitoring collector (redhat-ods-monitoring) scrape OGX metrics (port 9464);
-# the OGXServer NetworkPolicy only admits the OpenShift monitoring namespaces
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-rhoai-monitoring-ogx
-  namespace: {{ $ns }}
-  labels:
-    {{- include "multi-agents.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/instance: {{ .Values.ogx.name }}
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.observability.monitoringNamespace }}
-      ports:
-        - port: 9464
 {{- end }}
