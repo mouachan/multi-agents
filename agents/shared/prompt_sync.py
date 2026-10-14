@@ -23,12 +23,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("prompt-sync")
 
 
-def _latest(client, name):
+def _latest(mlflow, name):
+    """Latest version of the prompt, None when it does not exist yet.
+
+    (MlflowClient.search_prompt_versions returns a PagedList in MLflow 3.x; reading
+    .prompt_versions on it failed silently and every sync registered a new version.)
+    """
     try:
-        versions = client.search_prompt_versions(name).prompt_versions
+        return mlflow.genai.load_prompt(f"prompts:/{name}@latest")
     except Exception:
         return None
-    return max(versions, key=lambda v: int(v.version)) if versions else None
 
 
 def _alias_exists(mlflow, name, alias) -> bool:
@@ -74,7 +78,7 @@ def main() -> int:
         name = path.stem
         text = path.read_text(encoding="utf-8")
         try:
-            latest = _latest(client, name)
+            latest = _latest(mlflow, name)
             if latest is not None and latest.template == text:
                 version = latest.version
                 logger.info("%-40s unchanged (v%s)", name, version)
