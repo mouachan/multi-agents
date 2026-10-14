@@ -633,6 +633,7 @@ helm upgrade --install multi-agents helm/multi-agents \
 | `guardrails.enabled` | Deploy NeMo Guardrails | `true` |
 | `mlflow.enabled` | Tracing + Prompt Registry + RBAC | `true` |
 | `spiffe.enabled` | JWT-SVID between backend and agents (requires ZTWIM) | `true` in `values-rhoai35.yaml` |
+| `hibernate.enabled` | Nightly scale-to-zero of the Helm-managed workloads (`hibernate.shutdownSchedule`, `wakeupSchedule`, UTC) | `false` |
 
 ### Multi-namespace deployment
 
@@ -972,7 +973,7 @@ The `FR_*` entities are custom regex recognizers defined in the NeMo ConfigMap. 
 
 ### Helm Templates
 
-- `templates/guardrails/nemoguardrails.yaml` — `NemoGuardrails` CR (TrustyAI operator)
+- `templates/guardrails/nemoguardrails.yaml` — `NemoGuardrails` CR (TrustyAI operator) and a NetworkPolicy admitting only the release namespace (the operator's public Route has no authentication)
 - `templates/guardrails/nemo-configmap.yaml` — NeMo config (`config.yaml`: model, recognizers, rails, self-check prompt; `rails.co`)
 
 ---

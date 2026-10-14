@@ -413,3 +413,11 @@ precedents on every upgrade; the backend embeds each processed document.
   gpt-oss-120b fails multi-step tool calling through the same MaaS.
 * The MaaS gateway stalls on request bodies above ~90 KB: OCR page images are capped
   at 60 KB of base64 (`OCR_MAX_IMAGE_B64_KB`).
+* NeMo guardrails fail open: a check that still fails after one retry lets the text
+  through unmasked (`guardrails.failOpen=false` blocks instead). The first checks
+  after a cluster restart can time out while NeMo and the MaaS warm up.
+* Sample documents: the claim PDFs are written in English and the tender PDFs in
+  French; their `_en` variants are copies (only the postal complaints are translated).
+* After a cluster restart, the DSC can stay `Degraded` on `ogx` although the
+  `OGXServer` is healthy (stale status). Any change to the `OGX` component
+  (e.g. an annotation) makes the operator re-evaluate it.
