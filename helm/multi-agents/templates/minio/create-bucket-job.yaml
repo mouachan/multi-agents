@@ -12,7 +12,7 @@ metadata:
     # Helm hooks - run after MinIO is deployed
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "15"
-    "helm.sh/hook-delete-policy": hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
     # ArgoCD GitOps
     "argocd.argoproj.io/hook": PostSync
     "argocd.argoproj.io/hook-delete-policy": HookSucceeded
