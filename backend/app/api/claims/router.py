@@ -42,6 +42,8 @@ from app.services.claim_service import ClaimService
 from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
+from app.services.agents.background import run_in_background
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -188,6 +190,114 @@ async def create_claim(
 # POST /{claim_id}/process - Process Claim with OGX Agent
 # =============================================================================
 
+async def _process_claim_job(db: AsyncSession, claim_id: UUID, process_request) -> None:
+    """Agent processing, decision and notifications — runs in the background (see background.py)."""
+    # Build tool list for Responses API
+    tools = []
+    if not process_request.skip_ocr:
+        tools.append("ocr_document")
+    if process_request.enable_rag:
+        tools.extend([
+            "retrieve_user_info",
+            "retrieve_similar_claims",
+            "search_knowledge_base"
+        ])
+    # Payout computation in an OpenShell sandbox (ignored when the sandbox server is not deployed)
+    tools.append("run_python")
+
+    agent_config = {
+        "model": settings.ogx_default_model,
+        "instructions": CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
+    }
+    # Note: We don't add shield_ids here because that would block processing
+    # Instead, we check for PII after processing and log detections
+
+    # Process claim with agent service
+    result = await claim_service.process_claim_with_agent(
+        db=db,
+        claim_id=str(claim_id),
+        agent_config=agent_config,
+        tools=tools
+    )
+
+    # Save decision
+    await claim_service.save_decision(
+        db=db,
+        claim_id=str(claim_id),
+        decision_data=result["decision"]
+    )
+
+    # Check for PII in claim content if enabled (log only, don't block)
+    if settings.enable_pii_detection:
+        logger.info(f"PII detection enabled, checking claim {claim_id}")
+        try:
+            # Collect all text to check for PII
+            texts_to_check = []
+
+            # 1. Get OCR content
+            ocr_query = select(models.ClaimDocument).where(
+                models.ClaimDocument.claim_id == claim_id
+            ).order_by(models.ClaimDocument.created_at.desc()).limit(1)
+            ocr_result = await db.execute(ocr_query)
+            claim_doc = ocr_result.scalar_one_or_none()
+
+            if claim_doc and claim_doc.raw_ocr_text:
+                texts_to_check.append(f"OCR Document: {claim_doc.raw_ocr_text}")
+                logger.info(f"Added OCR text for PII check: {len(claim_doc.raw_ocr_text)} chars")
+
+            # 2. Extract data from tool calls (RAG user info, etc.)
+            tool_calls = result.get('tool_calls', [])
+            logger.info(f"Found {len(tool_calls)} tool calls to check for PII")
+            for tc in tool_calls:
+                if tc.get('name') == 'retrieve_user_info' and tc.get('output'):
+                    try:
+                        import json as json_lib
+                        output_data = json_lib.loads(tc['output'])
+                        if output_data.get('success') and output_data.get('user_info'):
+                            user_info = output_data['user_info']
+                            # Build text with user PII data
+                            user_text = f"User: {user_info.get('full_name', '')} Email: {user_info.get('email', '')} Phone: {user_info.get('phone_number', '')} DOB: {user_info.get('date_of_birth', '')}"
+                            texts_to_check.append(user_text)
+                            logger.info(f"Added user info for PII check: {user_text}")
+                    except Exception as e:
+                        logger.warning(f"Error parsing user info for PII check: {e}")
+
+            # Combine all texts
+            combined_text = "\n".join(texts_to_check)
+            logger.info(f"Checking combined text for PII: {len(combined_text)} chars total")
+
+            if combined_text:
+                # Check for PII using shield
+                pii_result = await claim_service.check_pii_shield(
+                    text=combined_text,
+                    claim_id=str(claim_id)
+                )
+
+                # If PII detected, save detections with source info
+                if pii_result.get("violations_found"):
+                    detections = pii_result.get("detections", [])
+                    # Enrich detections with source information
+                    for detection in detections:
+                        detection["source_step"] = "retrieve_user_info (RAG)"
+                        detection["detected_fields"] = ["email", "phone", "date_of_birth"]
+
+                    await claim_service.save_pii_detections(
+                        db=db,
+                        claim_id=str(claim_id),
+                        detections=detections
+                    )
+                    logger.info(f"PII detected in claim {claim_id}: {len(detections)} violations logged")
+        except Exception as e:
+            # Don't fail the whole request if PII check fails
+            logger.error(f"Error checking PII for claim {claim_id}: {e}", exc_info=True)
+
+    # Notify reviewers if manual review required
+    recommendation = result["decision"].get("recommendation", "manual_review")
+    if recommendation == "manual_review":
+        reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
+        await notify_manual_review_required("claim", claim_id, reasoning)
+
+
 @router.post("/{claim_id}/process", response_model=schemas.ProcessClaimResponse)
 async def process_claim(
     claim_id: UUID,
@@ -222,113 +332,15 @@ async def process_claim(
                 media_type="application/json"
             )
 
-        # Build tool list for Responses API
-        tools = []
-        if not process_request.skip_ocr:
-            tools.append("ocr_document")
-        if process_request.enable_rag:
-            tools.extend([
-                "retrieve_user_info",
-                "retrieve_similar_claims",
-                "search_knowledge_base"
-            ])
-
-        agent_config = {
-            "model": settings.ogx_default_model,
-            "instructions": CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
-        }
-        # Note: We don't add shield_ids here because that would block processing
-        # Instead, we check for PII after processing and log detections
-
-        # Process claim with agent service
-        result = await claim_service.process_claim_with_agent(
-            db=db,
-            claim_id=str(claim_id),
-            agent_config=agent_config,
-            tools=tools
-        )
-
-        # Save decision
-        await claim_service.save_decision(
-            db=db,
-            claim_id=str(claim_id),
-            decision_data=result["decision"]
-        )
-
-        # Check for PII in claim content if enabled (log only, don't block)
-        if settings.enable_pii_detection:
-            logger.info(f"PII detection enabled, checking claim {claim_id}")
-            try:
-                # Collect all text to check for PII
-                texts_to_check = []
-
-                # 1. Get OCR content
-                ocr_query = select(models.ClaimDocument).where(
-                    models.ClaimDocument.claim_id == claim_id
-                ).order_by(models.ClaimDocument.created_at.desc()).limit(1)
-                ocr_result = await db.execute(ocr_query)
-                claim_doc = ocr_result.scalar_one_or_none()
-
-                if claim_doc and claim_doc.raw_ocr_text:
-                    texts_to_check.append(f"OCR Document: {claim_doc.raw_ocr_text}")
-                    logger.info(f"Added OCR text for PII check: {len(claim_doc.raw_ocr_text)} chars")
-
-                # 2. Extract data from tool calls (RAG user info, etc.)
-                tool_calls = result.get('tool_calls', [])
-                logger.info(f"Found {len(tool_calls)} tool calls to check for PII")
-                for tc in tool_calls:
-                    if tc.get('name') == 'retrieve_user_info' and tc.get('output'):
-                        try:
-                            import json as json_lib
-                            output_data = json_lib.loads(tc['output'])
-                            if output_data.get('success') and output_data.get('user_info'):
-                                user_info = output_data['user_info']
-                                # Build text with user PII data
-                                user_text = f"User: {user_info.get('full_name', '')} Email: {user_info.get('email', '')} Phone: {user_info.get('phone_number', '')} DOB: {user_info.get('date_of_birth', '')}"
-                                texts_to_check.append(user_text)
-                                logger.info(f"Added user info for PII check: {user_text}")
-                        except Exception as e:
-                            logger.warning(f"Error parsing user info for PII check: {e}")
-
-                # Combine all texts
-                combined_text = "\n".join(texts_to_check)
-                logger.info(f"Checking combined text for PII: {len(combined_text)} chars total")
-
-                if combined_text:
-                    # Check for PII using shield
-                    pii_result = await claim_service.check_pii_shield(
-                        text=combined_text,
-                        claim_id=str(claim_id)
-                    )
-
-                    # If PII detected, save detections with source info
-                    if pii_result.get("violations_found"):
-                        detections = pii_result.get("detections", [])
-                        # Enrich detections with source information
-                        for detection in detections:
-                            detection["source_step"] = "retrieve_user_info (RAG)"
-                            detection["detected_fields"] = ["email", "phone", "date_of_birth"]
-
-                        await claim_service.save_pii_detections(
-                            db=db,
-                            claim_id=str(claim_id),
-                            detections=detections
-                        )
-                        logger.info(f"PII detected in claim {claim_id}: {len(detections)} violations logged")
-            except Exception as e:
-                # Don't fail the whole request if PII check fails
-                logger.error(f"Error checking PII for claim {claim_id}: {e}", exc_info=True)
-
-        # Notify reviewers if manual review required
-        recommendation = result["decision"].get("recommendation", "manual_review")
-        if recommendation == "manual_review":
-            reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
-            await notify_manual_review_required("claim", claim_id, reasoning)
+        # Agent processing takes minutes: run it in the background, the UI polls the status
+        claim.status = models.ClaimStatus.processing
+        await db.commit()
+        run_in_background(f"process-claim-{claim_id}", _process_claim_job, claim_id, process_request)
 
         return schemas.ProcessClaimResponse(
             claim_id=claim_id,
-            status=result["claim_status"],
-            message=f"Processing completed: {recommendation}",
+            status="processing",
+            message="Processing started",
             processing_started_at=claim.submitted_at
         )
 

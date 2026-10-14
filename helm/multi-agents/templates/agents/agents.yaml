@@ -86,6 +86,10 @@ spec:
           value: {{ include "multi-agents.ogx.endpoint" $ | quote }}
         - name: OGX_DEFAULT_MODEL
           value: {{ include "multi-agents.ogx.chatModel" ($agent.model | default $.Values.models.reasoning) | quote }}
+        {{- with $.Values.models.processing }}
+        - name: OGX_PROCESS_MODEL
+          value: {{ include "multi-agents.ogx.chatModel" . | quote }}
+        {{- end }}
         - name: OGX_MAX_TOKENS
           value: {{ $.Values.agents.maxTokens | quote }}
         - name: OGX_TIMEOUT

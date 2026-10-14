@@ -153,7 +153,7 @@ data:
 
     registered_resources:
       models:
-{{- range $m := (list .Values.models.reasoning .Values.models.vision .Values.models.guardrails | uniq) }}
+{{- range $m := (compact (list .Values.models.reasoning .Values.models.processing .Values.models.vision .Values.models.guardrails) | uniq) }}
       - provider_id: maas
         model_id: {{ $m }}
         provider_model_id: {{ $m }}

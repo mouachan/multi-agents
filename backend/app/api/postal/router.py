@@ -38,6 +38,8 @@ from app.prompts.courrier_prompts import (
 from app.services.document_storage import get_document
 from app.services.reclamation_service import ReclamationService
 
+from app.services.agents.background import run_in_background
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -223,6 +225,28 @@ async def create_reclamation(
 # POST /{reclamation_id}/process - Process Reclamation with OGX Agent
 # =============================================================================
 
+async def _process_reclamation_job(db: AsyncSession, reclamation_id: UUID, process_request) -> None:
+    """Agent processing, decision and notifications — runs in the background (see background.py)."""
+    agent_config = {
+        "model": settings.ogx_default_model,
+        "instructions": COURRIER_RECLAMATION_INSTRUCTIONS,
+    }
+
+    # Process reclamation with agent service
+    result = await reclamation_service.process_reclamation_with_agent(
+        db=db,
+        reclamation_id=str(reclamation_id),
+        agent_config=agent_config,
+    )
+
+    # Save decision
+    await reclamation_service.save_decision(
+        db=db,
+        reclamation_id=str(reclamation_id),
+        decision_data=result["decision"],
+    )
+
+
 @router.post("/{reclamation_id}/process", response_model=schemas.ProcessReclamationResponse)
 async def process_reclamation(
     reclamation_id: UUID,
@@ -257,31 +281,15 @@ async def process_reclamation(
                 media_type="application/json",
             )
 
-        agent_config = {
-            "model": settings.ogx_default_model,
-            "instructions": COURRIER_RECLAMATION_INSTRUCTIONS,
-        }
-
-        # Process reclamation with agent service
-        result = await reclamation_service.process_reclamation_with_agent(
-            db=db,
-            reclamation_id=str(reclamation_id),
-            agent_config=agent_config,
-        )
-
-        # Save decision
-        await reclamation_service.save_decision(
-            db=db,
-            reclamation_id=str(reclamation_id),
-            decision_data=result["decision"],
-        )
-
-        recommendation = result["decision"].get("recommendation", "escalader")
+        # Agent processing takes minutes: run it in the background, the UI polls the status
+        reclamation.status = models.ReclamationStatus.processing
+        await db.commit()
+        run_in_background(f"process-reclamation-{reclamation_id}", _process_reclamation_job, reclamation_id, process_request)
 
         return schemas.ProcessReclamationResponse(
             reclamation_id=reclamation_id,
-            status=result["reclamation_status"],
-            message=f"Processing completed: {recommendation}",
+            status="processing",
+            message="Processing started",
             processing_started_at=reclamation.submitted_at,
         )
 

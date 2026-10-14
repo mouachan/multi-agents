@@ -34,6 +34,8 @@ from app.services.tender_service import TenderService
 from app.services.document_storage import get_document
 from app.api.hitl import notify_manual_review_required
 
+from app.services.agents.background import run_in_background
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -153,6 +155,47 @@ async def create_tender(
 # POST /{tender_id}/process - Process Tender with AO Agent
 # =============================================================================
 
+async def _process_tender_job(db: AsyncSession, tender_id: UUID, process_request) -> None:
+    """Agent processing, decision and notifications — runs in the background (see background.py)."""
+    # Build tool list for Responses API
+    tools = ["get_tender"]
+    if not process_request.skip_ocr:
+        tools.append("ocr_document")
+    if process_request.enable_rag:
+        tools.extend([
+            "retrieve_similar_references",
+            "retrieve_historical_tenders",
+            "retrieve_capabilities"
+        ])
+
+    agent_config = {
+        "model": settings.ogx_default_model,
+        "instructions": AO_PROCESSING_AGENT_INSTRUCTIONS,
+    }
+
+    # Process tender with agent service
+    result = await tender_service.process_tender_with_agent(
+        db=db,
+        tender_id=str(tender_id),
+        agent_config=agent_config,
+        tools=tools
+    )
+
+    # Save decision
+    await tender_service.save_decision(
+        db=db,
+        tender_id=str(tender_id),
+        decision_data=result["decision"]
+    )
+
+    recommendation = result["decision"].get("recommendation", "a_approfondir")
+
+    # Notify reviewers if manual review required
+    if recommendation == "a_approfondir":
+        reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
+        await notify_manual_review_required("tender", tender_id, reasoning)
+
+
 @router.post("/{tender_id}/process", response_model=schemas.ProcessTenderResponse)
 async def process_tender(
     tender_id: UUID,
@@ -188,48 +231,15 @@ async def process_tender(
                 media_type="application/json"
             )
 
-        # Build tool list for Responses API
-        tools = ["get_tender"]
-        if not process_request.skip_ocr:
-            tools.append("ocr_document")
-        if process_request.enable_rag:
-            tools.extend([
-                "retrieve_similar_references",
-                "retrieve_historical_tenders",
-                "retrieve_capabilities"
-            ])
-
-        agent_config = {
-            "model": settings.ogx_default_model,
-            "instructions": AO_PROCESSING_AGENT_INSTRUCTIONS,
-        }
-
-        # Process tender with agent service
-        result = await tender_service.process_tender_with_agent(
-            db=db,
-            tender_id=str(tender_id),
-            agent_config=agent_config,
-            tools=tools
-        )
-
-        # Save decision
-        await tender_service.save_decision(
-            db=db,
-            tender_id=str(tender_id),
-            decision_data=result["decision"]
-        )
-
-        recommendation = result["decision"].get("recommendation", "a_approfondir")
-
-        # Notify reviewers if manual review required
-        if recommendation == "a_approfondir":
-            reasoning = result["decision"].get("reasoning", "Agent could not make automated decision")
-            await notify_manual_review_required("tender", tender_id, reasoning)
+        # Agent processing takes minutes: run it in the background, the UI polls the status
+        tender.status = models.TenderStatus.processing
+        await db.commit()
+        run_in_background(f"process-tender-{tender_id}", _process_tender_job, tender_id, process_request)
 
         return schemas.ProcessTenderResponse(
             tender_id=tender_id,
-            status=result["tender_status"],
-            message=f"Processing completed: {recommendation}",
+            status="processing",
+            message="Processing started",
             processing_started_at=tender.submitted_at
         )
 

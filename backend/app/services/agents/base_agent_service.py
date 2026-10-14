@@ -194,16 +194,17 @@ class BaseAgentService(ABC):
                 "instructions": self.get_instructions(),
             }
 
-            # Decoupled A2A agent when deployed, else in-process Responses API
+            # Decoupled A2A agent when deployed (its registry prompt, guardrails, tracing;
+            # the requested tools restrict its profile tools), else in-process Responses API
             from app.services.agents.registry import AgentRegistry
             agent_def = AgentRegistry.get_by_entity_type(self.get_entity_type())
-            if agent_def and agent_def.a2a_url and agent_config is None:
+            if agent_def and agent_def.a2a_url:
                 from app.services.agent.a2a_client import get_a2a_client
                 result = await get_a2a_client().send(
                     base_url=agent_def.a2a_url,
                     message=processing_message,
                     context_id=f"{self.get_entity_type()}-{entity_id}",
-                    metadata={"profile": agent_def.id, "mode": "process"},
+                    metadata={"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools()},
                 )
                 if result.get("status") != "completed":
                     raise RuntimeError(result.get("output") or f"A2A task {result.get('status')}")

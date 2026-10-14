@@ -2,7 +2,9 @@
 
 Request metadata (A2A Message.metadata, all optional) sent by the backend:
     profile               profile id (e.g. "courrier-info"); defaults to the agent's first profile
-    mode                  "chat" (conversational wrapper) or "process" (batch processing)
+    mode                  "chat" (conversational wrapper) or "process" (batch processing,
+                          OGX_PROCESS_MODEL)
+    tools                 subset of the profile tools to use (never extends the profile)
     language              "fr" | "en" — enforced via the language-rule prompt
     previous_response_id  OGX response id to chain the conversation
     instructions_override session custom prompt (replaces the registry prompt)
@@ -160,16 +162,32 @@ class BaseA2AExecutor(AgentExecutor):
 
         try:
             instructions, prompt_info = await self._instructions(profile, meta)
-            model = profile.model or self.settings.ogx_default_model
+            process = meta.get("mode") == "process"
+            model = profile.model or (process and self.settings.ogx_process_model) or self.settings.ogx_default_model
+            requested = meta.get("tools")
+            tools = [t for t in profile.tools if t in requested] if requested else profile.tools
             previous_response_id = meta.get("previous_response_id")
 
-            result = await self._run(updater, model, instructions, llm_input, profile.tools, previous_response_id)
+            try:
+                result = await self._run(updater, model, instructions, llm_input, tools, previous_response_id)
+            except RuntimeError as e:
+                # OGX failed (e.g. malformed tool-call arguments): retry once with the other model
+                fallback = next((m for m in (self.settings.ogx_process_model, self.settings.ogx_default_model)
+                                 if m and m != model), None)
+                if not fallback:
+                    raise
+                logger.warning("OGX response failed with %s (%s) — retrying with %s", model, e, fallback)
+                await updater.update_status(TaskState.TASK_STATE_WORKING, _message(
+                    f"fallback to {fallback}", metadata={"event": "fallback", "from": model, "to": fallback,
+                                                         "reason": str(e)[:200]}))
+                model = fallback
+                result = await self._run(updater, model, instructions, llm_input, tools, previous_response_id)
 
             # Retry once if the model wrote tool calls as plain text
             if not result["tool_calls"] and self.parser.contains_text_tool_calls(result["output"]):
                 logger.warning("Model wrote tool calls as text — retrying with function calling")
                 retry = await self._run(updater, model, instructions, TEXT_TOOL_CALL_RETRY,
-                                        profile.tools, result["response_id"])
+                                        tools, result["response_id"])
                 retry["usage"] = _merge_usage(result["usage"], retry["usage"])
                 result = retry
 
@@ -177,7 +195,7 @@ class BaseA2AExecutor(AgentExecutor):
             if not result["streamed_output"].strip() and result["guardrails_output"]["allowed"]:
                 logger.warning("Empty answer — retrying once")
                 retry = await self._run(updater, model, instructions, EMPTY_ANSWER_RETRY,
-                                        profile.tools, result["response_id"])
+                                        tools, result["response_id"])
                 retry["usage"] = _merge_usage(result["usage"], retry["usage"])
                 retry["tool_calls"] = result["tool_calls"] + retry["tool_calls"]
                 result = retry

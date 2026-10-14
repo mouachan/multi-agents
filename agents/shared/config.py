@@ -12,6 +12,9 @@ class AgentSettings(BaseSettings):
     # OGX (Responses API, OpenAI-compatible) — RHOAI 3.5
     ogx_endpoint: str = ""
     ogx_default_model: str = "gpt-oss-120b"
+    # Model for batch processing (metadata mode=process); default: ogx_default_model.
+    # When an OGX response fails, the executor retries once with the other model.
+    ogx_process_model: str = ""
     ogx_timeout: int = 300
     ogx_max_tokens: int = 4096
 
