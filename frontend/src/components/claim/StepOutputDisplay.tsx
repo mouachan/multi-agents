@@ -5,6 +5,8 @@
  * Handles both rich data (from real-time processing) and summary data (from saved decisions).
  */
 
+import { MaskedText } from '../ui/Markdown'
+
 interface StepOutputDisplayProps {
   stepName: string
   outputData: any
@@ -85,7 +87,7 @@ export default function StepOutputDisplay({ stepName, outputData }: StepOutputDi
         {reasoning && (
           <div>
             <p className="text-sm font-medium text-gray-700 mb-1">Reasoning</p>
-            <p className="text-sm text-gray-600 leading-relaxed">{reasoning}</p>
+            <p className="text-sm text-gray-600 leading-relaxed"><MaskedText text={String(reasoning)} /></p>
           </div>
         )}
       </div>

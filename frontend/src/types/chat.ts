@@ -56,6 +56,14 @@ export interface ChatMessage {
   processing_time_ms?: number
   model_id?: string
   created_at?: string
+  /** Live A2A / orchestration trace of this assistant turn (streamed turns only) */
+  trace?: TurnTrace
+  /** True while the turn is streaming */
+  streaming?: boolean
+  /** Turn stopped by the user */
+  stopped?: boolean
+  /** Turn failed */
+  error?: string
 }
 
 export interface ChatResponse {
@@ -92,4 +100,129 @@ export interface AgentInfo {
   icon: string
   tools: string[]
   decision_values: string[]
+}
+
+// ---------------------------------------------------------------------------
+// SSE stream contract — POST /api/v1/orchestrator/chat/stream
+// ---------------------------------------------------------------------------
+
+export type RoutingMethod = 'semantic' | 'llm' | 'sticky' | 'keywords'
+
+export interface RoutingEvent {
+  type: 'routing'
+  agent_id: string
+  method: RoutingMethod
+  score: number | null
+  candidates: { agent_id: string; score: number }[]
+  duration_ms: number
+}
+
+export interface A2AAgentCard {
+  name: string
+  description?: string
+  version?: string
+  url?: string
+  skills?: string[]
+}
+
+export interface A2ARequestEvent {
+  type: 'a2a'
+  phase: 'request'
+  method?: string
+  agent: A2AAgentCard
+  auth: { scheme: string; audience?: string | null }
+  profile?: string
+  mode?: string
+  context_id?: string
+  message_id?: string
+}
+
+export type A2ATaskState = 'submitted' | 'working' | 'completed' | 'failed' | 'rejected' | 'canceled' | string
+
+export interface A2AStatusEvent {
+  type: 'a2a'
+  phase: 'status'
+  state: A2ATaskState
+  task_id?: string
+  context_id?: string
+  elapsed_ms?: number
+}
+
+export type GuardrailStatus = 'passed' | 'modified' | 'blocked' | 'skipped' | 'error' | string
+
+export interface GuardrailsEvent {
+  type: 'guardrails'
+  stage: 'input' | 'output' | string
+  status: GuardrailStatus
+  rail?: string | null
+}
+
+export interface ToolEvent {
+  type: 'tool_call' | 'tool_result'
+  name: string
+  server?: string
+  status?: string
+}
+
+export interface DoneA2ASummary {
+  task_id?: string
+  context_id?: string
+  state?: string
+  duration_ms?: number
+  agent_duration_ms?: number
+  caller?: string | null
+  agent?: string
+  status?: string
+  prompt?: { name?: string; version?: string | number | null; source?: string }
+  guardrails?: { input?: { status?: string; rail?: string | null }; output?: { status?: string; rail?: string | null } }
+}
+
+export interface DoneEvent {
+  type: 'done'
+  response_id?: string | null
+  usage?: TokenUsage | null
+  tool_calls?: ToolCallInfo[]
+  agent_id?: string
+  model_id?: string | null
+  suggested_actions?: SuggestedAction[]
+  a2a?: DoneA2ASummary | null
+}
+
+export type StreamEvent =
+  | RoutingEvent
+  | { type: 'agent_resolved'; agent_id: string }
+  | A2ARequestEvent
+  | A2AStatusEvent
+  | GuardrailsEvent
+  | ToolEvent
+  | { type: 'text_delta'; delta: string }
+  | { type: 'text_replace'; text: string }
+  | { type: 'heartbeat'; elapsed_ms: number }
+  | DoneEvent
+  | { type: 'error'; message: string }
+
+/** One entry of the per-turn timeline shown in the A2A panel */
+export type TraceStep =
+  | { kind: 'routing'; at: number; event: RoutingEvent }
+  | { kind: 'request'; at: number; event: A2ARequestEvent }
+  | { kind: 'state'; at: number; state: A2ATaskState; elapsedMs?: number; taskId?: string }
+  | { kind: 'guardrails'; at: number; event: GuardrailsEvent }
+  | { kind: 'tool'; at: number; name: string; server?: string; status: 'running' | 'completed' | 'error' | string; doneAt?: number }
+
+export interface TurnTrace {
+  startedAt: number
+  /** ms since start of the first streamed text */
+  firstTextAt?: number
+  lastHeartbeatMs?: number
+  agentId?: string
+  routing?: RoutingEvent
+  request?: A2ARequestEvent
+  taskId?: string
+  contextId?: string
+  state?: A2ATaskState
+  steps: TraceStep[]
+  summary?: DoneA2ASummary | null
+  modelId?: string | null
+  usage?: TokenUsage | null
+  finishedAt?: number
 }

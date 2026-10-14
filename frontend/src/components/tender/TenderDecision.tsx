@@ -1,5 +1,6 @@
 import type { Tender, TenderDecision as Decision } from '../../types/tender'
 import { useTranslation } from '../../i18n/LanguageContext'
+import { MaskedText } from '../ui/Markdown'
 
 interface TenderDecisionProps {
   tender: Tender
@@ -39,8 +40,8 @@ export default function TenderDecision({ tender, decision }: TenderDecisionProps
   const isManualReview = tender.status === 'manual_review'
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">{t('tenderDecision.title')}</h3>
+    <div className="legacy card p-6">
+      <h3 className="mb-4 text-base font-semibold text-ink">{t('tenderDecision.title')}</h3>
 
       {isManualReview ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -169,9 +170,9 @@ export default function TenderDecision({ tender, decision }: TenderDecisionProps
         <p className="text-sm text-gray-600 mb-2">{t('tenderDecision.reasoning')}</p>
         <div className="p-4 bg-gray-50 rounded-lg">
           <p className="text-gray-900 whitespace-pre-wrap">
-            {locale === 'en' && decision.metadata?.reasoning_en
+            <MaskedText text={locale === 'en' && decision.metadata?.reasoning_en
               ? decision.metadata.reasoning_en
-              : (decision.initial_reasoning || decision.reasoning || 'N/A')}
+              : (decision.initial_reasoning || decision.reasoning || 'N/A')} />
           </p>
         </div>
       </div>

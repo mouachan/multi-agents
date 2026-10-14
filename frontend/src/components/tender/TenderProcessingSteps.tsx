@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Tender, TenderStatusResponse, ProcessingStepLog } from '../../types/tender'
 import { useTranslation } from '../../i18n/LanguageContext'
+import { MaskedText } from '../ui/Markdown'
 
 interface TenderProcessingStepsProps {
   tender: Tender
@@ -271,7 +272,7 @@ function DecisionResult({ data, t }: { data: Record<string, any>; t: (key: strin
         <div>
           <p className="text-xs font-semibold text-gray-700 mb-1">{t('tenderDecision.reasoning')}</p>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">
-            {expanded || reasoning.length <= 300 ? reasoning : `${reasoning.substring(0, 300)}...`}
+            <MaskedText text={expanded || reasoning.length <= 300 ? reasoning : `${reasoning.substring(0, 300)}...`} />
           </p>
           {reasoning.length > 300 && (
             <button
@@ -365,8 +366,8 @@ export default function TenderProcessingSteps({ tender, status, logs }: TenderPr
     : logs
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">{t('tenderSteps.title')}</h3>
+    <div className="legacy card p-6">
+      <h3 className="mb-4 text-base font-semibold text-ink">{t('tenderSteps.title')}</h3>
 
       {status && tender.status === 'processing' && (
         <div className="mb-4 p-4 bg-amber-50 rounded-lg">

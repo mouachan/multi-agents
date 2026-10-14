@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState, useRef } from 'react'
+import { MaskedText } from './ui/Markdown'
 
 interface Message {
   type: string
@@ -319,7 +320,7 @@ export default function ReviewChatPanel({
               🤖 Agent Response
             </div>
             <div className="text-sm text-gray-800 whitespace-pre-wrap">
-              {msg.answer}
+              <MaskedText text={msg.answer ?? ""} />
             </div>
           </div>
         </div>

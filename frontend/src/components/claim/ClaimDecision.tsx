@@ -8,6 +8,7 @@
 
 import type { Claim, ClaimDecision as Decision } from '../../types'
 import { useTranslation } from '../../i18n/LanguageContext'
+import { MaskedText } from '../ui/Markdown'
 
 interface ClaimDecisionProps {
   claim: Claim
@@ -24,8 +25,8 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
   const isManualReview = claim.status === 'manual_review'
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-xl font-bold text-gray-900 mb-4">{t('claimDecision.title')}</h3>
+    <div className="legacy card p-6">
+      <h3 className="mb-4 text-base font-semibold text-ink">{t('claimDecision.title')}</h3>
 
       {isManualReview ? (
         /* Manual Review: Show both System and Reviewer sections */
@@ -170,9 +171,9 @@ export default function ClaimDecision({ claim, decision }: ClaimDecisionProps) {
         <p className="text-sm text-gray-600 mb-2">{t('claimDecision.systemReasoning')}</p>
         <div className="p-4 bg-gray-50 rounded-lg">
           <p className="text-gray-900 whitespace-pre-wrap">
-            {locale === 'en' && decision.metadata?.reasoning_en
+            <MaskedText text={locale === 'en' && decision.metadata?.reasoning_en
               ? decision.metadata.reasoning_en
-              : (decision.initial_reasoning || decision.reasoning || 'N/A')}
+              : (decision.initial_reasoning || decision.reasoning || 'N/A')} />
           </p>
         </div>
       </div>
