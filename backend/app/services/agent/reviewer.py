@@ -223,8 +223,10 @@ class ReviewService:
             raise ValueError(f"{entity_type.title()} {entity_id} not found")
 
         # Get decision
+        # Latest decision: an entity processed again has several
         decision_result = await db.execute(
             select(decision_model).where(decision_fk == entity_id)
+            .order_by(decision_model.created_at.desc()).limit(1)
         )
         entity_decision = decision_result.scalar_one_or_none()
 

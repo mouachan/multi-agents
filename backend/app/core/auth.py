@@ -36,6 +36,7 @@ K8S_API = "https://kubernetes.default.svc"
 CACHE_TTL = 60  # seconds
 
 _token: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
+_username: ContextVar[Optional[str]] = ContextVar("username", default=None)
 _cache: Dict[str, Tuple[float, "User"]] = {}
 
 
@@ -58,6 +59,11 @@ LOCAL_ADMIN = User("local-admin", (), frozenset(DOMAINS), True, ("admin",))
 def current_token() -> Optional[str]:
     """OpenShift token of the user of the current request (None without authentication)."""
     return _token.get()
+
+
+def current_username() -> Optional[str]:
+    """User of the current request (MLflow traces: user.id), None without authentication."""
+    return _username.get()
 
 
 def load_profiles() -> Dict[str, Dict]:
@@ -149,6 +155,7 @@ async def current_user(connection: HTTPConnection) -> User:
         logger.error("Authentication check failed: %s", e)
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
     _token.set(token)
+    _username.set(user.username)
     return user
 
 

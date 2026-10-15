@@ -38,6 +38,7 @@ async def get_decision(
             select(decision_model)
             .where(fk_col == entity_id)
             .order_by(decision_model.created_at.desc())
+            .limit(1)  # an entity processed again has several decisions
         )
         result = await db.execute(query)
         decision = result.scalar_one_or_none()

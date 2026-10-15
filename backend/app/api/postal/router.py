@@ -400,6 +400,7 @@ async def get_reclamation_decision(
             select(models.ReclamationDecision)
             .where(models.ReclamationDecision.reclamation_id == reclamation_id)
             .order_by(models.ReclamationDecision.created_at.desc())
+            .limit(1)  # a reclamation processed again has several decisions
         )
         result = await db.execute(query)
         decision = result.scalar_one_or_none()

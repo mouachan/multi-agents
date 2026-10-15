@@ -6,7 +6,7 @@
   UI replays it through the same reducer as the live stream (frontend/src/hooks/useChat.ts).
 - Observability trace (MLflow): spans built from the same events, one trace per turn:
 
-      <turn>                 root: input message and answer, session id
+      <turn>                 root: input message and answer, session id, user
       ├── routing            agent, method, score, candidates
       └── a2a:<agent>        agent card, authentication, task id and states, SPIFFE caller
           └── <agent spans>  guardrails, MCP tools (sandbox), LLM: emitted by the agent
@@ -19,6 +19,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from app.core import tracing
+from app.core.auth import current_username
 from app.core.config import settings
 
 # Events kept in the application trace (text deltas and heartbeats are not)
@@ -41,6 +42,7 @@ class TurnTrace:
         self._a2a = None
         self._root = tracing.start_span(name, attributes={
             "mlflow.traceName": name, "mlflow.spanType": "AGENT", "session.id": session_id,
+            "user.id": current_username(),  # MLflow trace user (None without authentication)
             "mlflow.spanInputs": _json(inputs),
         })
         self.mlflow_trace_id = tracing.mlflow_trace_id(self._root)
