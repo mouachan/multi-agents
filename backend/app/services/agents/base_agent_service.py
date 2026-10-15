@@ -119,7 +119,7 @@ class BaseAgentService(ABC):
             "retrieve_similar_references", "retrieve_historical_tenders", "retrieve_capabilities",
         ]:
             return "rag-agent"
-        elif tool_name == "run_python":
+        elif tool_name in ("run_python", "compute_payout"):
             return "openshell-sandbox"
         return "unknown"
 

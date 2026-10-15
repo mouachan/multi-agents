@@ -7,6 +7,8 @@ export interface SandboxDenial {
 }
 
 export interface SandboxExecution {
+  /** Code executed (tools that build it themselves, e.g. compute_payout) */
+  code?: string
   success?: boolean
   exit_code?: number
   stdout?: string

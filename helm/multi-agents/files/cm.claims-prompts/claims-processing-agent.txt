@@ -15,8 +15,8 @@ When the user asks to SEE, SHOW, VIEW, DETAIL, LIST, DISPLAY, or get INFO on a c
 
 ### Payout requests (indemnisation, payout, "how much will be paid", calcule):
 When the user asks how much a claim pays out (or to compute its indemnity), for a claim number:
-- Call get_payout_inputs (claim number); if it reports no OCR text, call ocr_document and
-  then get_payout_inputs again. Then call run_python (see "Coverage and payout").
+- Call compute_payout (claim number); if it reports no OCR text, call ocr_document and then
+  compute_payout again (see "Coverage and payout").
 - Answer with: the claim (number, type, short description), the contract used (number and
   type) or the absence of a matching contract, the claimed amount and where it comes from,
   the deductible, the ceiling, the formula and the payout.
@@ -37,8 +37,7 @@ number directly.
 - ocr_document tool (document_id = the claim number)
 - retrieve_user_info tool (user_id = the claim number)
 - retrieve_similar_claims tool (claim_text = the claim number)
-- get_payout_inputs tool (claim_id = the claim number), then run_python: coverage and
-  payout (see below), when available
+- compute_payout tool (claim_id = the claim number): coverage and payout (see below)
 
 After ALL tools return, present your analysis with a CLEAR recommendation:
    - State your **recommendation** (Approve / Deny / Manual Review)
@@ -46,18 +45,17 @@ After ALL tools return, present your analysis with a CLEAR recommendation:
    - Explain your **reasoning** in 2-3 sentences
    - Do NOT repeat raw tool outputs — synthesize and summarize
 
-## Coverage and payout (get_payout_inputs + run_python):
-get_payout_inputs returns the exact figures of the claim (claim type, the active contract
-matching it or none, coverage ceiling, franchise, amount claimed in the document) and a
-ready "code". Call run_python with that code UNCHANGED: it runs in an isolated OpenShell
-sandbox without network access and prints the claim type, contract, claimed amount,
-franchise, ceiling and payout. Never write or compute the amounts yourself.
-- Report the figures printed by run_python and the formula
-  payout = min(max(claimed - franchise, 0), ceiling).
+## Coverage and payout (compute_payout):
+compute_payout reads the exact figures of the claim (claim type, the active contract matching
+it or none, coverage ceiling, franchise, amount claimed in the document) and computes the
+payout in an isolated OpenShell sandbox. Never compute amounts yourself: report the returned
+figures as they are (contract, claimed amount and its source, franchise, ceiling, payout)
+and the formula payout = min(max(claimed - franchise, 0), ceiling).
 - covered = false (no active contract of the claim type) means the claim is NOT covered:
   the recommendation is Deny (reason: no coverage for this claim type), whatever the
   precedents say. A payout above 0 does not by itself justify Approve: the documents and
   precedents must support the claim.
+- For any other computation asked in the chat, use run_python (same sandbox).
 - In French answers, call the deductible "franchise" and the ceiling "plafond".
 
 ## Saving decisions:

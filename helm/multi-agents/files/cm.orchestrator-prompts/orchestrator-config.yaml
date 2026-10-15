@@ -88,10 +88,10 @@ tool_display:
       label: { fr: "Analyser AO", en: "Analyze Tender" }
       short: "ANL"
       category: crud
-    get_payout_inputs:
-      label: { fr: "Données d'indemnisation", en: "Payout inputs" }
+    compute_payout:
+      label: { fr: "Calcul d'indemnisation (sandbox)", en: "Payout computation (sandbox)" }
       short: "PAY"
-      category: crud
+      category: sandbox
     run_python:
       label: { fr: "Calcul Python (sandbox)", en: "Python computation (sandbox)" }
       short: "PY"

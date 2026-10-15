@@ -38,6 +38,11 @@ Usage: include "multi-agents.mcp.env" (dict "root" $ "name" "claims" "cfg" .Valu
 - name: OGX_VISION_MODEL
   value: {{ include "multi-agents.ogx.chatModel" $root.Values.models.vision | quote }}
 {{- end }}
+{{- if and (eq .name "claims") $root.Values.mcp.sandbox.enabled }}
+# compute_payout runs its computation with the run_python tool of the OpenShell sandbox
+- name: SANDBOX_MCP_URL
+  value: {{ include "multi-agents.mcp.serverUrl" (dict "root" $root "name" "sandbox") | quote }}
+{{- end }}
 {{- range $k, $v := .cfg.env }}
 - name: {{ $k }}
   value: {{ $v | quote }}

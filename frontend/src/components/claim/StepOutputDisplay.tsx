@@ -20,8 +20,8 @@ const STEP_LABELS: Record<string, { label: string; icon: string; color: string }
   retrieve_user_info: { label: 'User & Contract Info', icon: '2', color: 'indigo' },
   retrieve_similar_claims: { label: 'Similar Claims', icon: '3', color: 'purple' },
   search_knowledge_base: { label: 'Knowledge Base Search', icon: '4', color: 'amber' },
-  get_payout_inputs: { label: 'Payout Inputs', icon: '4', color: 'teal' },
-  run_python: { label: 'Coverage & Payout (OpenShell sandbox)', icon: '5', color: 'teal' },
+  compute_payout: { label: 'Coverage & Payout (OpenShell sandbox)', icon: '4', color: 'teal' },
+  run_python: { label: 'Python computation (OpenShell sandbox)', icon: '5', color: 'teal' },
   claim_analysis: { label: 'Risk Assessment', icon: '2', color: 'indigo' },
   tender_analysis: { label: 'Go/No-Go Evaluation', icon: '2', color: 'indigo' },
   decision: { label: 'Final Decision', icon: '5', color: 'emerald' },
@@ -32,14 +32,18 @@ export default function StepOutputDisplay({ stepName, outputData }: StepOutputDi
 
   const step = stepName.toLowerCase()
 
-  // Exact figures read by the claims server for the payout computation
-  if (step === 'get_payout_inputs') {
+  // Coverage and payout from the claim's figures, computed in the OpenShell sandbox
+  if (step === 'compute_payout') {
     const c = outputData.contract
     return (
-      <div className="mt-3 space-y-1 rounded-lg border border-line bg-surface-muted p-3 text-xs text-ink">
-        <p><b>Contract:</b> {c ? `${c.number} (${c.type}) · ceiling ${c.coverage_amount} · franchise ${c.franchise}` : 'none matching the claim type (not covered)'}</p>
-        <p><b>Amount claimed:</b> {outputData.claimed_amount ?? '—'} <span className="text-ink-subtle">({outputData.claimed_source})</span></p>
-        <p className="text-ink-subtle">{outputData.formula}</p>
+      <div className="mt-3 space-y-2">
+        <div className="space-y-1 rounded-lg border border-line bg-surface-muted p-3 text-xs text-ink">
+          <p><b>Contract:</b> {c ? `${c.number} (${c.type}) · ceiling ${c.coverage_amount} · franchise ${c.franchise}` : 'none matching the claim type (not covered)'}</p>
+          <p><b>Amount claimed:</b> {outputData.claimed_amount ?? '—'} <span className="text-ink-subtle">({outputData.claimed_source})</span></p>
+          <p><b>Payout:</b> {outputData.payout ?? '—'} <span className="text-ink-subtle">({outputData.formula})</span></p>
+          {outputData.error && <p className="text-red-600">{outputData.error}</p>}
+        </div>
+        {outputData.sandbox_run && <SandboxRun code={outputData.code} result={outputData.sandbox_run} />}
       </div>
     )
   }

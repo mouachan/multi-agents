@@ -90,7 +90,7 @@ function FlowStrip({ trace, streaming }: { trace: TurnTrace; streaming: boolean 
   const { t } = useTranslation()
   const runningTool = trace.steps.some((s) => s.kind === 'tool' && s.status === 'running')
   const toolsUsed = trace.steps.some((s) => s.kind === 'tool')
-  const sandboxSteps = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && s.name === SANDBOX_TOOL)
+  const sandboxSteps = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && (s.name === SANDBOX_TOOL || !!s.sandbox))
   const generating = streaming && !runningTool && trace.state === 'working'
   const v = agentVisual(trace.agentId)
 
@@ -182,7 +182,7 @@ function StepRow({ step, isLast, now, startedAt, streaming }: { step: TraceStep;
     }
     case 'tool': {
       const running = step.status === 'running'
-      const sandboxed = step.name === SANDBOX_TOOL
+      const sandboxed = step.name === SANDBOX_TOOL || !!step.sandbox
       const idle = sandboxed ? <Box className="h-3.5 w-3.5" /> : <Wrench className="h-3.5 w-3.5" />
       icon = running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : step.status === 'error' ? <XCircle className="h-3.5 w-3.5" /> : idle
       title = sandboxed
@@ -260,7 +260,9 @@ export function TracePanel({ message, onClose }: TracePanelProps) {
     const found = trace.steps.filter((s): s is Extract<TraceStep, { kind: 'guardrails' }> => s.kind === 'guardrails' && s.event.stage === stage)
     return found.length ? found[found.length - 1].event.status : undefined
   }
-  const sandboxRuns = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && s.name === SANDBOX_TOOL && s.status !== 'running')
+  // Tool calls that ran code in the sandbox: run_python, or tools reporting a sandbox run (compute_payout)
+  const sandboxRuns = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && s.status !== 'running'
+    && (s.name === SANDBOX_TOOL || !!s.sandbox))
   const gIn = summary?.guardrails?.input?.status ?? lastGuardrail('input')
   const gOut = summary?.guardrails?.output?.status ?? lastGuardrail('output')
 
@@ -385,7 +387,7 @@ export function TracePanel({ message, onClose }: TracePanelProps) {
           >
             <div className="space-y-3 divide-y divide-line">
               {sandboxRuns.map((s, i) => (
-                <SandboxRun key={i} className={i ? 'pt-3' : ''} code={sandboxCode(s.arguments)}
+                <SandboxRun key={i} className={i ? 'pt-3' : ''} code={s.sandbox?.code ?? sandboxCode(s.arguments)}
                   result={s.sandbox ?? { error: s.error }} />
               ))}
             </div>

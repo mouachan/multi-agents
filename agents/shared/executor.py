@@ -55,8 +55,9 @@ EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
 # Offered in the final analysis only; run_python (claims coverage and payout) is a regular
 # step when the caller lists it
 OPTIONAL_TOOLS = {"search_knowledge_base", "search_courrier_knowledge"}
-# Traceability for the UI: tool arguments, and the sandbox execution of run_python. The
-# outputs of the other tools are not forwarded (they hold unmasked personal data).
+# Traceability for the UI: tool arguments, and the sandbox executions (run_python output, or
+# "sandbox_run" in the output of a tool that ran code in the sandbox, e.g. compute_payout).
+# The outputs of the other tools are not forwarded (they hold unmasked personal data).
 TOOL_ARGUMENTS_MAX = 2000
 SANDBOX_TOOL = "run_python"
 SANDBOX_FIELDS = ("success", "exit_code", "stdout", "stderr", "denials", "sandbox", "error")
@@ -79,18 +80,23 @@ TEXT_TOOL_CALL_RETRY = (
 
 
 def _tool_trace(ev: Dict[str, Any]) -> Dict[str, Any]:
-    """Arguments of a finished MCP call and, for run_python, its sandbox execution."""
+    """Arguments of a finished MCP call and, if it ran code in the sandbox, that execution."""
     trace: Dict[str, Any] = {}
     if ev.get("arguments"):
         trace["arguments"] = str(ev["arguments"])[:TOOL_ARGUMENTS_MAX]
     if ev.get("error"):
         trace["error"] = str(ev["error"])[:500]
-    if ev.get("name") == SANDBOX_TOOL and ev.get("output"):
-        try:
-            out = json.loads(ev["output"])
-            trace["sandbox"] = {k: out[k] for k in SANDBOX_FIELDS if k in out}
-        except (ValueError, TypeError):
-            pass
+    try:
+        out = json.loads(ev.get("output") or "")
+    except (ValueError, TypeError):
+        return trace
+    if not isinstance(out, dict):
+        return trace
+    run = out if ev.get("name") == SANDBOX_TOOL else out.get("sandbox_run")
+    if isinstance(run, dict):
+        trace["sandbox"] = {k: run[k] for k in SANDBOX_FIELDS if k in run}
+        if out.get("code"):
+            trace["sandbox"]["code"] = out["code"]
     return trace
 
 

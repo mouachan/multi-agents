@@ -509,9 +509,11 @@ async def analyze_claim(claim_id: str) -> str:
 
 
 # =============================================================================
-# MCP Tools - Payout inputs (deterministic figures for the run_python sandbox)
+# MCP Tools - Payout, computed in the OpenShell sandbox
 # =============================================================================
 
+# run_python tool of the sandbox MCP server (OpenShell); empty when the sandbox is not deployed
+SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "")
 # Claim type -> contract type that covers it
 COVERING_CONTRACT = {
     "Auto": "Auto Insurance", "Home": "Home Insurance",
@@ -520,6 +522,7 @@ COVERING_CONTRACT = {
 # Amount labels of the claim documents, most specific first
 AMOUNT_LABELS = ("Amount Claimed", "Estimated Repair Cost", "Capital Assur[eé]", "Total Charges")
 AMOUNT = r"\s*:?\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)"
+FORMULA = "payout = min(max(claimed - franchise, 0), ceiling); 0 without an active contract of the claim type"
 
 
 def _claimed_amount(document_text: str) -> Tuple[Optional[float], Optional[str]]:
@@ -531,70 +534,110 @@ def _claimed_amount(document_text: str) -> Tuple[Optional[float], Optional[str]]
     return None, None
 
 
-@mcp.tool()
-async def get_payout_inputs(claim_id: str) -> str:
-    """
-    Get the exact figures needed to compute a claim payout, and the Python code computing it.
+async def _payout_inputs(claim_number: str) -> dict:
+    """Exact figures of a claim for its payout, and the code computing it."""
+    claim = await run_db_query_one(text("""
+        SELECT c.claim_number, c.claim_type, c.user_id,
+               (SELECT cd.raw_ocr_text FROM claim_documents cd WHERE cd.claim_id = c.id
+                AND cd.raw_ocr_text IS NOT NULL ORDER BY cd.created_at DESC LIMIT 1) AS document_text
+        FROM claims c WHERE c.claim_number = :n
+    """), {"n": claim_number})
+    if not claim:
+        return {"success": False, "error": f"Claim {claim_number} not found"}
+    if claim.document_text is None:
+        return {"success": False, "claim_number": claim.claim_number,
+                "error": "No OCR text for this claim: call ocr_document first"}
+    claimed, source = _claimed_amount(claim.document_text)
+    contract_type = COVERING_CONTRACT.get(claim.claim_type)
+    contract = await run_db_query_one(text("""
+        SELECT contract_number, contract_type, coverage_amount, key_terms->>'franchise' AS franchise
+        FROM user_contracts WHERE user_id = :u AND is_active AND contract_type = :t
+        ORDER BY coverage_amount DESC LIMIT 1
+    """), {"u": claim.user_id, "t": contract_type}) if contract_type else None
 
-    Reads the claim type, the claimant's ACTIVE contract matching that type (number,
-    coverage ceiling, deductible "franchise") and the amount claimed in the claim document
-    (OCR text; run ocr_document first if it is missing). Pass the returned "code" unchanged
-    to the run_python tool, which executes it in the OpenShell sandbox.
+    covered = contract is not None
+    deductible = float(contract.franchise or 0) if covered else 0.0
+    ceiling = float(contract.coverage_amount) if covered else 0.0
+    number = contract.contract_number if covered else "NONE"
+    code = "\n".join([
+        f"claim_type = '{claim.claim_type}'",
+        f"contract = '{number}'",
+        f"claimed = {claimed if claimed is not None else 0.0}",
+        f"deductible = {deductible}",
+        f"ceiling = {ceiling}",
+        f"covered = {covered}",
+        "payout = min(max(claimed - deductible, 0), ceiling) if covered else 0.0",
+        *[f"print('{name}:', {name})" for name in ("claim_type", "contract", "claimed", "deductible", "ceiling", "payout")],
+    ])
+    return {
+        "success": True,
+        "claim_number": claim.claim_number,
+        "claim_type": claim.claim_type,
+        "covered": covered,
+        "contract": {"number": number, "type": contract.contract_type, "coverage_amount": ceiling,
+                     "franchise": deductible} if covered else None,
+        "claimed_amount": claimed,
+        "claimed_source": f"{source} (claim document)" if source else "not found in the claim document",
+        "formula": FORMULA,
+        "code": code,
+    }
+
+
+async def _run_in_sandbox(code: str) -> dict:
+    """Execute code with the run_python tool of the sandbox MCP server."""
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    async with streamablehttp_client(SANDBOX_MCP_URL, timeout=90) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("run_python", {"code": code, "timeout_s": 20})
+            return json.loads(result.content[0].text)
+
+
+def _printed_value(stdout: str, name: str) -> Optional[float]:
+    match = re.search(rf"^{name}:\s*([-0-9.]+)\s*$", stdout or "", re.MULTILINE)
+    return float(match.group(1)) if match else None
+
+
+@mcp.tool()
+async def compute_payout(claim_id: str) -> str:
+    """
+    Compute the payout of a claim (coverage check and amount) in the OpenShell sandbox.
+
+    Reads the claim type, the claimant's ACTIVE contract matching that type (coverage
+    ceiling, franchise) and the amount claimed in the claim document (OCR text: call
+    ocr_document first if it is missing). The computation runs in an isolated OpenShell
+    sandbox (no network, kernel-enforced policy). Report the returned figures as they are.
 
     Args:
         claim_id: The claim number (e.g., CLM-2024-0001)
 
     Returns:
         JSON with keys: claim_number, claim_type, covered, contract (number, type,
-        coverage_amount, franchise) or null, claimed_amount, claimed_source, formula, code
+        coverage_amount, franchise) or null, claimed_amount, claimed_source, formula,
+        payout, code, sandbox_run (exit code, output, sandbox name and timings)
     """
     if not claim_id or not claim_id.strip():
         return json.dumps({"success": False, "error": "claim_id is required"})
-    claim_id = claim_id.strip()
     try:
-        claim = await run_db_query_one(text("""
-            SELECT c.id, c.claim_number, c.claim_type, c.user_id,
-                   (SELECT cd.raw_ocr_text FROM claim_documents cd WHERE cd.claim_id = c.id
-                    AND cd.raw_ocr_text IS NOT NULL ORDER BY cd.created_at DESC LIMIT 1) AS document_text
-            FROM claims c WHERE c.claim_number = :n
-        """), {"n": claim_id})
-        if not claim:
-            return json.dumps({"success": False, "error": f"Claim {claim_id} not found"})
-        if claim.document_text is None:
-            return json.dumps({"success": False, "claim_number": claim.claim_number,
-                               "error": "No OCR text for this claim: call ocr_document first"})
-        claimed, source = _claimed_amount(claim.document_text)
-        contract_type = COVERING_CONTRACT.get(claim.claim_type)
-        contract = await run_db_query_one(text("""
-            SELECT contract_number, contract_type, coverage_amount, key_terms->>'franchise' AS franchise
-            FROM user_contracts WHERE user_id = :u AND is_active AND contract_type = :t
-            ORDER BY coverage_amount DESC LIMIT 1
-        """), {"u": claim.user_id, "t": contract_type}) if contract_type else None
-
-        covered = contract is not None
-        deductible = float(contract.franchise or 0) if covered else 0.0
-        ceiling = float(contract.coverage_amount) if covered else 0.0
-        contract_number = contract.contract_number if covered else "NONE"
-        code = (f"claim_type='{claim.claim_type}'; contract='{contract_number}'; "
-                f"claimed={claimed if claimed is not None else 0.0}; deductible={deductible}; ceiling={ceiling}; "
-                f"covered={covered}; payout=min(max(claimed-deductible,0),ceiling) if covered else 0.0; "
-                "print('claim type:', claim_type); print('contract:', contract); print('claimed:', claimed); "
-                "print('deductible:', deductible); print('ceiling:', ceiling); print('payout:', payout)")
-        return json.dumps({
-            "success": True,
-            "claim_number": claim.claim_number,
-            "claim_type": claim.claim_type,
-            "covered": covered,
-            "contract": {"number": contract.contract_number, "type": contract.contract_type,
-                         "coverage_amount": ceiling, "franchise": deductible} if covered else None,
-            "claimed_amount": claimed,
-            "claimed_source": f"{source} (claim document)" if source else "not found in the claim document",
-            "formula": "payout = min(max(claimed - franchise, 0), coverage_amount); 0 without a matching contract",
-            "code": code,
-        })
+        inputs = await _payout_inputs(claim_id.strip())
     except Exception as e:
         logger.error(f"Error reading payout inputs for {claim_id}: {e}", exc_info=True)
         return json.dumps({"success": False, "error": str(e)})
+    if not inputs["success"]:
+        return json.dumps(inputs)
+    if not SANDBOX_MCP_URL:
+        return json.dumps({**inputs, "success": False, "error": "The OpenShell sandbox is not deployed"})
+    try:
+        run = await _run_in_sandbox(inputs["code"])
+    except Exception as e:
+        logger.error(f"Sandbox execution failed for {claim_id}: {e}", exc_info=True)
+        return json.dumps({**inputs, "success": False, "error": f"Sandbox execution failed: {e}"})
+    payout = _printed_value(run.get("stdout", ""), "payout")
+    logger.info(f"Payout of {claim_id}: {payout} (covered={inputs['covered']}, sandbox exit {run.get('exit_code')})")
+    return json.dumps({**inputs, "success": bool(run.get("success")) and payout is not None,
+                       "payout": payout, "sandbox_run": run})
 
 
 @mcp.tool()
