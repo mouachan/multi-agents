@@ -90,4 +90,53 @@ spec:
   subjects:
     groups:
     - name: system:serviceaccounts:{{ $ns }}
+{{- with .Values.models.maas.userAccess }}
+{{- if .enabled }}
+---
+# Cluster users: the same models in OpenShift AI (AI asset endpoints, Gen AI playground)
+# with their own MaaS keys and token counter. Lower priority than the application
+# subscription, whose API key is bound to it explicitly.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: {{ $.Values.models.maas.subscriptionName }}-users
+  namespace: {{ $.Values.models.maas.namespace }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+spec:
+  priority: {{ .priority }}
+  owner:
+    groups:
+    {{- range .groups }}
+    - name: {{ . }}
+    {{- end }}
+  modelRefs:
+{{- range $m := $.Values.models.maas.chatModels }}
+  - name: {{ $m }}
+    namespace: {{ $ns }}
+    tokenRateLimits:
+    - limit: {{ $.Values.models.maas.userAccess.tokenRateLimit.limit }}
+      window: {{ $.Values.models.maas.userAccess.tokenRateLimit.window }}
+{{- end }}
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: {{ $.Values.models.maas.subscriptionName }}-users
+  namespace: {{ $.Values.models.maas.namespace }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+spec:
+  modelRefs:
+{{- range $m := $.Values.models.maas.chatModels }}
+  - name: {{ $m }}
+    namespace: {{ $ns }}
+{{- end }}
+  subjects:
+    groups:
+    {{- range .groups }}
+    - name: {{ . }}
+    {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

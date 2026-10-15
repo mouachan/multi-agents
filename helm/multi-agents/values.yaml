@@ -135,6 +135,15 @@ models:
     tokenRateLimit:
       limit: 3000000
       window: 1h
+    # Cluster users (OpenShift groups) allowed to use these models from OpenShift AI: they
+    # appear in the AI asset endpoints and the Gen AI playground. One counter per user.
+    userAccess:
+      enabled: true
+      groups: [system:authenticated]
+      priority: 5
+      tokenRateLimit:
+        limit: 200000
+        window: 1h
     # MaaS API key (sk-oai-...) used by OGX and NeMo. Leave empty to let the
     # maas-api-key Job mint one with its ServiceAccount token (expires: keyExpiration).
     keyExpiration: 90d
@@ -843,7 +852,7 @@ rhoaiCatalog:
     claims:
       displayName: Claims records
       description: Insurance claims — list, details, documents, statistics, save decisions.
-      tools: [list_claims, get_claim, get_claim_documents, get_claim_statistics, save_claim_decision]
+      tools: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout, save_claim_decision]
     tenders:
       displayName: Tenders records
       description: BTP tenders — list, details, documents, statistics, save decisions.
