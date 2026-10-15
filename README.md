@@ -233,12 +233,16 @@ graph TB
     B -->|A2A JSON-RPC + streaming<br/>SPIFFE JWT-SVID| CA
     B -->|A2A| TA
     B -->|A2A| PA
-    CA -->|/v1/checks| NEMO
+    CA -->|/v1/checks in + out| NEMO
+    TA -->|/v1/checks in + out| NEMO
+    PA -->|/v1/checks in + out| NEMO
     CA -->|Responses API| OGX
     TA -->|Responses API| OGX
     PA -->|Responses API| OGX
-    CA -->|prompts + traces| MLFLOW
-    B -->|OTel/OTLP| MLFLOW
+    CA -->|prompts + spans| MLFLOW
+    TA -->|prompts + spans| MLFLOW
+    PA -->|prompts + spans| MLFLOW
+    B -->|OTLP root span| MLFLOW
     NEMO -->|self check| VIS
     OGX -->|Inference| LLM
     OGX -->|Vision| VIS
@@ -267,7 +271,16 @@ graph TB
     style B fill:#fff3e0
 ```
 
-All three agents call NeMo, OGX and MLflow the same way (only `claims-agent` edges are drawn for readability).
+The three agents run the same code (`agents/shared`): each one calls NeMo Guardrails around its
+OGX call and exports its spans to MLflow, in the same trace as the backend.
+
+**Guardrails** are applied by the agent, not by a proxy in front of the model: before calling OGX,
+the agent sends the user message to NeMo (`/v1/checks`, input rails: Presidio PII masking, then an
+LLM self-check against jailbreak / off-topic requests) and passes on only the masked text, or
+refuses; while the answer streams, each sentence goes through the output rails (PII masking)
+before it reaches the user. Tool calls and their results stay inside OGX and are not checked: PII
+read from documents by the tools reaches the model. With `guardrails.failOpen=true` (default), a
+NeMo failure lets the text through unmasked.
 
 ### Services Architecture
 
