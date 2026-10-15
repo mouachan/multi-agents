@@ -9,14 +9,14 @@ Every server exposes, on the same port (8080):
 """
 
 import contextlib
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Sequence
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.routing import Mount, Route
+from starlette.routing import BaseRoute, Mount, Route
 
 
 def create_mcp(name: str) -> FastMCP:
@@ -38,8 +38,12 @@ def build_app(
     mcp: FastMCP,
     server_name: str,
     health_check: Callable[[Request], Awaitable[Response]],
+    extra_routes: Sequence[BaseRoute] = (),
 ) -> Starlette:
-    """Build the Starlette app serving /mcp, /sse and /health for a FastMCP server."""
+    """Build the Starlette app serving /mcp, /sse and /health for a FastMCP server.
+
+    extra_routes (e.g. the sandbox /policy) are matched before the SSE app mounted on /.
+    """
 
     async def sse_options(request: Request) -> JSONResponse:
         return JSONResponse({
@@ -61,6 +65,7 @@ def build_app(
     return Starlette(
         routes=[
             Route("/health", health_check),
+            *extra_routes,
             *streamable_routes,
             Route("/sse", sse_options, methods=["OPTIONS"]),
             Route("/", sse_options, methods=["OPTIONS"]),

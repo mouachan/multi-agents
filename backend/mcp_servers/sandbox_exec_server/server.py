@@ -342,9 +342,10 @@ async def demo(request: Request) -> JSONResponse:
 # Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health, /policy, /demo/{scenario}
 # =============================================================================
 
-app = build_app(mcp, "sandbox-exec-server", health_check)
-app.router.routes.append(Route("/policy", policy, methods=["GET"]))
-app.router.routes.append(Route("/demo/{scenario}", demo, methods=["POST"]))
+app = build_app(mcp, "sandbox-exec-server", health_check, extra_routes=[
+    Route("/policy", policy, methods=["GET"]),
+    Route("/demo/{scenario}", demo, methods=["POST"]),
+])
 
 
 if __name__ == "__main__":
