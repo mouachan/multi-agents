@@ -6,7 +6,8 @@ to the group, so the same rule applies to the UI, the agents and the MCP Gateway
 
 The backend's ServiceAccount may only read the users and update the profile groups
 (ClusterRole <namespace>-profile-manager, restricted to these groups by name). The change applies
-at the user's next request (the cached rights are dropped).
+within seconds: the backend drops its cached rights of the user, the OpenShift token cache
+expires after a few seconds.
 """
 import logging
 import re

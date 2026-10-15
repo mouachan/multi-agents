@@ -294,6 +294,16 @@ helm upgrade --install multi-agents helm/multi-agents \
   --set minio.rootPassword=<password>
 ```
 
+`values-rhoai35.yaml` turns on the OpenShift login (`auth.enabled=true`). The first members of
+the access profiles and the source links of the AI hub catalog entries are given at install:
+
+```bash
+  --set-json 'auth.profiles.admin.users=["<admin-user>"]' \
+  --set-json 'auth.profiles.finance.users=["<user>"]' \
+  --set rhoaiCatalog.repository.url=https://github.com/<org>/<repo> \
+  --set rhoaiCatalog.repository.ref=<branch>
+```
+
 What the chart creates for the RHOAI 3.5 features:
 
 | Template | Objects |
@@ -307,7 +317,9 @@ What the chart creates for the RHOAI 3.5 features:
 | `templates/mlflow/` | RoleBinding `mlflow-operator-mlflow-integration`, Job `prompt-sync` |
 | `templates/spiffe/` | `ClusterSPIFFEID` |
 | `templates/openshell/` | Sandbox policy ConfigMap for `run_python` (`mcp.sandbox`, needs the OpenShell gateway — see [openshell/README.md](openshell/README.md)) |
-| `templates/rhoai/` | ConfigMap `multi-agents-catalog` in `rhoai-model-registries` (agents + MCP catalog sources), ConfigMap `gen-ai-aa-mcp-servers` (playground) |
+| `templates/rhoai/` | ConfigMap `multi-agents-catalog` in `rhoai-model-registries` (agents + MCP catalog sources: logos, READMEs, tools, security indicators, license), ConfigMap `gen-ai-aa-mcp-servers` (playground) |
+| `templates/auth/` | `Group` per access profile, `Role` per agent (`use` the agent, `call` its MCP tools) and `RoleBinding`s to the groups, `Role` `multi-agents-admin`, `ClusterRoleBinding`s of the backend (`system:auth-delegator`, `<ns>-profile-manager`), `AuthPolicy` `mcp-gateway-users` and `mcp-tools-rbac` on the MCP Gateway |
+| `templates/frontend/` | `oauth-proxy` sidecar (OpenShift login) in front of the UI, re-encrypt Route |
 | `templates/monitoring/` | `PersesDashboard` `dashboard-5-multi-agents` in `redhat-ods-monitoring` (see [section 10](#10-metrics-dashboard-perses)) |
 
 Models: chat models go through the **cluster MaaS** (`https://maas.<apps-domain>/v1`,
@@ -347,12 +359,70 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
 # -> {"status":"modified","content":"Mon IBAN est <FR_IBAN>, email <EMAIL_ADDRESS>"}  (or <IBAN_CODE>)
 ```
 
+### Authentication and access profiles
+
+Users log in with their OpenShift account (`oauth-proxy` in front of the UI). An **access
+profile** is an OpenShift group; what it may use is OpenShift RBAC in the namespace:
+
+| Profile | Group | Agents (and their MCP tools) |
+|---|---|---|
+| Administration | `multi-agents-admins` | all, plus the administration page (demo reset, profiles) |
+| Finance | `multi-agents-finance` | claims |
+| BTP | `multi-agents-btp` | tenders |
+| Logistique | `multi-agents-logistics` | postal (complaints, tracking, postal information) |
+
+* **UI and API**: the backend validates the user's token (TokenReview) and asks OpenShift
+  (SubjectAccessReview) for verb `use` on `services/<domain>-agent` and `admin` on
+  `services/backend`. Pages, chat routing, business APIs, reviews and documents follow it;
+  chat sessions are private to their owner.
+* **Agents and MCP tools**: the user's token travels with the A2A request to the agent, which
+  hands it to OGX for the MCP Gateway. AuthPolicy `mcp-tools-rbac` checks each `tools/call`
+  with a SubjectAccessReview: verb `call` on `tools.mcp.multi-agents.io/<tool>`, granted by the
+  `Role` of each agent (`auth.agentTools`).
+* **Models**: the users' MaaS subscription is granted to the profile groups.
+* **Managing profiles**: *Admin → Users and access profiles* lists the OpenShift users and
+  the group members; a checkbox adds or removes the user from the profile's group (the
+  backend may update these groups only). A user can get a profile before the first login.
+  Equivalent: `oc adm groups add-users multi-agents-finance <user>`. Helm upgrades keep the
+  current members (`auth.profiles.<id>.users` only seeds the first install). New rights apply
+  within ~10 s (OpenShift token cache).
+
+Users come from the cluster identity provider (e.g. an htpasswd provider for demo accounts:
+`oc get oauth cluster`). Checks with a user token:
+
+```bash
+B=https://backend-<namespace>.<apps-domain>/api/v1
+TOKEN=$(oc whoami -t)           # logged in as a profile member (oc login -u <user>)
+curl -H "Authorization: Bearer $TOKEN" $B/auth/me         # profiles, domains, admin
+curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}\n'   # 403 for Finance
+```
+
 ### OpenShift AI catalogs and metrics
 
 * **AI hub → Agents / MCP servers**: the chart registers the three A2A agents and the
-  seven MCP servers as catalog sources (`rhoaiCatalog` values). Check them with
+  seven MCP servers as catalog sources (`rhoaiCatalog` values), in the sections
+  *MO supported agents* / *MO supported MCP servers*. Each entry has its logo
+  (`files/branding/`), a README (domain part in `files/catalog/{agents,mcp}/<name>.md`,
+  the rest generated: tools and the profiles that may call them, endpoints, governance,
+  security), the tools with their parameters (`files/catalog/mcp-tools.yaml`, from the
+  servers' `tools/list`), the Apache 2.0 license and the *Open repository* / *Source code*
+  links (`rhoaiCatalog.repository`). The card badge is `rhoaiCatalog.supportTier`: the
+  dashboard only displays `redHatSupported`, `partnerSupported` and `communitySupported`.
+  Security indicators: *Verified source*, *Secure endpoint* (MCP Gateway with per-user
+  authorization), *SAST* (Bandit, see below) and *Read only tools* (computed from the tools'
+  access types).
+  The catalog loads its sources at startup: after an upgrade,
+  `oc rollout restart deploy/model-catalog -n rhoai-model-registries`. Check them with
   `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
   (`multi_agents_agents`, `multi_agents_mcp`).
+
+  SAST of the MCP servers and agents (no high or medium finding apart from B104, listening
+  on all interfaces, required in a container):
+
+  ```bash
+  podman run --rm -v $PWD:/src:ro,Z docker.io/library/python:3.12-slim sh -c \
+    'pip install -q bandit && cd /src && bandit -r backend/mcp_servers agents -ll -ii'
+  ```
 * **Observe & monitor → Multi-agents** (Perses): OGX requests, latency, time to first
   token, tokens/s, tool and agentic calls, MLflow requests, MaaS requests and tokens
   (Limitador counters per `<namespace>/<model>`); how it is built: [section 10](#10-metrics-dashboard-perses).
@@ -393,8 +463,9 @@ runs fixed isolation scenarios (computation and identity allowed; network, syste
 reads outside the policy denied). Same checks from the API:
 
 ```bash
-curl https://backend-<namespace>.<apps-domain>/api/v1/sandbox/policy
-curl -X POST https://backend-<namespace>.<apps-domain>/api/v1/sandbox/demo/network   # expect denied
+B=https://backend-<namespace>.<apps-domain>/api/v1; H="Authorization: Bearer $(oc whoami -t)"
+curl -H "$H" $B/sandbox/policy
+curl -H "$H" -X POST $B/sandbox/demo/network   # expect denied
 ```
 
 `compute_payout` (claims server) builds the payout computation from the claim's figures and
@@ -404,9 +475,9 @@ trace panel and on the claim page.
 ### Business processing
 
 ```bash
-B=https://backend-<namespace>.<apps-domain>/api/v1
-curl -X POST $B/tenders/<id>/process -H 'Content-Type: application/json' -d '{}'   # returns at once
-curl $B/tenders/<id>/status | jq '.status, [.processing_steps[].step_name]'          # poll
+B=https://backend-<namespace>.<apps-domain>/api/v1; H="Authorization: Bearer $(oc whoami -t)"   # BTP or admin profile
+curl -H "$H" -X POST $B/tenders/<id>/process -H 'Content-Type: application/json' -d '{}'   # returns at once
+curl -H "$H" $B/tenders/<id>/status | jq '.status, [.processing_steps[].step_name]'          # poll
 ```
 
 Every tool step should be `completed`, and the RAG steps should return precedents:
@@ -509,6 +580,12 @@ one.
   after a cluster restart can time out while NeMo and the MaaS warm up.
 * Sample documents: the claim PDFs are written in English and the tender PDFs in
   French; their `_en` variants are copies (only the postal complaints are translated).
+* A tool call refused by the MCP Gateway (`mcp-tools-rbac`, 403 when the router opens the
+  session to the server) reaches the client as a `500` of the broker; the router log shows
+  `server returned 4xx for initialize POST`.
+* The model-catalog loads the sources only as leader: after a restart, the new pod can log
+  `Lock held by another instance` until the lease of the previous pod expires, and serves
+  the previous entries meanwhile.
 * After a cluster restart, the DSC can stay `Degraded` on `ogx` although the
   `OGXServer` is healthy (stale status). Any change to the `OGX` component
   (e.g. an annotation) makes the operator re-evaluate it.

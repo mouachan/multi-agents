@@ -197,7 +197,7 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       accessAddPlaceholder: "Nom d'utilisateur OpenShift (possible avant sa première connexion)",
       accessOwnAdmin: "Vous ne pouvez pas retirer votre propre profil administrateur",
       accessSaveFailed: "Modification du profil impossible",
-      accessNote: "Cocher un profil ajoute l'utilisateur au groupe OpenShift du profil : l'interface, les agents et la passerelle MCP appliquent ses droits dès sa prochaine requête.",
+      accessNote: "Cocher un profil ajoute l'utilisateur au groupe OpenShift du profil : l'interface, les agents et la passerelle MCP appliquent ses nouveaux droits en quelques secondes (cache des jetons OpenShift).",
     },
     welcome: {
       orchestrator: "Bienvenue ! Je suis l'orchestrateur multi-agents. Decrivez ce que vous souhaitez faire et je vous orienterai vers l'agent specialise.",
@@ -918,7 +918,7 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       accessAddPlaceholder: "OpenShift user name (possible before the first login)",
       accessOwnAdmin: "You cannot remove your own administrator profile",
       accessSaveFailed: "Could not change the profile",
-      accessNote: "Checking a profile adds the user to the profile's OpenShift group: the UI, the agents and the MCP Gateway apply its rights from the user's next request.",
+      accessNote: "Checking a profile adds the user to the profile's OpenShift group: the UI, the agents and the MCP Gateway apply the new rights within a few seconds (OpenShift token cache).",
     },
     welcome: {
       orchestrator: "Welcome! I'm the multi-agent orchestrator. Describe what you'd like to do and I'll route you to the right specialized agent.",

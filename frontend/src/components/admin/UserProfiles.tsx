@@ -42,7 +42,7 @@ function ProfileLegend({ profile }: { profile: AccessProfile }) {
 /**
  * Users and their access profiles. A profile is an OpenShift group: a checked box makes the user
  * a member (backend/app/services/access_profiles.py) and OpenShift RBAC grants the profile's
- * agents and MCP tools. Applies at the user's next request.
+ * agents and MCP tools, within a few seconds (OpenShift token cache).
  */
 export function UserProfiles() {
   const { t } = useTranslation()

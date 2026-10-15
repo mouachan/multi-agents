@@ -597,7 +597,8 @@ The step-by-step platform setup (operators, DataScienceCluster patch, SPIRE oper
 | Agent identity without a mesh | **SPIFFE/SPIRE** via ZTWIM (`ClusterSPIFFEID`) | `templates/spiffe/` |
 | Sandboxed code execution (`run_python`, `compute_payout`) | **OpenShell** (NVIDIA, Developer Preview): kernel-enforced policy, no network; **Sandbox** page of the UI (policy in force, live isolation tests) | `templates/openshell/`, `mcp.sandbox` — see [openshell/README.md](openshell/README.md) |
 | Models and agents in the Gen AI studio | **AI asset endpoints**: MaaS models for the cluster users (`models.maas.userAccess`), agent profiles of the A2A agents (MLflow prompt, MCP tools) | `templates/maas/`, `templates/rhoai/agent-profiles.yaml` |
-| Agents and MCP servers in the AI hub catalogs | **Model catalog** sources (`opendatahub.io/catalog-source`) | `templates/rhoai/` (`rhoaiCatalog`) |
+| Agents and MCP servers in the AI hub catalogs | **Model catalog** sources (`opendatahub.io/catalog-source`): logos, READMEs, tools, security indicators, Apache 2.0 license | `templates/rhoai/` (`rhoaiCatalog`) |
+| Users, access profiles, governance of agents and MCP tools | **OpenShift OAuth** (`oauth-proxy`), `Group`s and RBAC `Role`s, MCP Gateway **AuthPolicy** (Kuadrant: TokenReview + SubjectAccessReview per tool) | `templates/auth/`, `templates/frontend/` (`auth`) |
 | Metrics dashboard (OGX, MLflow, MaaS) | **Perses** dashboard in *Observe & monitor* | `templates/monitoring/` (`observability`) |
 
 `helm/multi-agents/values-rhoai35.yaml` enables all of these features on top of `values.yaml`. Sizing: the application requests ~8 vCPU / ~24 GiB; see the setup guide for cluster topologies.
@@ -742,9 +743,30 @@ echo "Frontend: https://$(oc get route frontend -n <NAMESPACE> -o jsonpath='{.sp
 echo "Backend:  https://$(oc get route backend -n <NAMESPACE> -o jsonpath='{.spec.host}')/api/v1"
 ```
 
+With `auth.enabled=true` (set by `values-rhoai35.yaml`) the frontend asks for an OpenShift
+login; the API expects `Authorization: Bearer <OpenShift token>` (`oc whoami -t`).
+
 ---
 
 ## Configuration
+
+### Access profiles (OpenShift login)
+
+Four profiles, each an OpenShift group whose rights are OpenShift RBAC in the namespace:
+
+| Profile | Agents |
+|---|---|
+| Administration (`multi-agents-admins`) | all, administration page |
+| Finance (`multi-agents-finance`) | claims |
+| BTP (`multi-agents-btp`) | tenders |
+| Logistique (`multi-agents-logistics`) | postal |
+
+The same rule is applied by the UI (pages, chat routing, private sessions), the backend API
+and the **MCP Gateway**: the user's token goes with the request to the agent and to every MCP
+tool call, authorized per tool (`auth.agentTools`). Administrators give profiles to users in
+*Admin → Users and access profiles* (or `oc adm groups add-users <group> <user>`); first
+members: `--set-json 'auth.profiles.<id>.users=["<user>"]'`. Details:
+[RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md#authentication-and-access-profiles).
 
 ### Models (MaaS)
 
@@ -1067,6 +1089,8 @@ helm upgrade multi-agents helm/multi-agents \
 
 ```bash
 BACKEND=http://localhost:8000
+# OpenShift with authentication: BACKEND=https://<backend-route> and add to each call
+#   -H "Authorization: Bearer $(oc whoami -t)"   (user with the Finance or Administration profile)
 
 # List claims
 curl "$BACKEND/api/v1/claims?status=pending" | jq
@@ -1314,5 +1338,4 @@ Common causes: OGX not healthy yet, MCP servers not started.
 | Data Init Job | `quay.io/<your-org>/multi-agents/data-init` | **v3.5** |
 
 **In Progress**:
-- OpenShift OAuth authentication
 - Migration of the local `podman compose` stack to OGX and the A2A agents
