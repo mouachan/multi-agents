@@ -13,6 +13,7 @@ PROFILES = {
             "save_claim_decision",
             "retrieve_user_info", "retrieve_similar_claims", "search_knowledge_base",
             "ocr_document",
+            "get_payout_inputs",  # exact figures + code for run_python
             "run_python",  # OpenShell sandbox (only listed by the MCP Gateway when mcp.sandbox is enabled)
         ],
         tags={"domain": "insurance"},

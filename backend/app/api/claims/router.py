@@ -203,8 +203,9 @@ async def _process_claim_job(db: AsyncSession, claim_id: UUID, process_request) 
             "retrieve_similar_claims",
             "search_knowledge_base"
         ])
-    # Payout computation in an OpenShell sandbox (ignored when the sandbox server is not deployed)
-    tools.append("run_python")
+    # Coverage and payout: exact figures from the claims server, computed in the OpenShell
+    # sandbox (the run_python step fails harmlessly when the sandbox is not deployed)
+    tools += ["get_payout_inputs", "run_python"]
 
     agent_config = {
         "model": settings.ogx_default_model,

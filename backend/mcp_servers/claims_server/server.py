@@ -8,7 +8,8 @@ FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
 import json
 import logging
 import os
-from typing import List, Optional
+import re
+from typing import List, Optional, Tuple
 
 from sqlalchemy import text
 from starlette.responses import JSONResponse
@@ -504,6 +505,95 @@ async def analyze_claim(claim_id: str) -> str:
 
     except Exception as e:
         logger.error(f"Error analyzing claim: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
+# =============================================================================
+# MCP Tools - Payout inputs (deterministic figures for the run_python sandbox)
+# =============================================================================
+
+# Claim type -> contract type that covers it
+COVERING_CONTRACT = {
+    "Auto": "Auto Insurance", "Home": "Home Insurance",
+    "Medical": "Health Insurance", "Life": "Life Insurance",
+}
+# Amount labels of the claim documents, most specific first
+AMOUNT_LABELS = ("Amount Claimed", "Estimated Repair Cost", "Capital Assur[eé]", "Total Charges")
+AMOUNT = r"\s*:?\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)"
+
+
+def _claimed_amount(document_text: str) -> Tuple[Optional[float], Optional[str]]:
+    """Amount claimed in the OCR text of the claim document, with the label it was read from."""
+    for label in AMOUNT_LABELS:
+        match = re.search(label + AMOUNT, document_text, re.IGNORECASE)
+        if match:
+            return float(match.group(1).replace(",", "")), match.group(0).split(":")[0].strip()
+    return None, None
+
+
+@mcp.tool()
+async def get_payout_inputs(claim_id: str) -> str:
+    """
+    Get the exact figures needed to compute a claim payout, and the Python code computing it.
+
+    Reads the claim type, the claimant's ACTIVE contract matching that type (number,
+    coverage ceiling, deductible "franchise") and the amount claimed in the claim document
+    (OCR text; run ocr_document first if it is missing). Pass the returned "code" unchanged
+    to the run_python tool, which executes it in the OpenShell sandbox.
+
+    Args:
+        claim_id: The claim number (e.g., CLM-2024-0001)
+
+    Returns:
+        JSON with keys: claim_number, claim_type, covered, contract (number, type,
+        coverage_amount, franchise) or null, claimed_amount, claimed_source, formula, code
+    """
+    if not claim_id or not claim_id.strip():
+        return json.dumps({"success": False, "error": "claim_id is required"})
+    claim_id = claim_id.strip()
+    try:
+        claim = await run_db_query_one(text("""
+            SELECT c.id, c.claim_number, c.claim_type, c.user_id,
+                   (SELECT cd.raw_ocr_text FROM claim_documents cd WHERE cd.claim_id = c.id
+                    AND cd.raw_ocr_text IS NOT NULL ORDER BY cd.created_at DESC LIMIT 1) AS document_text
+            FROM claims c WHERE c.claim_number = :n
+        """), {"n": claim_id})
+        if not claim:
+            return json.dumps({"success": False, "error": f"Claim {claim_id} not found"})
+        if claim.document_text is None:
+            return json.dumps({"success": False, "claim_number": claim.claim_number,
+                               "error": "No OCR text for this claim: call ocr_document first"})
+        claimed, source = _claimed_amount(claim.document_text)
+        contract_type = COVERING_CONTRACT.get(claim.claim_type)
+        contract = await run_db_query_one(text("""
+            SELECT contract_number, contract_type, coverage_amount, key_terms->>'franchise' AS franchise
+            FROM user_contracts WHERE user_id = :u AND is_active AND contract_type = :t
+            ORDER BY coverage_amount DESC LIMIT 1
+        """), {"u": claim.user_id, "t": contract_type}) if contract_type else None
+
+        covered = contract is not None
+        deductible = float(contract.franchise or 0) if covered else 0.0
+        ceiling = float(contract.coverage_amount) if covered else 0.0
+        contract_number = contract.contract_number if covered else "NONE"
+        code = (f"claim_type='{claim.claim_type}'; contract='{contract_number}'; "
+                f"claimed={claimed if claimed is not None else 0.0}; deductible={deductible}; ceiling={ceiling}; "
+                f"covered={covered}; payout=min(max(claimed-deductible,0),ceiling) if covered else 0.0; "
+                "print('claim type:', claim_type); print('contract:', contract); print('claimed:', claimed); "
+                "print('deductible:', deductible); print('ceiling:', ceiling); print('payout:', payout)")
+        return json.dumps({
+            "success": True,
+            "claim_number": claim.claim_number,
+            "claim_type": claim.claim_type,
+            "covered": covered,
+            "contract": {"number": contract.contract_number, "type": contract.contract_type,
+                         "coverage_amount": ceiling, "franchise": deductible} if covered else None,
+            "claimed_amount": claimed,
+            "claimed_source": f"{source} (claim document)" if source else "not found in the claim document",
+            "formula": "payout = min(max(claimed - franchise, 0), coverage_amount); 0 without a matching contract",
+            "code": code,
+        })
+    except Exception as e:
+        logger.error(f"Error reading payout inputs for {claim_id}: {e}", exc_info=True)
         return json.dumps({"success": False, "error": str(e)})
 
 
