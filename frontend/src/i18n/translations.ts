@@ -47,7 +47,7 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       ex_claims: "Combien de sinistres sont en attente de traitement ?",
       ex_payout: "Calcule l'indemnisation du sinistre CLM-2024-0020",
       ex_tenders: "Liste les appels d'offres en attente en Île-de-France",
-      ex_tracking: "Où est mon colis 6C12345678901 ?",
+      ex_tracking: "Où est mon colis 6C123456789FR ?",
       ex_info: "Quel est le tarif d'une lettre recommandée ?",
     },
     a2a: {
@@ -746,7 +746,7 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       ex_claims: "How many claims are waiting to be processed?",
       ex_payout: "Compute the payout of claim CLM-2024-0020",
       ex_tenders: "List the pending tenders in Île-de-France",
-      ex_tracking: "Where is my parcel 6C12345678901?",
+      ex_tracking: "Where is my parcel 6C123456789FR?",
       ex_info: "How much does a registered letter cost?",
     },
     a2a: {

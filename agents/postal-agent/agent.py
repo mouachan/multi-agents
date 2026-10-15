@@ -49,7 +49,7 @@ SKILLS = [
         description="Track a parcel or mail item by tracking number.",
         tags=["postal", "tracking", "profile:courrier_suivi"],
         examples=[
-            "Où est mon colis 6C12345678901?", "Suivi du colis 1A98765432100",
+            "Où est mon colis 6C123456789FR?", "Suivi du colis 1A98765432100",
             "Suivre un colis", "Quel est le statut de livraison de mon envoi ?",
             "Track my parcel 1A98765432100", "Quand mon colis sera-t-il livré ?",
         ],

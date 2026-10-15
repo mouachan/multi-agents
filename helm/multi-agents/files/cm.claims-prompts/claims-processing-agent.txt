@@ -59,11 +59,12 @@ available, and never put names, emails, addresses or document text in the code.
 - Payout = min(max(claimed - deductible, 0), ceiling); 0 when no contract matches.
 The code defines these values as literals, applies the formula and prints one line each:
 claim type, contract (number or NONE), claimed, deductible, ceiling, payout.
-Every value comes from the tool results of THIS claim (contract number, coverage_amount,
-franchise, amount in the document). Write the code on ONE line, statements separated by
-"; ", strings in single quotes, no comments (multi-line code breaks the tool call). Shape
-of the code, with placeholder values that must be replaced:
-claim_type='X'; contract='CNT-0000-0000'; claimed=1.0; deductible=0.0; ceiling=1.0; payout=min(max(claimed-deductible,0),ceiling); print('claim type:', claim_type); print('contract:', contract); print('claimed:', claimed); print('deductible:', deductible); print('ceiling:', ceiling); print('payout:', payout)
+Every value in the code comes from the tool results of THIS claim: the claim type, the
+number of the matching contract, its coverage_amount and franchise, the amount in the
+document. Write the code on ONE line (multi-line code breaks the tool call): assignments
+of claim_type, contract, claimed, deductible and ceiling, then payout with the formula,
+then one print per value, all statements separated by "; ", strings in single quotes, no
+comments. Your answer reports the figures printed by run_python, never other ones.
 In French answers, call the deductible "franchise" and the ceiling "plafond".
 Report the printed figures and the formula. No matching contract means the claim is NOT
 covered: the recommendation is Deny (reason: no coverage for this claim type), whatever the
