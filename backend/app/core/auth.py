@@ -60,22 +60,28 @@ def current_token() -> Optional[str]:
     return _token.get()
 
 
-def _profiles(groups: Tuple[str, ...]) -> Tuple[str, ...]:
-    """Access profiles (AUTH_PROFILES: id -> {group, displayName, ...}) the groups belong to."""
+def load_profiles() -> Dict[str, Dict]:
+    """Access profiles (AUTH_PROFILES): id -> {group, displayName, agents, admin}."""
     try:
-        profiles = json.loads(settings.auth_profiles or "{}")
+        return json.loads(settings.auth_profiles or "{}")
     except ValueError:
-        return ()
-    return tuple(pid for pid, p in profiles.items() if p.get("group") in groups)
+        logger.error("AUTH_PROFILES is not valid JSON")
+        return {}
 
 
-class _Kubernetes:
-    """TokenReview / SubjectAccessReview with the backend's ServiceAccount."""
+def _profiles(groups: Tuple[str, ...]) -> Tuple[str, ...]:
+    """Access profiles the groups belong to."""
+    return tuple(pid for pid, p in load_profiles().items() if p.get("group") in groups)
+
+
+class KubernetesApi:
+    """OpenShift API calls with the backend's ServiceAccount: TokenReview / SubjectAccessReview,
+    and the profile groups for the administration (app/services/access_profiles.py)."""
 
     def __init__(self) -> None:
         self._client: Optional[httpx.AsyncClient] = None
 
-    def _http(self) -> httpx.AsyncClient:
+    def http(self) -> httpx.AsyncClient:
         if self._client is None:
             token = (SA_DIR / "token").read_text().strip()
             self._client = httpx.AsyncClient(base_url=K8S_API, verify=str(SA_DIR / "ca.crt"), timeout=10,
@@ -83,14 +89,14 @@ class _Kubernetes:
         return self._client
 
     async def review_token(self, token: str) -> Optional[Dict]:
-        resp = await self._http().post("/apis/authentication.k8s.io/v1/tokenreviews", json={
+        resp = await self.http().post("/apis/authentication.k8s.io/v1/tokenreviews", json={
             "apiVersion": "authentication.k8s.io/v1", "kind": "TokenReview", "spec": {"token": token}})
         resp.raise_for_status()
         status = resp.json().get("status", {})
         return status.get("user") if status.get("authenticated") else None
 
     async def can(self, username: str, groups: List[str], verb: str, name: str) -> bool:
-        resp = await self._http().post("/apis/authorization.k8s.io/v1/subjectaccessreviews", json={
+        resp = await self.http().post("/apis/authorization.k8s.io/v1/subjectaccessreviews", json={
             "apiVersion": "authorization.k8s.io/v1", "kind": "SubjectAccessReview",
             "spec": {"user": username, "groups": groups, "resourceAttributes": {
                 "namespace": settings.auth_namespace, "verb": verb, "resource": "services", "name": name}}})
@@ -98,7 +104,7 @@ class _Kubernetes:
         return bool(resp.json().get("status", {}).get("allowed"))
 
 
-_k8s = _Kubernetes()
+kubernetes = KubernetesApi()
 
 
 async def _resolve(token: str) -> User:
@@ -106,16 +112,22 @@ async def _resolve(token: str) -> User:
     cached = _cache.get(key)
     if cached and cached[0] > time.time():
         return cached[1]
-    identity = await _k8s.review_token(token)
+    identity = await kubernetes.review_token(token)
     if not identity:
         raise HTTPException(status_code=401, detail="Invalid or expired OpenShift token")
     username, groups = identity["username"], list(identity.get("groups") or [])
-    domains = frozenset([d for d in DOMAINS if await _k8s.can(username, groups, "use", f"{d}-agent")])
-    admin = await _k8s.can(username, groups, "admin", "backend")
+    domains = frozenset([d for d in DOMAINS if await kubernetes.can(username, groups, "use", f"{d}-agent")])
+    admin = await kubernetes.can(username, groups, "admin", "backend")
     user = User(username, tuple(groups), domains, admin, _profiles(tuple(groups)))
     _cache[key] = (time.time() + CACHE_TTL, user)
     logger.info("Authenticated %s: agents %s%s", username, sorted(domains), " (admin)" if admin else "")
     return user
+
+
+def forget_user(username: str) -> None:
+    """Drop the cached rights of a user (profiles changed): applied at the next request."""
+    for key in [k for k, (_, user) in _cache.items() if user.username == username]:
+        _cache.pop(key, None)
 
 
 async def current_user(connection: HTTPConnection) -> User:

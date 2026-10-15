@@ -2,11 +2,18 @@
 Admin API endpoints for database management and demo utilities.
 """
 import logging
+from typing import List
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from app.core.auth import User, require_admin
+from app.core.config import settings
 from app.core.database import get_db
+from app.services import access_profiles
 from app.services.demo_reset import reset_demo_data
 
 logger = logging.getLogger(__name__)
@@ -88,3 +95,38 @@ async def get_database_stats(db: AsyncSession = Depends(get_db)):
             status_code=500,
             detail=f"Failed to get database stats: {str(e)}"
         )
+
+
+# =============================================================================
+# Users and access profiles (OpenShift groups)
+# =============================================================================
+
+class ProfilesUpdate(BaseModel):
+    profiles: List[str]
+
+
+def _profiles_enabled() -> None:
+    if not settings.auth_enabled:
+        raise HTTPException(status_code=409, detail="Authentication is disabled: no access profiles to manage")
+
+
+@router.get("/users")
+async def list_users():
+    """Users (OpenShift users and members of the profile groups) and their access profiles."""
+    _profiles_enabled()
+    try:
+        return await access_profiles.list_users()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"OpenShift API: {access_profiles.api_error(e)}")
+
+
+@router.put("/users/{username}/profiles")
+async def set_user_profiles(username: str, update: ProfilesUpdate, admin: User = Depends(require_admin)):
+    """Give a user exactly these profiles (membership of the profile groups)."""
+    _profiles_enabled()
+    try:
+        return await access_profiles.set_profiles(username, set(update.profiles), admin)
+    except access_profiles.ProfileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"OpenShift API: {access_profiles.api_error(e)}")

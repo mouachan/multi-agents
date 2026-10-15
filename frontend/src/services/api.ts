@@ -97,7 +97,26 @@ export const sandboxApi = {
     (await http.post(`/sandbox/demo/${scenario}`)).data,
 }
 
+/** Access profile = OpenShift group; its rights are OpenShift RBAC (agents and their MCP tools). */
+export interface AccessProfile {
+  id: string
+  displayName: string
+  group: string
+  agents: string[]
+  admin: boolean
+  exists: boolean
+}
+
+export interface ManagedUser {
+  username: string
+  fullName?: string | null
+  profiles: string[]
+}
+
 export const adminApi = {
   databaseStats: async (): Promise<DatabaseStats> => (await http.get('/admin/database-stats')).data.data,
   resetDatabase: async () => (await http.post('/admin/reset-database')).data,
+  users: async (): Promise<{ profiles: AccessProfile[]; users: ManagedUser[] }> => (await http.get('/admin/users')).data,
+  setProfiles: async (username: string, profiles: string[]): Promise<ManagedUser> =>
+    (await http.put(`/admin/users/${encodeURIComponent(username)}/profiles`, { profiles })).data,
 }

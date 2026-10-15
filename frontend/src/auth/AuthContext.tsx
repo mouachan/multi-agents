@@ -17,6 +17,8 @@ export interface AuthUser {
   profiles: string[]
   domains: Domain[]
   admin: boolean
+  /** false on the local stack: no OpenShift login, every user is an administrator */
+  authEnabled: boolean
 }
 
 interface AuthState {

@@ -263,3 +263,10 @@ SPIFFE (ZTWIM): Workload API socket from the SPIFFE CSI driver
     readOnly: true
 {{- end -}}
 {{- end -}}
+
+{{/* OpenShift groups of the access profiles (JSON list) */}}
+{{- define "multi-agents.auth.groups" -}}
+{{- $groups := list -}}
+{{- range $id, $p := .Values.auth.profiles }}{{ $groups = append $groups $p.group }}{{ end -}}
+{{- $groups | toJson -}}
+{{- end }}

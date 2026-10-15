@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { BookOpen, Database, FileStack, RotateCcw, Settings, TriangleAlert, Users } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
+import { UserProfiles } from '../components/admin/UserProfiles'
 import { Button } from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
 import { ErrorBanner } from '../components/ui/Feedback'
@@ -13,6 +15,7 @@ import { adminApi } from '../services/api'
 
 export default function AdminPage() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const { data: stats, loading, error, reload } = useResource(() => adminApi.databaseStats(), [])
   const [confirming, setConfirming] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -87,6 +90,8 @@ export default function AdminPage() {
           </div>
         </Card>
       </div>
+
+      {user.authEnabled && <div className="mt-5"><UserProfiles /></div>}
 
       <ConfirmDialog
         open={confirming}

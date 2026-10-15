@@ -2,8 +2,9 @@
 Access profiles = OpenShift groups; what they may use = RBAC, one Role per agent:
   verb "use"  on services/<agent>-agent           -> the agent in the UI (backend SubjectAccessReview)
   verb "call" on tools.mcp.multi-agents.io/<tool> -> its MCP tools (MCP Gateway AuthPolicy)
-The admin profile also gets verb "admin" on services/backend (demo reset). Edit the
-RoleBindings (or the group members) to change who may use what.
+The admin profile also gets verb "admin" on services/backend (administration page).
+Members: auth.profiles.<id>.users at the first install; afterwards the administration page (or
+oc adm groups add-users) manages them, and upgrades keep the current members.
 */}}
 {{- if .Values.auth.enabled }}
 {{- $ns := include "multi-agents.namespace" . }}
@@ -18,7 +19,8 @@ metadata:
   annotations:
     multi-agents.io/profile: {{ $id }}
     openshift.io/display-name: {{ $p.displayName | quote }}
-users: {{ $p.users | default list | toJson }}
+{{- $current := lookup "user.openshift.io/v1" "Group" "" $p.group }}
+users: {{ (ternary (get $current "users") $p.users (not (empty $current))) | default list | toJson }}
 {{- end }}
 {{- range $agent, $tools := .Values.auth.agentTools }}
 ---
@@ -103,6 +105,38 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: backend
+  namespace: {{ $ns }}
+---
+# Administration page: the backend reads the users and updates the members of the profile groups
+# (and only these groups)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $ns }}-profile-manager
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+rules:
+- apiGroups: [user.openshift.io]
+  resources: [users]
+  verbs: [get, list]
+- apiGroups: [user.openshift.io]
+  resources: [groups]
+  resourceNames: {{ include "multi-agents.auth.groups" . }}
+  verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $ns }}-backend-profile-manager
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $ns }}-profile-manager
 subjects:
 - kind: ServiceAccount
   name: backend
