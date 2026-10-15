@@ -15,10 +15,12 @@ Final task status message metadata returned to the caller:
     output, decision, tool_calls, response_id, model, usage, prompt{name,version,source},
     guardrails{input,output}, caller (SPIFFE ID), duration_ms
 
-Working status updates (metadata "event"): tool_call / tool_result, and guardrails
+Working status updates (metadata "event"): tool_call / tool_result (with the arguments and,
+for run_python, the sandbox execution), and guardrails
 (stage input|output). With output rails on, the answer is masked sentence by sentence
 and streamed as soon as each sentence is masked (no unmasked PII ever leaves the agent).
 """
+import json
 import logging
 import re
 import time
@@ -50,7 +52,14 @@ EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
 # as Python-like text ("[get_tender(...), ocr_document(...)]") when it wants many tools at
 # once, which the MaaS does not parse (OGX then fails on the arguments). With one tool
 # offered per step and tool_choice=required it always emits structured calls.
-OPTIONAL_TOOLS = {"run_python", "search_knowledge_base", "search_courrier_knowledge"}
+# Offered in the final analysis only; run_python (claims coverage and payout) is a regular
+# step when the caller lists it
+OPTIONAL_TOOLS = {"search_knowledge_base", "search_courrier_knowledge"}
+# Traceability for the UI: tool arguments, and the sandbox execution of run_python. The
+# outputs of the other tools are not forwarded (they hold unmasked personal data).
+TOOL_ARGUMENTS_MAX = 2000
+SANDBOX_TOOL = "run_python"
+SANDBOX_FIELDS = ("success", "exit_code", "stdout", "stderr", "denials", "sandbox", "error")
 GUIDED_STEP = ("\n\nAutomated processing, step {i}/{n}: call the {tool} tool now for this "
                "request, with the identifiers given above.")
 GUIDED_NEXT = "Step {i}/{n}: call the {tool} tool now for this request."
@@ -67,6 +76,22 @@ TEXT_TOOL_CALL_RETRY = (
     "You wrote tool calls as text instead of calling them. "
     "Use the function calling mechanism to actually execute the tools now."
 )
+
+
+def _tool_trace(ev: Dict[str, Any]) -> Dict[str, Any]:
+    """Arguments of a finished MCP call and, for run_python, its sandbox execution."""
+    trace: Dict[str, Any] = {}
+    if ev.get("arguments"):
+        trace["arguments"] = str(ev["arguments"])[:TOOL_ARGUMENTS_MAX]
+    if ev.get("error"):
+        trace["error"] = str(ev["error"])[:500]
+    if ev.get("name") == SANDBOX_TOOL and ev.get("output"):
+        try:
+            out = json.loads(ev["output"])
+            trace["sandbox"] = {k: out[k] for k in SANDBOX_FIELDS if k in out}
+        except (ValueError, TypeError):
+            pass
+    return trace
 
 
 @dataclass
@@ -281,9 +306,9 @@ class BaseA2AExecutor(AgentExecutor):
 
     async def _guided(self, updater: TaskUpdater, model, instructions, input_message, tools,
                       previous_response_id, values: str) -> Dict[str, Any]:
-        """Batch processing: one OGX call per workflow tool (tool_choice=required, chained by
-        previous_response_id, no text shown), then the final analysis + JSON decision, where
-        the optional tools (e.g. run_python for the payout) remain available."""
+        """Batch processing: one OGX call per workflow tool, in the caller's order
+        (tool_choice=required, chained by previous_response_id, no text shown), then the final
+        analysis + JSON decision, where the optional tools remain available."""
         forced = [t for t in tools if t not in OPTIONAL_TOOLS and not t.startswith("save_")]
         optional = [t for t in tools if t in OPTIONAL_TOOLS]
         tool_calls: List[Dict[str, Any]] = []
@@ -383,7 +408,7 @@ class BaseA2AExecutor(AgentExecutor):
                     TaskState.TASK_STATE_WORKING,
                     _message(ev["name"], metadata={
                         "event": etype, "name": ev["name"], "server": ev.get("server", ""),
-                        "status": ev.get("status", "in_progress"),
+                        "status": ev.get("status", "in_progress"), **_tool_trace(ev),
                     }),
                 )
             elif etype == "done":

@@ -25,7 +25,14 @@ export default function AdminPage() {
     try {
       const res = await adminApi.resetDatabase()
       const d = res.data || {}
-      setResult({ ok: true, text: `${t('adm.resetDone')} — users ${d.users ?? '?'}, contracts ${d.contracts ?? '?'}, claims ${d.claims ?? '?'}, KB ${d.knowledge_base ?? '?'}` })
+      const loaded = d.loaded ?? {}
+      const kept = d.restored ?? {}
+      setResult({
+        ok: true,
+        text: `${t('adm.resetDone')} — claims ${loaded.claims ?? '?'}, tenders ${loaded.tenders ?? '?'}, complaints ${loaded.reclamations ?? '?'} · `
+          + `${t('adm.resetRestored')}: ${kept.documents ?? 0} documents (OCR + embeddings), ${kept.reference_embeddings ?? 0} reference embeddings, `
+          + `${kept.precedent_decisions ?? 0} precedents, ${kept.document_links ?? 0} PDF links`,
+      })
       await reload()
     } catch (err: any) {
       setResult({ ok: false, text: err?.response?.data?.detail || err?.message || 'Reset failed' })

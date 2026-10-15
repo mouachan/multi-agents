@@ -389,9 +389,6 @@ backend:
     DEBUG: "false"
     LOG_LEVEL: "INFO"
 
-  # Admin & Database Reset
-  seedDataUrl: "https://raw.githubusercontent.com/mouachan/multi-agents/main/database/seed_data/001_seed_data.sql"
-
   # Resources
   resources:
     requests:

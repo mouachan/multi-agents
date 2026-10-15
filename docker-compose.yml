@@ -158,6 +158,9 @@ services:
     volumes:
       - ./backend/app:/opt/app-root/src/app
       - ./documents:/documents
+      # admin reset: seed and precedent decisions (same files as the database init)
+      - ./database/seed_data/001_seed_data.sql:/app/seed/seed.sql:ro
+      - ./database/seed_data/precedent_decisions.json:/app/seed/precedent_decisions.json:ro
     networks:
       - multi-agents-network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -397,6 +400,7 @@ services:
       TRACKING_SERVER_URL: http://tracking-server:8080
     volumes:
       - ./documents:/documents:ro
+      - ./database/seed_data/precedent_decisions.json:/seed/precedent_decisions.json:ro
     networks:
       - multi-agents-network
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  Building2, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, MessagesSquare, Moon, Package, Settings, ShieldCheck, Sun,
+  Box, Building2, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, MessagesSquare, Moon, Package, Settings, ShieldCheck, Sun,
 } from 'lucide-react'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { cn } from '../../lib/cn'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/claims', key: 'nav.claims', icon: ShieldCheck },
   { to: '/tenders', key: 'nav.tenders', icon: Building2 },
   { to: '/postal', key: 'nav.postal', icon: Package },
+  { to: '/sandbox', key: 'nav.sandbox', icon: Box },
   { to: '/admin', key: 'nav.admin', icon: Settings },
 ]
 

@@ -1,3 +1,5 @@
+import type { SandboxExecution } from './sandbox'
+
 // Type definitions for Chat / Orchestrator
 
 export interface ChatSession {
@@ -162,6 +164,11 @@ export interface ToolEvent {
   name: string
   server?: string
   status?: string
+  /** tool_result: call arguments (JSON text) */
+  arguments?: string
+  /** tool_result of run_python: the OpenShell sandbox execution */
+  sandbox?: SandboxExecution
+  error?: string
 }
 
 export interface DoneA2ASummary {
@@ -207,7 +214,10 @@ export type TraceStep =
   | { kind: 'request'; at: number; event: A2ARequestEvent }
   | { kind: 'state'; at: number; state: A2ATaskState; elapsedMs?: number; taskId?: string }
   | { kind: 'guardrails'; at: number; event: GuardrailsEvent }
-  | { kind: 'tool'; at: number; name: string; server?: string; status: 'running' | 'completed' | 'error' | string; doneAt?: number }
+  | {
+      kind: 'tool'; at: number; name: string; server?: string; status: 'running' | 'completed' | 'error' | string; doneAt?: number
+      arguments?: string; sandbox?: SandboxExecution; error?: string
+    }
 
 export interface TurnTrace {
   startedAt: number

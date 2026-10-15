@@ -15,6 +15,7 @@ import type {
   ReclamationStatusResponse,
   TrackingEvent,
 } from '../types/reclamation'
+import type { SandboxDemoResult, SandboxInfo, SandboxScenario } from '../types/sandbox'
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -88,6 +89,12 @@ export interface DatabaseStats {
   knowledge_base: number
   knowledge_base_embeddings: string
   claim_documents_embeddings: string
+}
+
+export const sandboxApi = {
+  info: async (): Promise<SandboxInfo> => (await http.get('/sandbox/policy')).data,
+  demo: async (scenario: SandboxScenario): Promise<SandboxDemoResult> =>
+    (await http.post(`/sandbox/demo/${scenario}`)).data,
 }
 
 export const adminApi = {

@@ -78,11 +78,12 @@ function applyEvent(msg: ChatMessage, event: StreamEvent): ChatMessage {
 
     case 'tool_result': {
       const status = event.status === 'error' || event.status === 'failed' ? 'error' : 'completed'
+      const details = { arguments: event.arguments, sandbox: event.sandbox, error: event.error }
       const idx = steps.findIndex((s) => s.kind === 'tool' && s.name === event.name && s.status === 'running')
       if (idx >= 0) {
-        steps[idx] = { ...(steps[idx] as Extract<TraceStep, { kind: 'tool' }>), status, doneAt: at }
+        steps[idx] = { ...(steps[idx] as Extract<TraceStep, { kind: 'tool' }>), status, doneAt: at, ...details }
       } else {
-        steps.push({ kind: 'tool', at, name: event.name, server: event.server, status, doneAt: at })
+        steps.push({ kind: 'tool', at, name: event.name, server: event.server, status, doneAt: at, ...details })
       }
       let updated = false
       const tool_calls = (msg.tool_calls ?? []).map((tc) => {

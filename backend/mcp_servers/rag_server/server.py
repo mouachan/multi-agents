@@ -215,12 +215,13 @@ async def retrieve_similar_claims(
 
     Args:
         claim_text: Text of the current claim OR claim number (e.g. CLM-2024-0026) to auto-resolve OCR text from DB
-        claim_type: Optional filter by claim type
+        claim_type: Optional filter by claim type (with a claim number: that claim's type by default)
         top_k: Number of similar claims to retrieve (default: 10)
         min_similarity: Minimum similarity score 0.0-1.0 (default: 0.5)
 
     Returns:
-        JSON string with similar claims
+        JSON string with similar decided claims of the same type (the claim itself excluded),
+        each with its decision, confidence and reasoning
     """
     import time
     start_time = time.time()
@@ -230,11 +231,13 @@ async def retrieve_similar_claims(
 
     claim_text = claim_text.strip()
 
-    # Auto-resolve claim number to OCR text
+    # Auto-resolve claim number to OCR text (and to its type, so precedents are comparable)
+    current_claim = None
     if claim_text.startswith("CLM-"):
+        current_claim = claim_text
         ocr_row = await run_db_query_one(
             text("""
-                SELECT cd.raw_ocr_text FROM claim_documents cd
+                SELECT cd.raw_ocr_text, c.claim_type FROM claim_documents cd
                 JOIN claims c ON cd.claim_id = c.id
                 WHERE c.claim_number = :cn AND cd.raw_ocr_text IS NOT NULL
                 ORDER BY cd.created_at DESC LIMIT 1
@@ -244,6 +247,7 @@ async def retrieve_similar_claims(
         if ocr_row and ocr_row.raw_ocr_text:
             logger.info(f"Resolved claim {claim_text} -> OCR text ({len(ocr_row.raw_ocr_text)} chars)")
             claim_text = ocr_row.raw_ocr_text
+            claim_type = claim_type or ocr_row.claim_type
         else:
             return json.dumps({"success": False, "error": f"No OCR text found for {claim_text}"})
     top_k = min(max(1, top_k), 100)
@@ -254,16 +258,24 @@ async def retrieve_similar_claims(
         embedding_str = format_embedding(claim_embedding)
         logger.info(f"Similar claims search: claim_type={claim_type}, top_k={top_k}, min_similarity={min_similarity}")
 
+        # Decided claims of the same type, the claim itself excluded, with their last decision
         query = text("""
             SELECT
-                CAST(c.id AS text) as claim_id, c.claim_number,
+                CAST(c.id AS text) as claim_id, c.claim_number, c.claim_type,
                 cd.raw_ocr_text as claim_text,
                 1 - (cd.embedding <=> CAST(:claim_embedding AS vector)) AS similarity,
-                c.status as outcome, c.total_processing_time_ms
+                c.status as outcome, c.total_processing_time_ms,
+                d.initial_decision AS decision, d.initial_confidence AS confidence,
+                LEFT(d.initial_reasoning, 300) AS reasoning
             FROM claim_documents cd
             JOIN claims c ON cd.claim_id = c.id
+            LEFT JOIN LATERAL (
+                SELECT initial_decision, initial_confidence, initial_reasoning FROM claim_decisions
+                WHERE claim_id = c.id ORDER BY created_at DESC LIMIT 1
+            ) d ON true
             WHERE 1 - (cd.embedding <=> CAST(:claim_embedding AS vector)) >= :min_similarity
-                AND (:claim_type IS NULL OR c.claim_type = :claim_type)
+                AND (CAST(:claim_type AS text) IS NULL OR c.claim_type = :claim_type)
+                AND (CAST(:current AS text) IS NULL OR c.claim_number <> :current)
                 AND c.status IN ('completed', 'manual_review', 'denied')
                 AND cd.embedding IS NOT NULL
             ORDER BY cd.embedding <=> CAST(:claim_embedding AS vector)
@@ -272,7 +284,7 @@ async def retrieve_similar_claims(
 
         results = await run_db_query(query, {
             "claim_embedding": embedding_str, "min_similarity": min_similarity,
-            "claim_type": claim_type, "top_k": top_k
+            "claim_type": claim_type, "current": current_claim, "top_k": top_k
         })
         logger.info(f"Similar claims query returned {len(results)} results")
 
@@ -281,9 +293,14 @@ async def retrieve_similar_claims(
             claim_text_truncated = (row.claim_text[:500] + "...") if row.claim_text and len(row.claim_text) > 500 else (row.claim_text or "")
             similar_claims.append({
                 "claim_id": row.claim_id, "claim_number": row.claim_number,
+                "claim_type": row.claim_type,
                 "claim_text": claim_text_truncated,
-                "similarity_score": float(row.similarity) if row.similarity else 0.0,
-                "outcome": row.outcome, "processing_time_ms": row.total_processing_time_ms
+                "similarity_score": round(float(row.similarity), 3) if row.similarity else 0.0,
+                "outcome": row.outcome,
+                "decision": row.decision,
+                "confidence": float(row.confidence) if row.confidence is not None else None,
+                "reasoning": row.reasoning,
+                "processing_time_ms": row.total_processing_time_ms
             })
 
         processing_time = time.time() - start_time

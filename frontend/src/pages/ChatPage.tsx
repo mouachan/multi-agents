@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Code2, MessageSquarePlus, PanelLeft, PanelRight, Sparkles } from 'lucide-react'
-import { A2APanel } from '../components/chat/A2APanel'
+import { TracePanel } from '../components/chat/TracePanel'
 import { AgentAvatar } from '../components/chat/AgentAvatar'
 import { AgentGraph } from '../components/chat/AgentGraph'
 import { Composer } from '../components/chat/Composer'
@@ -30,6 +30,7 @@ const WELCOME_PATTERNS = [
 
 const EXAMPLES: { agent: string; key: string }[] = [
   { agent: 'claims', key: 'conv.ex_claims' },
+  { agent: 'claims', key: 'conv.ex_payout' },
   { agent: 'tenders', key: 'conv.ex_tenders' },
   { agent: 'courrier_suivi', key: 'conv.ex_tracking' },
   { agent: 'courrier_info', key: 'conv.ex_info' },
@@ -331,7 +332,7 @@ export default function ChatPage() {
       {/* Right: live A2A communication */}
       {showPanel && (
         <aside className="card hidden w-[380px] shrink-0 overflow-hidden lg:block">
-          <A2APanel message={selectedMsg} onClose={() => setShowPanel(false)} />
+          <TracePanel message={selectedMsg} onClose={() => setShowPanel(false)} />
         </aside>
       )}
 

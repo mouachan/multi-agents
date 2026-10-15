@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  ArrowRight, Bot, CheckCircle2, ChevronRight, CircleDashed, Clock, Cpu, Fingerprint, Hash, KeyRound,
+  ArrowRight, Bot, Box, CheckCircle2, ChevronRight, CircleDashed, Clock, Cpu, Fingerprint, Hash, KeyRound,
   Loader2, Lock, Route, ScrollText, Server, ShieldAlert, ShieldCheck, ShieldX, Sparkles, Workflow, Wrench, X, XCircle,
 } from 'lucide-react'
 import { useTranslation } from '../../i18n/LanguageContext'
@@ -10,6 +11,8 @@ import { agentVisual } from '../../lib/agents'
 import { cn } from '../../lib/cn'
 import { formatDuration } from '../../lib/format'
 import type { ChatMessage, GuardrailsEvent, TraceStep, TurnTrace } from '../../types/chat'
+import { sandboxCode } from '../../types/sandbox'
+import { SandboxRun } from '../sandbox/SandboxRun'
 import { Badge, type Tone } from '../ui/Badge'
 import { EmptyState } from '../ui/Feedback'
 import { IconButton } from '../ui/Button'
@@ -57,6 +60,25 @@ function GuardrailBadge({ status }: { status?: string }) {
   )
 }
 
+/** MCP tool executed in the OpenShell sandbox */
+const SANDBOX_TOOL = 'run_python'
+type ToolStep = Extract<TraceStep, { kind: 'tool' }>
+
+/** Compact "key=value" view of tool-call arguments (JSON text) */
+function argumentsSummary(args?: string): string {
+  if (!args) return ''
+  try {
+    const parsed = JSON.parse(args)
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed)
+        .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join(', ')
+        .slice(0, 160)
+    }
+  } catch { /* not JSON */ }
+  return args.slice(0, 160)
+}
+
 const STATE_TONES: Record<string, Tone> = {
   submitted: 'neutral', working: 'info', completed: 'success', failed: 'danger', rejected: 'danger', canceled: 'warning',
 }
@@ -68,6 +90,7 @@ function FlowStrip({ trace, streaming }: { trace: TurnTrace; streaming: boolean 
   const { t } = useTranslation()
   const runningTool = trace.steps.some((s) => s.kind === 'tool' && s.status === 'running')
   const toolsUsed = trace.steps.some((s) => s.kind === 'tool')
+  const sandboxSteps = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && s.name === SANDBOX_TOOL)
   const generating = streaming && !runningTool && trace.state === 'working'
   const v = agentVisual(trace.agentId)
 
@@ -76,6 +99,10 @@ function FlowStrip({ trace, streaming }: { trace: TurnTrace; streaming: boolean 
     { key: 'agent', label: trace.agentId ? t(`agentNames.${trace.agentId}`) : t('a2a.node_agent'), icon: <Bot className="h-3.5 w-3.5" />, active: streaming && !!trace.request && !generating && !runningTool, done: !!trace.summary, accent: v.accent.soft },
     { key: 'ogx', label: 'OGX', icon: <Sparkles className="h-3.5 w-3.5" />, active: generating, done: !!trace.firstTextAt },
     { key: 'mcp', label: 'MCP', icon: <Server className="h-3.5 w-3.5" />, active: runningTool, done: toolsUsed && !runningTool },
+    ...(sandboxSteps.length ? [{
+      key: 'sandbox', label: 'Sandbox', icon: <Box className="h-3.5 w-3.5" />,
+      active: sandboxSteps.some((s) => s.status === 'running'), done: sandboxSteps.every((s) => s.status !== 'running'),
+    }] : []),
   ]
 
   return (
@@ -155,11 +182,18 @@ function StepRow({ step, isLast, now, startedAt, streaming }: { step: TraceStep;
     }
     case 'tool': {
       const running = step.status === 'running'
-      icon = running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : step.status === 'error' ? <XCircle className="h-3.5 w-3.5" /> : <Wrench className="h-3.5 w-3.5" />
-      title = <>{t('a2a.mcpTool')} <b>{getToolLabel(step.name, locale)}</b></>
+      const sandboxed = step.name === SANDBOX_TOOL
+      const idle = sandboxed ? <Box className="h-3.5 w-3.5" /> : <Wrench className="h-3.5 w-3.5" />
+      icon = running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : step.status === 'error' ? <XCircle className="h-3.5 w-3.5" /> : idle
+      title = sandboxed
+        ? <>{t('sandbox.title')} · <b>{getToolLabel(step.name, locale)}</b></>
+        : <>{t('a2a.mcpTool')} <b>{getToolLabel(step.name, locale)}</b></>
       const dur = step.doneAt != null ? step.doneAt - step.at : running ? now - startedAt - step.at : null
-      detail = [step.server, dur != null ? formatDuration(dur) : null].filter(Boolean).join(' · ')
-      tone = step.status === 'error' ? 'bg-red-500/10 text-red-600 ring-red-500/25' : 'bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300'
+      const args = sandboxed ? '' : argumentsSummary(step.arguments)
+      detail = [step.server, dur != null ? formatDuration(dur) : null, args || null].filter(Boolean).join(' · ')
+      tone = step.status === 'error' ? 'bg-red-500/10 text-red-600 ring-red-500/25'
+        : sandboxed ? 'bg-teal-500/10 text-teal-600 ring-teal-500/25 dark:text-teal-300'
+          : 'bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300'
       break
     }
   }
@@ -182,12 +216,12 @@ function StepRow({ step, isLast, now, startedAt, streaming }: { step: TraceStep;
 // ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
-interface A2APanelProps {
+interface TracePanelProps {
   message: ChatMessage | null
   onClose?: () => void
 }
 
-export function A2APanel({ message, onClose }: A2APanelProps) {
+export function TracePanel({ message, onClose }: TracePanelProps) {
   const { t } = useTranslation()
   const trace = message?.trace
   const streaming = !!message?.streaming
@@ -226,6 +260,7 @@ export function A2APanel({ message, onClose }: A2APanelProps) {
     const found = trace.steps.filter((s): s is Extract<TraceStep, { kind: 'guardrails' }> => s.kind === 'guardrails' && s.event.stage === stage)
     return found.length ? found[found.length - 1].event.status : undefined
   }
+  const sandboxRuns = trace.steps.filter((s): s is ToolStep => s.kind === 'tool' && s.name === SANDBOX_TOOL && s.status !== 'running')
   const gIn = summary?.guardrails?.input?.status ?? lastGuardrail('input')
   const gOut = summary?.guardrails?.output?.status ?? lastGuardrail('output')
 
@@ -340,6 +375,22 @@ export function A2APanel({ message, onClose }: A2APanelProps) {
             )}
           </ol>
         </Section>
+
+        {/* OpenShell sandbox executions (run_python) */}
+        {sandboxRuns.length > 0 && (
+          <Section
+            icon={<Box className="h-3.5 w-3.5" />}
+            title={t('sandbox.title')}
+            right={<Link to="/sandbox" className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-300">{t('sandbox.viewPolicy')}</Link>}
+          >
+            <div className="space-y-3 divide-y divide-line">
+              {sandboxRuns.map((s, i) => (
+                <SandboxRun key={i} className={i ? 'pt-3' : ''} code={sandboxCode(s.arguments)}
+                  result={s.sandbox ?? { error: s.error }} />
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* Summary */}
         {(summary || trace.finishedAt != null) && !streaming && (

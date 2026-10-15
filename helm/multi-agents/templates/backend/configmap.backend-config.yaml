@@ -42,6 +42,11 @@ data:
 {{- if .Values.mcp.tracking.enabled }}
   TRACKING_SERVER_URL: "http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
 {{- end }}
+  SEED_DATA_FILE: /app/seed/seed.sql
+  PRECEDENTS_FILE: /app/seed/precedent_decisions.json
+{{- if .Values.mcp.sandbox.enabled }}
+  SANDBOX_SERVER_URL: "http://sandbox-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
+{{- end }}
 {{- if .Values.guardrails.enabled }}
   GUARDRAILS_SERVER_URL: {{ include "multi-agents.guardrails.endpoint" . | quote }}
   GUARDRAILS_CONFIG_ID: {{ .Values.guardrails.configId | quote }}
@@ -91,8 +96,6 @@ data:
 {{- end }}
 {{- end }}
 
-  # Admin & Database Reset
-  SEED_DATA_URL: {{ .Values.backend.seedDataUrl | quote }}
 {{- if .Values.mlflow.enabled }}
   MLFLOW_TRACKING_URI: {{ .Values.mlflow.trackingUri | quote }}
   MLFLOW_EXPERIMENT_NAME: {{ .Values.mlflow.experimentName | quote }}

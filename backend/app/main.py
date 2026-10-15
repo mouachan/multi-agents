@@ -368,7 +368,7 @@ async def get_tool_display_config():
 # Import and Include API Routers
 # =============================================================================
 
-from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal
+from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal, sandbox
 
 app.include_router(
     claims.router,
@@ -409,6 +409,11 @@ app.include_router(
     postal.router,
     prefix=f"{settings.api_v1_prefix}/postal",
     tags=["postal"]
+)
+app.include_router(
+    sandbox.router,
+    prefix=f"{settings.api_v1_prefix}/sandbox",
+    tags=["sandbox"]
 )
 
 

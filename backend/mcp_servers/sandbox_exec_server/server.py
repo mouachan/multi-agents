@@ -34,7 +34,9 @@ import yaml
 from google.protobuf import json_format
 from openshell import SandboxClient, TlsConfig
 from openshell._proto import openshell_pb2
+from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from shared.mcp_app import build_app, create_mcp
 
@@ -266,10 +268,83 @@ async def health_check(request):
 
 
 # =============================================================================
-# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health
+# Demonstration endpoints (used by the backend /api/v1/sandbox): the policy in force and
+# fixed isolation scenarios. No arbitrary code is accepted here.
+# =============================================================================
+
+DEMO_SCENARIOS: Dict[str, Dict[str, str]] = {
+    "compute": {
+        "expect": "allowed",
+        "code": ("claimed, deductible, ceiling = 12500.0, 350.0, 10000.0\n"
+                 "payout = min(max(claimed - deductible, 0), ceiling)\n"
+                 "print(f'claimed={claimed} deductible={deductible} ceiling={ceiling}')\n"
+                 "print(f'payout={payout}')"),
+    },
+    "identity": {
+        "expect": "allowed",
+        "code": "import os, pwd\nprint('user:', pwd.getpwuid(os.getuid()).pw_name, 'uid:', os.getuid())",
+    },
+    "network": {
+        "expect": "denied",
+        "code": "import urllib.request\nurllib.request.urlopen('https://example.com', timeout=5)",
+    },
+    "write_system": {
+        "expect": "denied",
+        "code": "open('/etc/hacked', 'w').write('x')",
+    },
+    "read_outside": {
+        "expect": "denied",
+        "code": "import os\nprint(os.listdir('/var'))",
+    },
+}
+
+
+def _policy_info() -> Dict[str, Any]:
+    with open(SANDBOX_POLICY_FILE) as f:
+        text = f.read()
+    return {
+        "policy": yaml.safe_load(text) or {},
+        "policy_yaml": text,
+        "image": SANDBOX_IMAGE,
+        "gateway": OPENSHELL_ENDPOINT,
+        "workspace": OPENSHELL_WORKSPACE,
+        "python": PYTHON,
+        "reuse": SANDBOX_REUSE,
+        "warm_sandbox": _warm.name or None,
+        "max_exec_timeout_s": MAX_EXEC_TIMEOUT,
+    }
+
+
+async def policy(request: Request) -> JSONResponse:
+    try:
+        return JSONResponse(_policy_info())
+    except Exception as e:
+        return JSONResponse({"error": f"Policy not readable: {e}"}, status_code=500)
+
+
+async def demo(request: Request) -> JSONResponse:
+    name = request.path_params["scenario"]
+    scenario = DEMO_SCENARIOS.get(name)
+    if not scenario:
+        return JSONResponse({"error": f"Unknown scenario {name}", "scenarios": list(DEMO_SCENARIOS)},
+                            status_code=404)
+    if not SANDBOX_IMAGE:
+        return JSONResponse({"error": "SANDBOX_IMAGE is not configured"}, status_code=503)
+    try:
+        result = await asyncio.to_thread(_run_in_sandbox, scenario["code"], 20)
+    except Exception as e:
+        logger.error(f"Demo {name} failed: {e}", exc_info=True)
+        return JSONResponse({"error": f"Sandbox execution failed: {e}"}, status_code=502)
+    return JSONResponse({"scenario": name, "expect": scenario["expect"], "code": scenario["code"], **result})
+
+
+# =============================================================================
+# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health, /policy, /demo/{scenario}
 # =============================================================================
 
 app = build_app(mcp, "sandbox-exec-server", health_check)
+app.router.routes.append(Route("/policy", policy, methods=["GET"]))
+app.router.routes.append(Route("/demo/{scenario}", demo, methods=["POST"]))
 
 
 if __name__ == "__main__":

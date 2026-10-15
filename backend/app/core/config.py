@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     tenders_server_url: str  # TENDERS_SERVER_URL (required)
     postal_server_url: str = ""  # POSTAL_SERVER_URL
     tracking_server_url: str = ""  # TRACKING_SERVER_URL
+    sandbox_server_url: str = ""  # SANDBOX_SERVER_URL (OpenShell sandbox page; empty = not deployed)
     # Semantic routing over the A2A agent cards (keyword routing when disabled or on error)
     router_enabled: bool = True  # ROUTER_ENABLED
     router_min_score: float = 0.62  # ROUTER_MIN_SCORE
@@ -129,7 +130,10 @@ class Settings(BaseSettings):
     # Admin & Database Reset
     # Configure this to point to your GitHub repository branch
     # Example: https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql
-    seed_data_url: str = ""  # Must be set via SEED_DATA_URL env var
+    # Admin reset: the seed of the database init and the decisions of the installation
+    # precedents (mounted from the init-postgres ConfigMap, or ./database/seed_data locally)
+    seed_data_file: str = "/app/seed/seed.sql"  # SEED_DATA_FILE
+    precedents_file: str = "/app/seed/precedent_decisions.json"  # PRECEDENTS_FILE
 
     # Logging
     log_level: str = "INFO"

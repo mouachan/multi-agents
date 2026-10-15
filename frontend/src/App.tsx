@@ -15,6 +15,7 @@ const TenderDetailPage = lazy(() => import('./pages/TenderDetailPage'))
 const PostalListPage = lazy(() => import('./pages/PostalListPage'))
 const PostalDetailPage = lazy(() => import('./pages/PostalDetailPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
+const SandboxPage = lazy(() => import('./pages/SandboxPage'))
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
                   <Route path="/tenders/:tenderId" element={<TenderDetailPage />} />
                   <Route path="/postal" element={<PostalListPage />} />
                   <Route path="/postal/:reclamationId" element={<PostalDetailPage />} />
+                  <Route path="/sandbox" element={<SandboxPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                 </Routes>
               </Suspense>

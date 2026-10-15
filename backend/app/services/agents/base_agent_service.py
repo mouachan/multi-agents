@@ -118,6 +118,8 @@ class BaseAgentService(ABC):
             "retrieve_similar_references", "retrieve_historical_tenders", "retrieve_capabilities",
         ]:
             return "rag-agent"
+        elif tool_name == "run_python":
+            return "openshell-sandbox"
         return "unknown"
 
     # ── Common processing logic ─────────────────────────────────────
@@ -140,6 +142,12 @@ class BaseAgentService(ABC):
                         duration_ms = int(output_data["processing_time_seconds"] * 1000)
                 except Exception:
                     output_data = {"raw_text": tc["output"]}
+            if tool_name == "run_python" and isinstance(output_data, dict) and tc.get("arguments"):
+                # Show the code executed in the sandbox next to its output
+                try:
+                    output_data["code"] = json_lib.loads(tc["arguments"]).get("code", "")
+                except Exception:
+                    output_data["code"] = str(tc["arguments"])
 
             processing_steps.append({
                 "step_name": tool_name,

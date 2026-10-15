@@ -3,7 +3,7 @@ A2A Client — streams tasks to the decoupled A2A agents (a2a-sdk 1.x, JSON-RPC 
 
 Normalizes the A2A event stream into the same events as the Responses API stream:
     {"type": "tool_call",    "name", "server"}
-    {"type": "tool_result",  "name", "server", "status"}
+    {"type": "tool_result",  "name", "server", "status", "arguments"?, "sandbox"?, "error"?}
     {"type": "text_delta",   "delta"}
     {"type": "text_replace", "text"}     (agent re-sent a masked/redacted version)
     {"type": "done", "output", "tool_calls", "response_id", "model", "usage",
@@ -177,6 +177,8 @@ class A2AClient:
                         "name": meta.get("name", ""),
                         "server": meta.get("server", ""),
                         "status": meta.get("status", "in_progress"),
+                        # traceability: arguments, and the run_python sandbox execution
+                        **{k: meta[k] for k in ("arguments", "sandbox", "error") if k in meta},
                     }
                 elif st.state == TaskState.TASK_STATE_WORKING and meta.get("event") == "guardrails":
                     yield {

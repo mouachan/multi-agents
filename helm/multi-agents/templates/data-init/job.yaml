@@ -48,7 +48,13 @@ spec:
               value: {{ .Values.dataInit.documentsArchiveUrl | quote }}
             - name: FORCE_REINIT
               value: {{ .Values.dataInit.forceReinit | default "false" | quote }}
+            - name: PRECEDENTS_FILE
+              value: /seed/precedent_decisions.json
             {{- include "postgres.env" . | nindent 12 }}
+          volumeMounts:
+            - mountPath: /seed
+              name: seed
+              readOnly: true
           resources:
             requests:
               cpu: {{ .Values.dataInit.resources.requests.cpu | default "200m" }}
@@ -56,4 +62,11 @@ spec:
             limits:
               cpu: {{ .Values.dataInit.resources.limits.cpu | default "500m" }}
               memory: {{ .Values.dataInit.resources.limits.memory | default "512Mi" }}
+      volumes:
+        - name: seed
+          configMap:
+            name: init-postgres
+            items:
+              - key: precedent_decisions.json
+                path: precedent_decisions.json
 {{- end }}

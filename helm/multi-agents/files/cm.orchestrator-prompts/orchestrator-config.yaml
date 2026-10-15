@@ -88,15 +88,21 @@ tool_display:
       label: { fr: "Analyser AO", en: "Analyze Tender" }
       short: "ANL"
       category: crud
+    run_python:
+      label: { fr: "Calcul Python (sandbox)", en: "Python computation (sandbox)" }
+      short: "PY"
+      category: sandbox
   servers:
     ocr-server: { label: "OCR", color: "blue" }
     rag-server: { label: "RAG", color: "purple" }
     claims-server: { label: "Claims", color: "emerald" }
     tenders-server: { label: "Tenders", color: "amber" }
+    sandbox-server: { label: "OpenShell sandbox", color: "teal" }
   categories:
     extraction: { label: { fr: "Extraction", en: "Extraction" }, icon: "scan" }
     rag: { label: { fr: "Recherche", en: "Search" }, icon: "search" }
     crud: { label: { fr: "Donnees", en: "Data" }, icon: "database" }
+    sandbox: { label: { fr: "Sandbox", en: "Sandbox" }, icon: "box" }
 
 language_detection:
   fr_words:

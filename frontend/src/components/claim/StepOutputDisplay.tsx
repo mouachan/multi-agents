@@ -6,6 +6,7 @@
  */
 
 import { MaskedText } from '../ui/Markdown'
+import { SandboxRun } from '../sandbox/SandboxRun'
 
 interface StepOutputDisplayProps {
   stepName: string
@@ -19,6 +20,7 @@ const STEP_LABELS: Record<string, { label: string; icon: string; color: string }
   retrieve_user_info: { label: 'User & Contract Info', icon: '2', color: 'indigo' },
   retrieve_similar_claims: { label: 'Similar Claims', icon: '3', color: 'purple' },
   search_knowledge_base: { label: 'Knowledge Base Search', icon: '4', color: 'amber' },
+  run_python: { label: 'Coverage & Payout (OpenShell sandbox)', icon: '4', color: 'teal' },
   claim_analysis: { label: 'Risk Assessment', icon: '2', color: 'indigo' },
   tender_analysis: { label: 'Go/No-Go Evaluation', icon: '2', color: 'indigo' },
   decision: { label: 'Final Decision', icon: '5', color: 'emerald' },
@@ -28,6 +30,11 @@ export default function StepOutputDisplay({ stepName, outputData }: StepOutputDi
   if (!outputData) return null
 
   const step = stepName.toLowerCase()
+
+  // Coverage and payout computed in the OpenShell sandbox: code, output, isolation
+  if (step === 'run_python') {
+    return <SandboxRun className="mt-3" code={outputData.code} result={outputData} />
+  }
 
   // Decision step — show recommendation, confidence bar, and reasoning
   if (step.includes('decision')) {

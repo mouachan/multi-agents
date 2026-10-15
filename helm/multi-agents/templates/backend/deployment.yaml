@@ -74,6 +74,9 @@ spec:
             - mountPath: /app/prompts-courrier
               name: courrier-prompts
               readOnly: true
+            - mountPath: /app/seed
+              name: seed
+              readOnly: true
             {{- include "multi-agents.spiffe.volumeMount" . | nindent 12 }}
       volumes:
         - name: prompts
@@ -88,6 +91,15 @@ spec:
         - name: courrier-prompts
           configMap:
             name: courrier-prompts
+        - name: seed
+          # seed.sql and the precedent decisions, for the admin reset (same files as at install)
+          configMap:
+            name: init-postgres
+            items:
+              - key: seed.sql
+                path: seed.sql
+              - key: precedent_decisions.json
+                path: precedent_decisions.json
         {{- include "multi-agents.spiffe.volume" . | nindent 8 }}
 ---
 apiVersion: v1
