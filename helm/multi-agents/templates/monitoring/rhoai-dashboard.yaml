@@ -39,7 +39,7 @@ spec:
       agentic:
         kind: Panel
         spec:
-          display: {name: "Agentic calls / min", description: "Responses API calls that ran tools (A2A agents)"}
+          display: {name: "Agentic calls", description: "Responses API calls that ran tools (A2A agents), over the selected period"}
           plugin: {kind: StatChart, spec: {calculation: last, format: {unit: decimal}}}
           queries:
             - kind: TimeSeriesQuery
@@ -48,11 +48,11 @@ spec:
                   kind: PrometheusTimeSeriesQuery
                   spec:
                     datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
-                    query: 'sum(rate(ogx_responses_agentic_calls_total{namespace="{{ $ns }}"}[5m])) * 60'
+                    query: 'round(sum(increase(ogx_responses_agentic_calls_total{namespace="{{ $ns }}"}[$__range])))'
       ttftStat:
         kind: Panel
         spec:
-          display: {name: "Time to first token p90", description: "Latency of the first generated token (all models)"}
+          display: {name: "Time to first token p90", description: "Latency of the first generated token (all models), over the selected period"}
           plugin: {kind: StatChart, spec: {calculation: last, format: {unit: seconds}}}
           queries:
             - kind: TimeSeriesQuery
@@ -61,11 +61,11 @@ spec:
                   kind: PrometheusTimeSeriesQuery
                   spec:
                     datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
-                    query: 'histogram_quantile(0.9, sum by (le) (rate(ogx_inference_time_to_first_token_seconds_bucket{namespace="{{ $ns }}"}[15m])))'
+                    query: 'histogram_quantile(0.9, sum by (le) (increase(ogx_inference_time_to_first_token_seconds_bucket{namespace="{{ $ns }}"}[$__range])))'
       mcpStat:
         kind: Panel
         spec:
-          display: {name: "MCP tool calls / min", description: "Tool executions through the MCP Gateway"}
+          display: {name: "MCP tool calls", description: "Tool executions through the MCP Gateway, over the selected period"}
           plugin: {kind: StatChart, spec: {calculation: last, format: {unit: decimal}}}
           queries:
             - kind: TimeSeriesQuery
@@ -74,7 +74,7 @@ spec:
                   kind: PrometheusTimeSeriesQuery
                   spec:
                     datasource: {kind: PrometheusDatasource, name: cluster-prometheus-datasource}
-                    query: 'sum(rate(ogx_responses_tool_types_used_total{namespace="{{ $ns }}",tool_type="mcp"}[5m])) * 60'
+                    query: 'round(sum(increase(ogx_responses_tool_types_used_total{namespace="{{ $ns }}",tool_type="mcp"}[$__range])))'
       requests:
         kind: Panel
         spec:

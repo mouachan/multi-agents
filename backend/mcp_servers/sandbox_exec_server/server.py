@@ -223,7 +223,8 @@ async def run_python(code: str, timeout_s: int = 20) -> str:
     Use it for exact computations (e.g. claim payout: amount minus deductible,
     capped by the policy limit). The sandbox has NO network access and can only
     write to /sandbox and /tmp; print() the results you need. Standard library
-    and numpy are available.
+    and numpy are available. Write the code on one line, statements separated by
+    "; " and strings in single quotes, e.g. "a=6200.0; b=350.0; print('payout:', a-b)".
 
     Args:
         code: Python source code to run with python3.12
@@ -282,7 +283,7 @@ DEMO_SCENARIOS: Dict[str, Dict[str, str]] = {
     },
     "identity": {
         "expect": "allowed",
-        "code": "import os, pwd\nprint('user:', pwd.getpwuid(os.getuid()).pw_name, 'uid:', os.getuid())",
+        "code": "import os\nprint('uid:', os.getuid(), 'gid:', os.getgid(), '| root:', os.getuid() == 0)",
     },
     "network": {
         "expect": "denied",
