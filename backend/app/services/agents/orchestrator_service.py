@@ -16,6 +16,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
+from app.services.agents.turn_trace import TurnTrace
 from app.services.pii.redactor import redact_text_pii
 
 from sqlalchemy import select
@@ -312,8 +313,26 @@ class OrchestratorService:
         """
         Process a user message with SSE streaming.
 
-        Same routing logic as process_message() but yields events progressively.
+        Same routing logic as process_message() but yields events progressively. The turn is
+        traced once (turn_trace): application trace saved with the assistant message, and the
+        same events as one MLflow trace that the agent's spans join.
         """
+        turn = TurnTrace(f"chat | {message[:80].strip()}", {"message": message}, session_id=session_id)
+        try:
+            async for event in self._message_stream(db, session_id, message, user_id, turn):
+                turn.add(event)
+                yield event
+        finally:
+            turn.close()
+
+    async def _message_stream(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        message: str,
+        user_id: Optional[str],
+        turn: TurnTrace,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         from app.models.conversation import ChatMessage, ChatSession
 
         # Get session
@@ -368,6 +387,7 @@ class OrchestratorService:
                 role="assistant",
                 content=blocked_msg,
                 agent_id=agent_id or "orchestrator",
+                trace=turn.finish(blocked_msg, {"agent_id": agent_id}),
             )
             db.add(assistant_msg)
             await db.commit()
@@ -400,11 +420,15 @@ class OrchestratorService:
             if agent_def.a2a_url:
                 # A2A path — the agent streams OGX deltas and tool activity as A2A events
                 logger.info("A2A stream to '%s' at %s", agent_id, agent_def.a2a_url)
+                a2a_metadata = self._a2a_metadata(agent_def, user_lang, session, previous_response_id)
+                traceparent = turn.start_a2a(agent_id)  # the agent's spans join the turn trace
+                if traceparent:
+                    a2a_metadata["traceparent"] = traceparent
                 async for event in self.a2a.stream(
                     base_url=agent_def.a2a_url,
                     message=message,
                     context_id=str(session_id),
-                    metadata=self._a2a_metadata(agent_def, user_lang, session, previous_response_id),
+                    metadata=a2a_metadata,
                 ):
                     event_type = event.get("type")
                     if event_type in ("tool_call", "tool_result", "text_delta", "text_replace",
@@ -490,19 +514,20 @@ class OrchestratorService:
 
         suggested_actions = self._generate_post_response_actions(full_text, agent_id, user_lang)
 
-        # Log to MLflow (streaming)
-        tracing.log_agent_trace(
-            agent_id=agent_id,
-            model=model if isinstance(model, str) else "",
-            input_text=str(message)[:2000],
-            output_text=full_text[:2000],
-            tool_calls=tool_calls,
-            usage=token_usage,
-            stream=True,
-            session_id=session_id,
-            user_id=user_id,
-            response_id=response_id,
-        )
+        # Legacy in-process path: summary trace to MLflow (the A2A path is traced by `turn`)
+        if not agent_def.a2a_url:
+            tracing.log_agent_trace(
+                agent_id=agent_id,
+                model=model if isinstance(model, str) else "",
+                input_text=str(message)[:2000],
+                output_text=full_text[:2000],
+                tool_calls=tool_calls,
+                usage=token_usage,
+                stream=True,
+                session_id=session_id,
+                user_id=user_id,
+                response_id=response_id,
+            )
 
         # Store last_response_id for conversation chaining
         if response_id:
@@ -516,7 +541,20 @@ class OrchestratorService:
         short = re.sub(r'-W\d+A\d+$', '', short)
         model_id = short
 
-        # Save assistant response to DB
+        # Final done event with enriched data
+        done = {
+            "type": "done",
+            "response_id": response_id,
+            "usage": token_usage,
+            "tool_calls": tool_calls,
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "suggested_actions": suggested_actions,
+            "a2a": a2a_summary or None,
+            "trace": turn.link(),
+        }
+
+        # Save assistant response to DB, with the trace of the turn
         assistant_msg = ChatMessage(
             session_id=session.id,
             role="assistant",
@@ -526,21 +564,12 @@ class OrchestratorService:
             tool_calls=tool_calls if tool_calls else None,
             token_usage=token_usage,
             model_id=model_id,
+            trace=turn.finish(full_text, done),
         )
         db.add(assistant_msg)
         await db.commit()
 
-        # Final done event with enriched data
-        yield {
-            "type": "done",
-            "response_id": response_id,
-            "usage": token_usage,
-            "tool_calls": tool_calls,
-            "agent_id": agent_id,
-            "model_id": model_id,
-            "suggested_actions": suggested_actions,
-            "a2a": a2a_summary or None,
-        }
+        yield done
 
     async def list_sessions(
         self,
@@ -615,6 +644,7 @@ class OrchestratorService:
                 "tool_calls": msg.tool_calls,
                 "token_usage": msg.token_usage,
                 "model_id": msg.model_id,
+                "saved_trace": msg.trace,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None,
             }
             for msg in messages

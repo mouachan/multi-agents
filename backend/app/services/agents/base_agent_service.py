@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import tracing
+from app.services.agents.turn_trace import TurnTrace
 from app.core.config import settings
 from app.services.agent.context_builder import ContextBuilder
 from app.services.agent.response_parser import ResponseParser
@@ -208,15 +209,31 @@ class BaseAgentService(ABC):
             agent_def = AgentRegistry.get_by_entity_type(self.get_entity_type())
             if agent_def and agent_def.a2a_url:
                 from app.services.agent.a2a_client import get_a2a_client
-                result = await get_a2a_client().send(
-                    base_url=agent_def.a2a_url,
-                    message=processing_message,
-                    context_id=f"{self.get_entity_type()}-{entity_id}",
-                    metadata={"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools(),
-                              "decision_values": agent_def.decision_values},
-                )
-                if result.get("status") != "completed":
-                    raise RuntimeError(result.get("output") or f"A2A task {result.get('status')}")
+                context_id = f"{self.get_entity_type()}-{entity_id}"
+                number = next((v for k, v in context["entity_data"].items() if k.endswith("_number")), entity_id)
+                # One MLflow trace per processing: the agent's spans join it (traceparent)
+                turn = TurnTrace(f"process | {self.get_entity_type()} {number}",
+                                 {"message": processing_message[:4000]}, session_id=context_id)
+                metadata = {"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools(),
+                            "decision_values": agent_def.decision_values}
+                traceparent = turn.start_a2a(agent_def.id)
+                if traceparent:
+                    metadata["traceparent"] = traceparent
+                result: Dict[str, Any] = {}
+                try:
+                    result = await get_a2a_client().send(
+                        base_url=agent_def.a2a_url,
+                        message=processing_message,
+                        context_id=context_id,
+                        metadata=metadata,
+                    )
+                    if result.get("status") != "completed":
+                        raise RuntimeError(result.get("output") or f"A2A task {result.get('status')}")
+                except Exception as e:
+                    turn.add({"type": "error", "message": str(e)})
+                    raise
+                finally:
+                    turn.finish(result.get("output", ""), {"agent_id": agent_def.id, "a2a": result.get("a2a")})
             else:
                 result = await self.orchestrator.process_with_agent(
                     agent_config=effective_config,
@@ -252,24 +269,25 @@ class BaseAgentService(ABC):
 
             await db.commit()
 
-            # Trace to MLflow
-            tracing.log_agent_trace(
-                agent_id=f"{self.get_entity_type()}-agent",
-                model=result.get("model", settings.ogx_default_model),
-                input_text=processing_message[:2000],
-                output_text=response_content[:2000],
-                tool_calls=tool_calls,
-                usage=result.get("usage"),
-                stream=False,
-                response_id=result.get("response_id"),
-                metadata={
-                    "decision": decision_data,
-                    "recommendation": recommendation,
-                    "entity_type": self.get_entity_type(),
-                    "entity_id": str(entity_id),
-                    "status": new_status,
-                },
-            )
+            # Legacy in-process path: summary trace to MLflow (the A2A path is traced by `turn`)
+            if not (agent_def and agent_def.a2a_url):
+                tracing.log_agent_trace(
+                    agent_id=f"{self.get_entity_type()}-agent",
+                    model=result.get("model", settings.ogx_default_model),
+                    input_text=processing_message[:2000],
+                    output_text=response_content[:2000],
+                    tool_calls=tool_calls,
+                    usage=result.get("usage"),
+                    stream=False,
+                    response_id=result.get("response_id"),
+                    metadata={
+                        "decision": decision_data,
+                        "recommendation": recommendation,
+                        "entity_type": self.get_entity_type(),
+                        "entity_id": str(entity_id),
+                        "status": new_status,
+                    },
+                )
 
             return {
                 "response_id": result.get("response_id"),

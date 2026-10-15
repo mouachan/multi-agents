@@ -106,7 +106,8 @@ spec:
           value: {{ $.Values.models.guardrails | quote }}
         {{- end }}
         {{- if $.Values.mlflow.enabled }}
-        {{- include "multi-agents.mlflow.env" (dict "root" $ "experiment" (printf "%s-%s" $.Values.mlflow.experimentName $app)) | nindent 8 }}
+        {{- /* same experiment as the backend: the agent spans join the backend traces (traceparent) */}}
+        {{- include "multi-agents.mlflow.env" (dict "root" $ "experiment" $.Values.mlflow.experimentName) | nindent 8 }}
         {{- end }}
         {{- if $.Values.spiffe.enabled }}
         {{- include "multi-agents.spiffe.env" $ | nindent 8 }}

@@ -3,43 +3,10 @@ import { orchestratorApi } from '../services/orchestratorService'
 import { useTranslation } from '../i18n/LanguageContext'
 import type { ChatMessage, StreamEvent, TraceStep, TurnTrace } from '../types/chat'
 
-// ---------------------------------------------------------------------------
-// Per-session cache of the A2A traces (history messages from the backend carry no
-// trace): traces are attached back to assistant messages by their ordinal.
-// ---------------------------------------------------------------------------
-const TRACE_KEY = (sessionId: string) => `chat-traces-${sessionId}`
-
-function loadTraces(sessionId: string): (TurnTrace | null)[] {
-  try {
-    return JSON.parse(sessionStorage.getItem(TRACE_KEY(sessionId)) || '[]')
-  } catch {
-    return []
-  }
-}
-
-function saveTraces(sessionId: string, messages: ChatMessage[]) {
-  const traces = messages.filter((m) => m.role === 'assistant').map((m) => m.trace ?? null)
-  try {
-    sessionStorage.setItem(TRACE_KEY(sessionId), JSON.stringify(traces))
-  } catch {
-    // storage full — traces are a convenience only
-  }
-}
-
-function attachTraces(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
-  const traces = loadTraces(sessionId)
-  let i = 0
-  return messages.map((m) => {
-    if (m.role !== 'assistant') return m
-    const trace = traces[i++]
-    return trace ? { ...m, trace } : m
-  })
-}
-
-/** Apply one SSE event to the streaming assistant message. */
-function applyEvent(msg: ChatMessage, event: StreamEvent): ChatMessage {
-  const trace: TurnTrace = msg.trace ?? { startedAt: Date.now(), steps: [] }
-  const at = Date.now() - trace.startedAt
+/** Apply one SSE event to the streaming assistant message (now: event time, for replays). */
+function applyEvent(msg: ChatMessage, event: StreamEvent, now: number = Date.now()): ChatMessage {
+  const trace: TurnTrace = msg.trace ?? { startedAt: now, steps: [] }
+  const at = now - trace.startedAt
   const steps: TraceStep[] = [...trace.steps]
 
   switch (event.type) {
@@ -123,6 +90,7 @@ function applyEvent(msg: ChatMessage, event: StreamEvent): ChatMessage {
         trace: {
           ...trace, summary: event.a2a ?? null, modelId: event.model_id, usage: event.usage, finishedAt: at,
           state: event.a2a?.state || trace.state,
+          mlflowTraceId: event.trace?.mlflow_trace_id, mlflowUrl: event.trace?.mlflow_url,
         },
       }
 
@@ -132,6 +100,25 @@ function applyEvent(msg: ChatMessage, event: StreamEvent): ChatMessage {
 
     default:
       return msg
+  }
+}
+
+/** Rebuild the trace of a past turn by replaying the events saved with the message. */
+function replaySavedTrace(msg: ChatMessage): ChatMessage {
+  const saved = msg.saved_trace
+  if (!saved?.events) return msg
+  let replayed: ChatMessage = { ...msg, trace: { startedAt: 0, steps: [] } }
+  for (const { t, ...event } of saved.events) replayed = applyEvent(replayed, event as StreamEvent, t)
+  if (saved.done) replayed = applyEvent(replayed, saved.done, saved.duration_ms ?? 0)
+  const trace = replayed.trace!
+  return {
+    ...msg,
+    trace: {
+      ...trace,
+      firstTextAt: saved.first_text_ms ?? undefined,
+      finishedAt: saved.duration_ms ?? trace.finishedAt,
+      mlflowTraceId: saved.mlflow_trace_id, mlflowUrl: saved.mlflow_url,
+    },
   }
 }
 
@@ -176,7 +163,7 @@ export function useChat(sessionId?: string): UseChatReturn {
     setError(null)
     try {
       const result = await orchestratorApi.getMessages(sessionId)
-      setMessages(attachTraces(sessionId, result.messages))
+      setMessages(result.messages.map(replaySavedTrace))
       setSessionNotFound(false)
       setLoadedSessionId(sessionId)
     } catch (err: any) {
@@ -196,11 +183,6 @@ export function useChat(sessionId?: string): UseChatReturn {
     setSessionNotFound(false)
     if (sessionId) reload()
   }, [sessionId, reload])
-
-  // Persist traces whenever messages change
-  useEffect(() => {
-    if (sessionId && messages.some((m) => m.trace)) saveTraces(sessionId, messages)
-  }, [sessionId, messages])
 
   const createSession = useCallback(async (agentId?: string): Promise<string | null> => {
     setError(null)

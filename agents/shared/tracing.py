@@ -96,16 +96,23 @@ def log_agent_trace(
     response_id: Optional[str],
     duration_ms: int,
     metadata: Optional[Dict[str, Any]] = None,
+    traceparent: Optional[str] = None,
 ) -> None:
+    """Spans of one agent run. With the caller's W3C traceparent (A2A metadata) they join the
+    caller's trace (backend chat turn or processing) as children of its A2A span; without it
+    the run is a trace of its own."""
     if _tracer is None:
         return
     try:
         from opentelemetry.trace import StatusCode
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
         meta = metadata or {}
         prompt = meta.get("prompt") or {}
+        parent = TraceContextTextMapPropagator().extract({"traceparent": traceparent}) if traceparent else None
+        start_ns = time.time_ns() - int(duration_ms) * 1_000_000
         name = f"{agent_id}/{profile} | {input_text[:80].replace(chr(10), ' ').strip()}"
-        with _tracer.start_as_current_span(name, attributes={
+        with _tracer.start_as_current_span(name, context=parent, start_time=start_ns, attributes={
             "mlflow.traceName": name,
             "mlflow.spanType": "AGENT",
             "session.id": str(meta.get("context_id") or ""),

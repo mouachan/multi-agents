@@ -73,6 +73,9 @@ class MessageItem(BaseModel):
     tool_calls: Optional[List[Dict[str, Any]]] = None
     token_usage: Optional[Dict[str, Any]] = None
     model_id: Optional[str] = None
+    # Application trace of an assistant turn (routing, A2A, guardrails, tools, sandbox), replayed
+    # by the UI trace panel; carries the MLflow trace id (app/services/agents/turn_trace.py)
+    saved_trace: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
 
 

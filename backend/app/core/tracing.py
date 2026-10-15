@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _enabled = False
 _tracer = None
 _provider = None
+_experiment_id: Optional[str] = None
 
 SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 SERVICE_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
@@ -93,7 +94,7 @@ def _create_experiment(headers: Dict[str, str], verify) -> str:
 
 def init_mlflow():
     """Initialize OpenTelemetry tracing with OTLP exporter → MLflow."""
-    global _enabled, _tracer, _provider
+    global _enabled, _tracer, _provider, _experiment_id
 
     if not settings.mlflow_tracking_uri:
         logger.info("Tracing disabled (MLFLOW_TRACKING_URI not set)")
@@ -112,6 +113,7 @@ def init_mlflow():
         if not experiment_id:
             logger.warning("Tracing disabled: could not resolve or create MLflow experiment")
             return
+        _experiment_id = experiment_id
 
         # The OTLP receiver is mounted at the server root, not under the UI prefix (/mlflow on RHOAI)
         uri = urlsplit(settings.mlflow_tracking_uri)
@@ -310,3 +312,69 @@ def log_agent_trace(
         logger.info(f"OTel trace sent: agent={agent_id}, tools={len(tool_calls)}")
     except Exception as e:
         logger.warning(f"Tracing error: {e}", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Spans with an explicit parent, for the A2A path (see app/services/agents/turn_trace.py).
+# A chat turn runs in an async generator, where attaching a "current" context across yields
+# is not safe: spans are linked to their parent explicitly and ended explicitly. Every
+# helper is a no-op on None (tracing disabled).
+# ---------------------------------------------------------------------------
+def _attributes(values: Dict) -> Dict:
+    """OTel attribute values are primitives: drop None, serialize the rest as JSON."""
+    out = {}
+    for key, value in values.items():
+        if value is None:
+            continue
+        out[key] = value if isinstance(value, (str, bool, int, float)) else json.dumps(value, ensure_ascii=False, default=str)
+    return out
+
+
+def start_span(name: str, parent=None, attributes: Optional[Dict] = None, start_ns: Optional[int] = None):
+    """Start a span, child of parent when given; None when tracing is disabled."""
+    if not _enabled:
+        return None
+    from opentelemetry import trace
+    context = trace.set_span_in_context(parent) if parent is not None else None
+    return _tracer.start_span(name, context=context, attributes=_attributes(attributes or {}), start_time=start_ns)
+
+
+def set_attributes(span, attributes: Dict) -> None:
+    if span is not None:
+        span.set_attributes(_attributes(attributes))
+
+
+def add_event(span, name: str, attributes: Optional[Dict] = None, at_ns: Optional[int] = None) -> None:
+    if span is not None:
+        span.add_event(name, attributes=_attributes(attributes or {}), timestamp=at_ns)
+
+
+def end_span(span, error: Optional[str] = None, end_ns: Optional[int] = None) -> None:
+    if span is None:
+        return
+    if error:
+        from opentelemetry.trace import Status, StatusCode
+        span.set_status(Status(StatusCode.ERROR, error[:500]))
+    span.end(end_time=end_ns)
+
+
+def traceparent(span) -> Optional[str]:
+    """W3C traceparent of a span: sent to an agent so that its spans join the trace."""
+    if span is None:
+        return None
+    from opentelemetry import trace
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    carrier: Dict[str, str] = {}
+    TraceContextTextMapPropagator().inject(carrier, context=trace.set_span_in_context(span))
+    return carrier.get("traceparent")
+
+
+def mlflow_trace_id(span) -> Optional[str]:
+    """MLflow id of the trace of a span ("tr-" + the OTel trace id in hex)."""
+    if span is None:
+        return None
+    return "tr-" + format(span.get_span_context().trace_id, "032x")
+
+
+def experiment_id() -> Optional[str]:
+    return _experiment_id

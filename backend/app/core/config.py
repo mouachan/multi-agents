@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI
     mlflow_experiment_name: str = "multi-agent-orchestrator"  # MLFLOW_EXPERIMENT_NAME
     mlflow_rhoai_workspace: str = ""  # MLFLOW_RHOAI_WORKSPACE (namespace as workspace)
+    mlflow_ui_url: str = ""  # MLFLOW_UI_URL, e.g. https://rh-ai.<apps-domain>/mlflow (trace links in the UI)
 
     # Guardrails (NeMo Guardrails)
     enable_pii_detection: bool = True

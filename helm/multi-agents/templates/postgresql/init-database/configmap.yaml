@@ -78,6 +78,9 @@ data:
     PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
         --host postgresql "$POSTGRESQL_DATABASE" -c \
         "ALTER TYPE reclamation_status ADD VALUE IF NOT EXISTS 'failed'"
+    PGPASSWORD="$POSTGRESQL_PASSWORD" psql -U "$POSTGRESQL_USER" \
+        --host postgresql "$POSTGRESQL_DATABASE" -c \
+        "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS trace JSONB"
     echo " => Done"
 
     # =========================================================================

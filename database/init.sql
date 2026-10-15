@@ -653,6 +653,7 @@ CREATE TABLE chat_messages (
     tool_calls JSONB,
     token_usage JSONB,
     model_id VARCHAR(100),
+    trace JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

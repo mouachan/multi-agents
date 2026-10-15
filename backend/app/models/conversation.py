@@ -54,6 +54,7 @@ class ChatMessage(Base):
     tool_calls = Column(JSONB)
     token_usage = Column(JSONB)
     model_id = Column(String(100))
+    trace = Column(JSONB)  # application trace of the turn (app/services/agents/turn_trace.py)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     # Relationships

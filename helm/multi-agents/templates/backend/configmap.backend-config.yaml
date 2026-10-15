@@ -99,6 +99,7 @@ data:
 {{- if .Values.mlflow.enabled }}
   MLFLOW_TRACKING_URI: {{ .Values.mlflow.trackingUri | quote }}
   MLFLOW_EXPERIMENT_NAME: {{ .Values.mlflow.experimentName | quote }}
+  MLFLOW_UI_URL: {{ .Values.mlflow.uiUrl | default (printf "https://rh-ai.%s/mlflow" (include "multi-agents.clusterDomain" .)) | quote }}
   MLFLOW_RHOAI_WORKSPACE: {{ include "multi-agents.mlflow.workspace" . | quote }}
 {{- end }}
 {{- end }}

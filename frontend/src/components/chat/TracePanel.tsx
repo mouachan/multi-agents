@@ -414,6 +414,13 @@ export function TracePanel({ message, onClose }: TracePanelProps) {
               <KV k={t('a2a.guardIn')}><GuardrailBadge status={gIn} /></KV>
               <KV k={t('a2a.guardOut')}><GuardrailBadge status={gOut} /></KV>
               {summary?.state && <KV k={t('a2a.finalState')}><Badge tone={STATE_TONES[summary.state] ?? 'neutral'}>{t(`a2a.state_${summary.state}`)}</Badge></KV>}
+              {trace.mlflowTraceId && (
+                <KV k={t('a2a.mlflowTrace')} mono>
+                  {trace.mlflowUrl
+                    ? <a href={trace.mlflowUrl} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline dark:text-brand-300">{t('a2a.openMlflow')}</a>
+                    : trace.mlflowTraceId}
+                </KV>
+              )}
             </div>
           </Section>
         )}

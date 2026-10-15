@@ -58,8 +58,10 @@ export interface ChatMessage {
   processing_time_ms?: number
   model_id?: string
   created_at?: string
-  /** Live A2A / orchestration trace of this assistant turn (streamed turns only) */
+  /** Trace of this assistant turn: live while streaming, rebuilt from saved_trace afterwards */
   trace?: TurnTrace
+  /** Application trace saved with the message by the backend (turn_trace.TurnTrace) */
+  saved_trace?: SavedTurnTrace | null
   /** True while the turn is streaming */
   streaming?: boolean
   /** Turn stopped by the user */
@@ -184,8 +186,23 @@ export interface DoneA2ASummary {
   guardrails?: { input?: { status?: string; rail?: string | null }; output?: { status?: string; rail?: string | null } }
 }
 
+/** Link of a turn to its MLflow trace (backend, agent and tool spans) */
+export interface TraceLink {
+  mlflow_trace_id?: string | null
+  mlflow_url?: string | null
+}
+
+/** Events of a turn as saved by the backend: each streamed event with its offset "t" (ms) */
+export interface SavedTurnTrace extends TraceLink {
+  events: (StreamEvent & { t: number })[]
+  first_text_ms?: number | null
+  duration_ms?: number
+  done?: DoneEvent | null
+}
+
 export interface DoneEvent {
   type: 'done'
+  trace?: TraceLink
   response_id?: string | null
   usage?: TokenUsage | null
   tool_calls?: ToolCallInfo[]
@@ -235,4 +252,7 @@ export interface TurnTrace {
   modelId?: string | null
   usage?: TokenUsage | null
   finishedAt?: number
+  /** The same turn in MLflow */
+  mlflowTraceId?: string | null
+  mlflowUrl?: string | null
 }

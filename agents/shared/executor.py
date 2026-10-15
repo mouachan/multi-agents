@@ -285,6 +285,7 @@ class BaseA2AExecutor(AgentExecutor):
                 duration_ms=duration_ms,
                 metadata={"prompt": prompt_info, "decision": decision, "task_id": context.task_id,
                           "context_id": context.context_id, **profile.tags},
+                traceparent=meta.get("traceparent"),
             )
 
             await updater.complete(_message(output, context, metadata=final))
