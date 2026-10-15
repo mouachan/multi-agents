@@ -136,12 +136,14 @@ async def _restore(db: AsyncSession, snap: Dict[str, Any]) -> Dict[str, int]:
             if number not in ids:
                 continue  # record created during the demo: gone with the reset
             row = _with_fk(row_json, d.fk, ids[number])
-            # Seeded documents keep their columns and get back their OCR text and embedding
+            # Seeded documents keep their columns and get back their OCR text and embedding.
+            # Matched by business key (entity + file): the seed may generate new ids.
             updated = await db.execute(text(f"""
                 UPDATE {d.documents} doc SET raw_ocr_text = COALESCE(doc.raw_ocr_text, r.raw_ocr_text),
                     embedding = COALESCE(doc.embedding, r.embedding)
                 FROM json_populate_record(NULL::{d.documents}, CAST(:row AS json)) r
-                WHERE doc.id = r.id"""), {"row": row})
+                WHERE doc.{d.fk} = r.{d.fk} AND COALESCE(doc.file_path, '') = COALESCE(r.file_path, '')"""),
+                {"row": row})
             if not updated.rowcount:
                 await db.execute(text(f"""
                     INSERT INTO {d.documents}
