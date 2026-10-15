@@ -24,6 +24,14 @@ from .agents.base_agent_service import BaseAgentService
 
 logger = logging.getLogger(__name__)
 
+# Entity status after an agent recommendation (also used by the demo reset)
+RECLAMATION_STATUS_BY_RECOMMENDATION = {
+    "rembourser": "completed",
+    "reexpedier": "completed",
+    "rejeter": "rejected",
+    "escalader": "escalated",
+}
+
 # Tools used by the reclamation agent
 RECLAMATION_TOOLS = [
     # CRUD (postal-server)
@@ -63,13 +71,7 @@ class ReclamationService(BaseAgentService):
         return entity.reclamation_number
 
     def map_recommendation_to_status(self, recommendation: str) -> str:
-        mapping = {
-            "rembourser": "completed",
-            "reexpedier": "completed",
-            "rejeter": "rejected",
-            "escalader": "escalated",
-        }
-        return mapping.get(recommendation, "manual_review")
+        return RECLAMATION_STATUS_BY_RECOMMENDATION.get(recommendation, "manual_review")
 
     def set_entity_status(self, entity, status: str) -> None:
         entity.status = models.ReclamationStatus(status)

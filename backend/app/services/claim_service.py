@@ -25,6 +25,12 @@ from .agents.base_agent_service import BaseAgentService
 
 logger = logging.getLogger(__name__)
 
+# Entity status after an agent recommendation (also used by the demo reset)
+CLAIM_STATUS_BY_RECOMMENDATION = {
+    "approve": "completed",
+    "deny": "denied",
+}
+
 # Tools used by the claims agent
 CLAIM_TOOLS = [
     # CRUD (claims-server)
@@ -64,11 +70,7 @@ class ClaimService(BaseAgentService):
         return entity.claim_number
 
     def map_recommendation_to_status(self, recommendation: str) -> str:
-        mapping = {
-            "approve": "completed",
-            "deny": "denied",
-        }
-        return mapping.get(recommendation, "manual_review")
+        return CLAIM_STATUS_BY_RECOMMENDATION.get(recommendation, "manual_review")
 
     def set_entity_status(self, entity, status: str) -> None:
         entity.status = models.ClaimStatus(status)

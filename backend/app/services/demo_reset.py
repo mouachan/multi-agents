@@ -23,6 +23,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.claim_service import CLAIM_STATUS_BY_RECOMMENDATION
+from app.services.reclamation_service import RECLAMATION_STATUS_BY_RECOMMENDATION
+from app.services.tender_service import TENDER_STATUS_BY_RECOMMENDATION
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +38,16 @@ class Domain:
     documents: str       # OCR documents (text + embedding)
     decisions: str       # agent decisions
     precedents_key: str  # section of precedent_decisions.json
+    status_by_recommendation: Dict[str, str]  # entity status after a decision (the service's rule)
 
 
 DOMAINS = [
-    Domain("claims", "claim_number", "claim_id", "claim_documents", "claim_decisions", "claims"),
-    Domain("tenders", "tender_number", "tender_id", "tender_documents", "tender_decisions", "tenders"),
+    Domain("claims", "claim_number", "claim_id", "claim_documents", "claim_decisions", "claims",
+           CLAIM_STATUS_BY_RECOMMENDATION),
+    Domain("tenders", "tender_number", "tender_id", "tender_documents", "tender_decisions", "tenders",
+           TENDER_STATUS_BY_RECOMMENDATION),
     Domain("reclamations", "reclamation_number", "reclamation_id", "reclamation_documents",
-           "reclamation_decisions", "reclamations"),
+           "reclamation_decisions", "reclamations", RECLAMATION_STATUS_BY_RECOMMENDATION),
 ]
 
 # Reference data searched by the RAG tools: business key of each row
@@ -89,7 +95,7 @@ async def _snapshot(db: AsyncSession, precedents: Dict[str, List[str]]) -> Dict[
             WHERE document_path LIKE 'file-%'""")
         # The first decision of each precedent is the installation one
         snap["decisions"][d.entities] = await _rows(db, f"""
-            SELECT e.{d.number}, e.status::text, row_to_json(dec)::text FROM {d.entities} e
+            SELECT e.{d.number}, row_to_json(dec)::text FROM {d.entities} e
             JOIN LATERAL (SELECT * FROM {d.decisions} WHERE {d.fk} = e.id
                           ORDER BY created_at LIMIT 1) dec ON true
             WHERE e.{d.number} = ANY(:numbers)""", numbers=precedents[d.precedents_key])
@@ -151,14 +157,18 @@ async def _restore(db: AsyncSession, snap: Dict[str, Any]) -> Dict[str, int]:
                 WHERE {d.number} = :number"""), {"path": path, "file_en": file_en, "number": number})
             counts["document_links"] += result.rowcount
 
-        for number, status, row_json in snap["decisions"][d.entities]:
+        for number, row_json in snap["decisions"][d.entities]:
             if number not in ids:
                 continue
             await db.execute(text(f"""
                 INSERT INTO {d.decisions}
                 SELECT * FROM json_populate_record(NULL::{d.decisions}, CAST(:row AS json))"""),
                 {"row": _with_fk(row_json, d.fk, ids[number])})
-            # json_populate_record casts the text status to the column type (enum or varchar)
+            # Status of the installation decision (not the current one: the precedent may have
+            # been processed again during the demo). json_populate_record casts the text to
+            # the column type (enum or varchar).
+            recommendation = json.loads(row_json).get("initial_decision")
+            status = d.status_by_recommendation.get(recommendation, "manual_review")
             await db.execute(text(f"""
                 UPDATE {d.entities} e SET status = r.status
                 FROM json_populate_record(NULL::{d.entities}, CAST(:row AS json)) r

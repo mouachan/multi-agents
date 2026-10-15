@@ -23,6 +23,12 @@ from .agents.base_agent_service import BaseAgentService
 
 logger = logging.getLogger(__name__)
 
+# Entity status after an agent recommendation (also used by the demo reset)
+TENDER_STATUS_BY_RECOMMENDATION = {
+    "go": "completed",
+    "no_go": "failed",
+}
+
 # Tools used by the tenders agent
 TENDER_TOOLS = [
     # CRUD (tenders-server)
@@ -63,11 +69,7 @@ class TenderService(BaseAgentService):
         return entity.tender_number
 
     def map_recommendation_to_status(self, recommendation: str) -> str:
-        mapping = {
-            "go": "completed",
-            "no_go": "failed",
-        }
-        return mapping.get(recommendation, "manual_review")
+        return TENDER_STATUS_BY_RECOMMENDATION.get(recommendation, "manual_review")
 
     def set_entity_status(self, entity, status: str) -> None:
         entity.status = models.TenderStatus(status)

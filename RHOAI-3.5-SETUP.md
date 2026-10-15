@@ -370,6 +370,37 @@ oc exec -n $NS deploy/backend -- curl -s http://multi-agents-guardrails/v1/check
   keys included): review it for GDPR on shared clusters. Only requests made after the
   change carry the label.
 
+### Gen AI studio: AI asset endpoints
+
+* **Models**: the MaaS models are granted to the cluster users by a second subscription
+  (`models.maas.userAccess`: groups, priority below the application subscription, per-user
+  token limit); their display name, description and use case come from the `MaaSModelRef`
+  annotations (`models.maas.modelInfo`).
+* **Agents**: one agent profile per A2A agent profile (`rhoaiCatalog.agentProfiles`,
+  ConfigMaps `agent-profile-<id>` labelled `opendatahub.io/agent-profile=true`): reasoning
+  model through the users' subscription, prompt from the MLflow Prompt Registry, MCP servers
+  with the same tools except `save_*` (the playground stays read-only).
+
+```bash
+oc get maassubscription,maasauthpolicy -n models-as-a-service
+oc get cm -n <namespace> -l opendatahub.io/agent-profile=true
+```
+
+### OpenShell sandbox
+
+The **Sandbox** page of the application shows the gateway status, the policy in force and
+runs fixed isolation scenarios (computation and identity allowed; network, system write and
+reads outside the policy denied). Same checks from the API:
+
+```bash
+curl https://backend-<namespace>.<apps-domain>/api/v1/sandbox/policy
+curl -X POST https://backend-<namespace>.<apps-domain>/api/v1/sandbox/demo/network   # expect denied
+```
+
+`compute_payout` (claims server) builds the payout computation from the claim's figures and
+runs it with `run_python` in the sandbox (`SANDBOX_MCP_URL`); each run is visible in the chat
+trace panel and on the claim page.
+
 ### Business processing
 
 ```bash

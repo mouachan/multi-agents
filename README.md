@@ -60,7 +60,7 @@ Many business processes require expert analysis of documents, comparison with hi
 
 Instead of rigid, pre-programmed rules, the system uses the **ReAct (Reasoning + Acting)** pattern where an AI agent reasons about what information it needs, calls appropriate tools, observes the results, and repeats until it can make a decision.
 
-Business processing (the **Process** button, `POST /api/v1/<domain>/<id>/process`) runs a **guided workflow** in the agent: one OGX Responses call per tool (`tool_choice: required`, `max_tool_calls: 1`, `parallel_tool_calls: false`, chained by `previous_response_id`), then a final call that analyzes the results, may use the optional tools (`run_python`, knowledge base search) and ends with a JSON decision block. Llama emits Python-like text instead of structured calls when asked for several tools at once, so one tool per call keeps processing reliable; a failed step is retried once, then recorded and the workflow continues.
+Business processing (the **Process** button, `POST /api/v1/<domain>/<id>/process`) runs a **guided workflow** in the agent: one OGX Responses call per tool (`tool_choice: required`, `max_tool_calls: 1`, `parallel_tool_calls: false`, chained by `previous_response_id`), then a final call that analyzes the results, may use the optional tools (knowledge base search) and ends with a JSON decision block. Llama emits Python-like text instead of structured calls when asked for several tools at once, so one tool per call keeps processing reliable; a failed step is retried once, then recorded and the workflow continues.
 
 ```
 Customer Submits Claim
@@ -68,14 +68,19 @@ Customer Submits Claim
 +-------------------------------------------------------+
 |  Guided agent workflow — one tool per OGX call         |
 +-------------------------------------------------------+
-|  1. retrieve_user_info(user_id)  -> Contracts          |
-|  2. retrieve_similar_claims()    -> Precedents (RAG)   |
-|  3. ocr_document(claim_number)   -> Extracted text     |
-|  4. analysis (+ run_python in the OpenShell sandbox)   |
+|  1. ocr_document(claim_number)   -> Extracted text     |
+|  2. retrieve_user_info(user_id)  -> Contracts          |
+|  3. retrieve_similar_claims()    -> Precedents of the  |
+|                                     same type + their  |
+|                                     decisions (RAG)    |
+|  4. compute_payout(claim_number) -> Coverage + payout, |
+|                                     computed in the    |
+|                                     OpenShell sandbox  |
+|  5. analysis                                           |
 +-------------------------------------------------------+
         |
   JSON decision: Approve / Deny / Manual Review
-  + confidence + reasoning
+  + confidence + reasoning (no matching contract: Deny)
         |
   Backend saves the decision and embeds the document
   (searchable as a precedent)
@@ -552,8 +557,15 @@ helm upgrade multi-agents helm/multi-agents \
 
 ### Resetting Data
 
+The **Admin** page button (`POST /api/v1/admin/reset-database`, `backend/app/services/demo_reset.py`) puts claims, tenders and complaints back in their installation state while keeping what is costly to rebuild, in one transaction:
+
+1. **snapshot**: documents (OCR text + embedding), links to the PDFs in OGX Files, embeddings of the reference data, decisions of the installation precedents (`database/seed_data/precedent_decisions.json`, shared with data-init)
+2. **reload**: truncate the business tables (chat history kept) and run the seed (`/app/seed/seed.sql`, from the init-postgres ConfigMap on OpenShift, `./database/seed_data` locally)
+3. **restore**: by business key; the precedents get their installation decision and status, so similarity searches work right away
+
+To start from an empty database instead:
+
 ```bash
-# Remove volumes and restart
 podman compose down -v
 podman compose up --build
 ```
@@ -583,7 +595,8 @@ The step-by-step platform setup (operators, DataScienceCluster patch, SPIRE oper
 | PII masking, jailbreak check | **NeMo Guardrails** (`NemoGuardrails`, TrustyAI) | `templates/guardrails/` |
 | Traces, versioned prompts | **MLflow** (tracing + Prompt Registry) | `templates/mlflow/` |
 | Agent identity without a mesh | **SPIFFE/SPIRE** via ZTWIM (`ClusterSPIFFEID`) | `templates/spiffe/` |
-| Sandboxed code execution (`run_python`) | **OpenShell** (NVIDIA, Developer Preview): kernel-enforced policy, no network | `templates/openshell/`, `mcp.sandbox` — see [openshell/README.md](openshell/README.md) |
+| Sandboxed code execution (`run_python`, `compute_payout`) | **OpenShell** (NVIDIA, Developer Preview): kernel-enforced policy, no network; **Sandbox** page of the UI (policy in force, live isolation tests) | `templates/openshell/`, `mcp.sandbox` — see [openshell/README.md](openshell/README.md) |
+| Models and agents in the Gen AI studio | **AI asset endpoints**: MaaS models for the cluster users (`models.maas.userAccess`), agent profiles of the A2A agents (MLflow prompt, MCP tools) | `templates/maas/`, `templates/rhoai/agent-profiles.yaml` |
 | Agents and MCP servers in the AI hub catalogs | **Model catalog** sources (`opendatahub.io/catalog-source`) | `templates/rhoai/` (`rhoaiCatalog`) |
 | Metrics dashboard (OGX, MLflow, MaaS) | **Perses** dashboard in *Observe & monitor* | `templates/monitoring/` (`observability`) |
 
@@ -983,16 +996,21 @@ The `FR_*` entities are custom regex recognizers defined in the NeMo ConfigMap. 
 
 The backend and the A2A agents export distributed traces via **OpenTelemetry** to **MLflow RHOAI** (GenAI apps & agents tab). Tracing is enabled by `mlflow.enabled` (default `true`) and is silently disabled when `MLFLOW_TRACKING_URI` is empty.
 
-**How it works**: The OpenTelemetry SDK uses an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Authentication uses the pod's ServiceAccount token, the RHOAI workspace (namespace) is sent as a header, TLS uses OpenShift's `service-ca.crt`. The backend writes to `mlflow.experimentName`; each agent to `<experimentName>-<agent>` (e.g. `multi-agent-orchestrator-claims-agent`).
+**How it works**: The OpenTelemetry SDK uses an OTLP/HTTP exporter that sends traces to MLflow's `/v1/traces` endpoint. Authentication uses the pod's ServiceAccount token, the RHOAI workspace (namespace) is sent as a header, TLS uses OpenShift's `service-ca.crt`. The backend and the agents write to the same experiment (`mlflow.experimentName`), so one chat turn or business processing is **one trace**: the backend sends the W3C `traceparent` of its A2A span in the A2A metadata and the agent's spans join it (filter by `agent.id` / `agent.profile`).
 
-**Span hierarchy of an agent call** (visible in MLflow "GenAI apps & agents"):
+**Span hierarchy of a turn** (visible in MLflow "GenAI apps & agents", grouped by session):
 
 ```
-<agent>/<profile> | <message>   (AGENT, root)
-├── guardrails                  (GUARDRAIL)
-├── tool:<name>                 (TOOL, one per MCP call)
-└── llm-response                (CHAT_MODEL, token usage)
+chat | <message>  or  process | <domain> <number>   (backend root: input, answer)
+├── routing                     (method, score, candidates)
+└── a2a:<agent>                 (agent card, JWT-SVID audience, task id and states, SPIFFE caller)
+    └── <agent>/<profile>       (agent run)
+        ├── guardrails          (input / output verdicts)
+        ├── tool:<name>         (one per MCP call: arguments and output, sandbox runs)
+        └── llm-response        (token usage)
 ```
+
+**Application trace**: the same turn is also saved with the chat message (`chat_messages.trace`, `backend/app/services/agents/turn_trace.py`): the events streamed to the UI with their offsets, without the raw tool outputs (unmasked personal data), plus the MLflow trace id. The **Traçabilité** panel of the chat replays it for past turns and links to the MLflow trace (`MLFLOW_UI_URL`, default `https://rh-ai.<apps-domain>/mlflow`).
 
 Each span includes: `response.id`, input/output text, tool call details, token usage, prompt name/version/source and agent decision metadata.
 
@@ -1012,7 +1030,8 @@ helm upgrade multi-agents helm/multi-agents \
 |-----------|-------------|---------|
 | `mlflow.enabled` | Tracing + Prompt Registry + RBAC RoleBinding | `true` |
 | `mlflow.trackingUri` | MLflow RHOAI internal URL (keep the `/mlflow` prefix) | `https://mlflow.redhat-ods-applications.svc:8443/mlflow` |
-| `mlflow.experimentName` | MLflow experiment name (agents append `-<agent>`) | `multi-agent-orchestrator` |
+| `mlflow.experimentName` | MLflow experiment of the backend and the agents (one trace per turn) | `multi-agent-orchestrator` |
+| `mlflow.uiUrl` | MLflow UI base URL for the trace links of the chat panel | `https://rh-ai.<apps-domain>/mlflow` |
 | `mlflow.workspace` | RHOAI workspace (namespace) | release namespace |
 | `mlflow.prompts.alias` | Prompt alias loaded by the agents | `production` |
 | `mlflow.prompts.cacheTtlSeconds` | Prompt cache in the agents | `60` |
