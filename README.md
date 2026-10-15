@@ -17,7 +17,7 @@ It runs on **Red Hat OpenShift AI 3.5**: decoupled **A2A** domain agents, **OGX*
 - [Technology Stack](#technology-stack)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment) — see also [RHOAI-3.5-SETUP.md](RHOAI-3.5-SETUP.md)
-- [Configuration](#configuration)
+- [Configuration](#configuration) — models, A2A agents, [access profiles](#access-profiles-openshift-login), prompts
 - [NeMo Guardrails](#nemo-guardrails)
 - [MLflow Tracing](#mlflow-tracing-opentelemetry)
 - [Troubleshooting](#troubleshooting)
@@ -1032,6 +1032,13 @@ chat | <message>  or  process | <domain> <number>   (backend root: input, answer
         └── llm-response        (token usage)
 ```
 
+**Sessions and users**: the root span carries `session.id` (the chat session `session_…`, or
+`<entity>-<id>` for a business processing, e.g. `claim-<uuid>`) and, with authentication, `user.id`
+(the OpenShift user). MLflow turns them into the trace's session and user: the experiment's
+*Sessions* view groups the turns of one conversation, and traces can be filtered by user. Open
+experiment `multi-agent-orchestrator` (`mlflow.experimentName`); the `<experiment>-<agent>`
+experiments of earlier versions are no longer written.
+
 **Application trace**: the same turn is also saved with the chat message (`chat_messages.trace`, `backend/app/services/agents/turn_trace.py`): the events streamed to the UI with their offsets, without the raw tool outputs (unmasked personal data), plus the MLflow trace id. The **Traçabilité** panel of the chat replays it for past turns and links to the MLflow trace (`MLFLOW_UI_URL`, default `https://rh-ai.<apps-domain>/mlflow`).
 
 Each span includes: `response.id`, input/output text, tool call details, token usage, prompt name/version/source and agent decision metadata.
@@ -1107,10 +1114,11 @@ curl "$BACKEND/api/v1/claims/$CLAIM_ID/status" | jq .status
 # Get decision
 curl "$BACKEND/api/v1/claims/$CLAIM_ID/decision" | jq
 
-# Chat (SSE streaming)
+# Chat (SSE streaming): create a session, then send messages to it
+SESSION=$(curl -s -X POST "$BACKEND/api/v1/orchestrator/sessions" -H "Content-Type: application/json" -d '{}' | jq -r .session_id)
 curl -N -X POST "$BACKEND/api/v1/orchestrator/chat/stream" \
   -H "Content-Type: application/json" \
-  -d '{"message": "Analyse le sinistre CLM-2024-0015", "session_id": null}'
+  -d "{\"message\": \"Analyse le sinistre CLM-2024-0015\", \"session_id\": \"$SESSION\"}"
 ```
 
 ---

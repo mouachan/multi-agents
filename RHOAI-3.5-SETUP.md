@@ -502,6 +502,12 @@ precedents on every upgrade; the backend embeds each processed document.
   `prompt.name` / `prompt.version` / `prompt.source`.
 * Set `mlflow.prompts.promoteOnSync=false` to keep UI promotions across upgrades.
 
+**Traces**: experiment `multi-agent-orchestrator` (*MLflow → Experiments*), one trace per chat
+turn or business processing (backend, A2A and agent spans together). The *Sessions* view groups
+the turns of a conversation (`session.id`: chat session, or `claim-<id>` / `tender-<id>` /
+`reclamation-<id>` for processings); each trace records the OpenShift user (`user.id`). The
+chat's *Execution trace* panel links to the trace.
+
 ---
 
 ## 10. Metrics dashboard (Perses)
