@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import tracing
+from app.core.auth import current_token
 from app.services.agents.turn_trace import TurnTrace
 from app.core.config import settings
 from app.services.agent.context_builder import ContextBuilder
@@ -214,8 +215,10 @@ class BaseAgentService(ABC):
                 # One MLflow trace per processing: the agent's spans join it (traceparent)
                 turn = TurnTrace(f"process | {self.get_entity_type()} {number}",
                                  {"message": processing_message[:4000]}, session_id=context_id)
+                # user_token: the OpenShift token of the user who started the processing (the
+                # background job inherits the request context), presented to the MCP Gateway
                 metadata = {"profile": agent_def.id, "mode": "process", "tools": tools or self.get_tools(),
-                            "decision_values": agent_def.decision_values}
+                            "decision_values": agent_def.decision_values, "user_token": current_token()}
                 traceparent = turn.start_a2a(agent_def.id)
                 if traceparent:
                     metadata["traceparent"] = traceparent

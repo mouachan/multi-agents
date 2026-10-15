@@ -60,18 +60,23 @@ class OGXClient:
         self.mcp_gateway_url = mcp_gateway_url
         self.mcp_server_url_template = mcp_server_url_template
 
-    def build_mcp_tools(self, tools: List[str]) -> List[Dict[str, Any]]:
+    def build_mcp_tools(self, tools: List[str], authorization: Optional[str] = None) -> List[Dict[str, Any]]:
+        """MCP tool definitions; authorization (the end user's token) is sent to the MCP Gateway,
+        whose AuthPolicy checks the user's access to each tool. OGX does not store it."""
         if not tools:
             return []
         if self.mcp_gateway_url:
             # One MCP endpoint aggregating every server (Kuadrant MCP Gateway, no tool prefix)
-            return [{
+            tool = {
                 "type": "mcp",
                 "server_label": "mcp-gateway",
                 "server_url": self.mcp_gateway_url,
                 "allowed_tools": sorted(tools),
                 "require_approval": "never",
-            }]
+            }
+            if authorization:
+                tool["authorization"] = authorization
+            return [tool]
 
         servers: Dict[str, set] = {}
         for tool in tools:
@@ -101,6 +106,7 @@ class OGXClient:
         previous_response_id: Optional[str] = None,
         tool_choice: Optional[str] = None,
         max_tool_calls: Optional[int] = None,
+        authorization: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
             "model": model,
@@ -109,7 +115,7 @@ class OGXClient:
             "stream": True,
             "store": True,
             "max_output_tokens": max_tokens,
-            "tools": self.build_mcp_tools(tools),
+            "tools": self.build_mcp_tools(tools, authorization),
         }
         if previous_response_id:
             payload["previous_response_id"] = previous_response_id

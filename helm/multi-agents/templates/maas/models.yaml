@@ -99,6 +99,12 @@ spec:
     - name: system:serviceaccounts:{{ $ns }}
 {{- with .Values.models.maas.userAccess }}
 {{- if .enabled }}
+{{- /* with authentication, the models are granted to the access profiles */}}
+{{- $groups := .groups }}
+{{- if $.Values.auth.enabled }}
+{{- $groups = list }}
+{{- range $.Values.auth.profiles }}{{ $groups = append $groups .group }}{{ end }}
+{{- end }}
 ---
 # Cluster users: the same models in OpenShift AI (AI asset endpoints, Gen AI playground)
 # with their own MaaS keys and token counter. Lower priority than the application
@@ -114,7 +120,7 @@ spec:
   priority: {{ .priority }}
   owner:
     groups:
-    {{- range .groups }}
+    {{- range $groups }}
     - name: {{ . }}
     {{- end }}
   modelRefs:
@@ -141,7 +147,7 @@ spec:
 {{- end }}
   subjects:
     groups:
-    {{- range .groups }}
+    {{- range $groups }}
     - name: {{ . }}
     {{- end }}
 {{- end }}

@@ -25,7 +25,44 @@ spec:
       labels:
         app: frontend
     spec:
+      {{- if .Values.auth.enabled }}
+      serviceAccountName: frontend
+      {{- end }}
       containers:
+      {{- if .Values.auth.enabled }}
+      # OpenShift OAuth login in front of the UI and its /api proxy: forwards the user's
+      # token (X-Forwarded-Access-Token) that the backend validates and propagates
+      - name: oauth-proxy
+        image: {{ .Values.auth.oauthProxy.image }}
+        args:
+          - --provider=openshift
+          - --https-address=:8443
+          - --http-address=
+          - --upstream=http://localhost:8080
+          - --openshift-service-account=frontend
+          - --tls-cert=/etc/tls/private/tls.crt
+          - --tls-key=/etc/tls/private/tls.key
+          - --cookie-secret-file=/etc/proxy/secrets/session_secret
+          - --cookie-expire=8h
+          - --pass-access-token
+          - --scope=user:info user:check-access
+          - --skip-provider-button
+          - --skip-auth-regex=^/(favicon\.svg|logo\.svg)$
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+        volumeMounts:
+        - name: proxy-tls
+          mountPath: /etc/tls/private
+          readOnly: true
+        - name: proxy-cookie
+          mountPath: /etc/proxy/secrets
+          readOnly: true
+      {{- end }}
       - name: frontend
         image: {{ include "multi-agents.imageRegistry" . }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}
         imagePullPolicy: {{ .Values.global.imagePullPolicy }}
@@ -47,4 +84,42 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
+      {{- if .Values.auth.enabled }}
+      volumes:
+      - name: proxy-tls
+        secret:
+          secretName: frontend-proxy-tls
+      - name: proxy-cookie
+        secret:
+          secretName: frontend-proxy-cookie
+      {{- end }}
+{{- if .Values.auth.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+  annotations:
+    # OAuth client of the proxy: redirects back to the frontend route
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"frontend"}}'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontend-proxy-cookie
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+type: Opaque
+data:
+  {{- $existing := lookup "v1" "Secret" (include "multi-agents.namespace" .) "frontend-proxy-cookie" }}
+  {{- if and $existing $existing.data }}
+  session_secret: {{ index $existing.data "session_secret" }}
+  {{- else }}
+  session_secret: {{ randAlphaNum 32 | b64enc }}
+  {{- end }}
+{{- end }}
 {{- end }}

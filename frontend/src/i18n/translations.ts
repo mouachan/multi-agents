@@ -194,6 +194,17 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
       orchestrator: "Bienvenue ! Je suis l'orchestrateur multi-agents. Decrivez ce que vous souhaitez faire et je vous orienterai vers l'agent specialise.",
       agent: "Session démarrée avec **{agent}**. Comment puis-je vous aider ?",
     },
+    auth: {
+      signOut: "Se déconnecter",
+      error: "Impossible de vérifier votre session",
+      noProfile: "Aucun profil",
+      forbiddenTitle: "Accès non autorisé",
+      forbiddenText: "Votre profil ne donne pas accès à cette page. Les droits sont gérés dans OpenShift (groupes et rôles RBAC du namespace).",
+      profile_admin: "Administration",
+      profile_finance: "Finance",
+      profile_btp: "BTP",
+      profile_logistics: "Logistique",
+    },
     sandbox: {
       title: "Sandbox OpenShell",
       viewPolicy: "Voir la politique appliquée",
@@ -894,6 +905,17 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
     welcome: {
       orchestrator: "Welcome! I'm the multi-agent orchestrator. Describe what you'd like to do and I'll route you to the right specialized agent.",
       agent: "Session started with **{agent}**. How can I help you?",
+    },
+    auth: {
+      signOut: "Sign out",
+      error: "Your session could not be checked",
+      noProfile: "No profile",
+      forbiddenTitle: "Access denied",
+      forbiddenText: "Your profile does not give access to this page. Access is managed in OpenShift (groups and RBAC roles of the namespace).",
+      profile_admin: "Administration",
+      profile_finance: "Finance",
+      profile_btp: "Construction (BTP)",
+      profile_logistics: "Logistics",
     },
     sandbox: {
       title: "OpenShell sandbox",

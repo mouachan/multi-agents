@@ -1,0 +1,110 @@
+{{- /*
+Access profiles = OpenShift groups; what they may use = RBAC, one Role per agent:
+  verb "use"  on services/<agent>-agent           -> the agent in the UI (backend SubjectAccessReview)
+  verb "call" on tools.mcp.multi-agents.io/<tool> -> its MCP tools (MCP Gateway AuthPolicy)
+The admin profile also gets verb "admin" on services/backend (demo reset). Edit the
+RoleBindings (or the group members) to change who may use what.
+*/}}
+{{- if .Values.auth.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- range $id, $p := .Values.auth.profiles }}
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: {{ $p.group }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+  annotations:
+    multi-agents.io/profile: {{ $id }}
+    openshift.io/display-name: {{ $p.displayName | quote }}
+users: {{ $p.users | default list | toJson }}
+{{- end }}
+{{- range $agent, $tools := .Values.auth.agentTools }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-{{ $agent }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: [services]
+  resourceNames: [{{ $agent }}-agent]
+  verbs: [use]
+- apiGroups: [mcp.multi-agents.io]
+  resources: [tools]
+  resourceNames: {{ $tools | toJson }}
+  verbs: [call]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: multi-agents-admin
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: [services]
+  resourceNames: [backend]
+  verbs: [admin]
+{{- range $id, $p := .Values.auth.profiles }}
+{{- range $agent := $p.agents }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $id }}-agent-{{ $agent }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-{{ $agent }}
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: {{ $p.group }}
+{{- end }}
+{{- if $p.admin }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $id }}-admin
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: multi-agents-admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: {{ $p.group }}
+{{- end }}
+{{- end }}
+---
+# The backend validates the users' tokens (TokenReview) and checks their access
+# (SubjectAccessReview)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $ns }}-backend-auth-delegator
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: backend
+  namespace: {{ $ns }}
+{{- end }}

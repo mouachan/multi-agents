@@ -1,0 +1,85 @@
+{{- /*
+MCP tools governance, enforced by the MCP Gateway (Kuadrant AuthPolicy, Authorino) with the
+end user's OpenShift token (backend -> agent -> OGX MCP "authorization" -> gateway):
+  - listener "mcp" (clients): only authenticated users
+  - listener "mcps" (route to each MCP server): each tools/call (header x-mcp-toolname) needs
+    RBAC verb "call" on tools.mcp.multi-agents.io/<tool> (profiles-rbac.yaml)
+The broker's own discovery calls (no tool name) are not affected.
+*/}}
+{{- if and .Values.auth.enabled .Values.mcpGateway.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: mcp-gateway-users
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: mcp-gateway
+    sectionName: mcp
+  when:
+    - predicate: "!request.path.contains('/.well-known')"
+  rules:
+    authentication:
+      openshift-users:
+        kubernetesTokenReview:
+          audiences: ["https://kubernetes.default.svc"]
+    response:
+      unauthenticated:
+        code: 401
+        body:
+          value: '{"error":"Unauthorized","message":"An OpenShift user token is required"}'
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: mcp-tools-rbac
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: mcp-gateway
+    sectionName: mcps
+  when:
+    - predicate: "request.headers.exists(h, h == 'x-mcp-toolname')"
+  rules:
+    authentication:
+      openshift-users:
+        kubernetesTokenReview:
+          audiences: ["https://kubernetes.default.svc"]
+    authorization:
+      tool-rbac:
+        kubernetesSubjectAccessReview:
+          user:
+            selector: auth.identity.user.username
+          authorizationGroups:
+            selector: auth.identity.user.groups
+          resourceAttributes:
+            namespace:
+              value: {{ $ns }}
+            group:
+              value: mcp.multi-agents.io
+            resource:
+              value: tools
+            name:
+              selector: request.headers.x-mcp-toolname
+            verb:
+              value: call
+    response:
+      unauthenticated:
+        code: 401
+        body:
+          value: '{"error":"Unauthorized","message":"An OpenShift user token is required"}'
+      unauthorized:
+        code: 403
+        body:
+          value: '{"error":"Forbidden","message":"Your profile does not allow this tool"}'
+{{- end }}

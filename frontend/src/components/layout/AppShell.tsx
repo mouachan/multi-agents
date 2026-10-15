@@ -1,22 +1,46 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  Box, Building2, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, MessagesSquare, Moon, Package, Settings, ShieldCheck, Sun,
+  Box, Building2, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, LogOut, MessagesSquare, Moon, Package, Settings, ShieldCheck, Sun,
 } from 'lucide-react'
+import { SIGN_OUT_URL, useAuth, type Domain } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { cn } from '../../lib/cn'
 import { usePlatform } from '../../theme/PlatformContext'
 import { useTheme } from '../../theme/ThemeContext'
 
-const NAV = [
+/** Menu entries; domain / admin entries are shown to the users who may use them */
+const NAV: { to: string; key: string; icon: typeof Box; end?: boolean; domain?: Domain; admin?: boolean }[] = [
   { to: '/', key: 'nav.dashboard', icon: LayoutDashboard, end: true },
   { to: '/chat', key: 'nav.chat', icon: MessagesSquare },
-  { to: '/claims', key: 'nav.claims', icon: ShieldCheck },
-  { to: '/tenders', key: 'nav.tenders', icon: Building2 },
-  { to: '/postal', key: 'nav.postal', icon: Package },
+  { to: '/claims', key: 'nav.claims', icon: ShieldCheck, domain: 'claims' },
+  { to: '/tenders', key: 'nav.tenders', icon: Building2, domain: 'tenders' },
+  { to: '/postal', key: 'nav.postal', icon: Package, domain: 'postal' },
   { to: '/sandbox', key: 'nav.sandbox', icon: Box },
-  { to: '/admin', key: 'nav.admin', icon: Settings },
+  { to: '/admin', key: 'nav.admin', icon: Settings, admin: true },
 ]
+
+/** Signed-in user: name, access profiles, sign-out */
+function UserMenu() {
+  const { t } = useTranslation()
+  const { user } = useAuth()
+  const profiles = user.profiles.map((p) => t(`auth.profile_${p}`)).join(' · ') || t('auth.noProfile')
+  return (
+    <div className="flex items-center gap-2">
+      <div className="hidden text-right leading-tight sm:block">
+        <p className="text-xs font-semibold text-ink">{user.username}</p>
+        <p className="text-[10px] text-ink-subtle">{profiles}</p>
+      </div>
+      <a
+        href={SIGN_OUT_URL}
+        title={t('auth.signOut')}
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:text-ink"
+      >
+        <LogOut className="h-4 w-4" />
+      </a>
+    </div>
+  )
+}
 
 function Logo({ collapsed }: { collapsed: boolean }) {
   const { t } = useTranslation()
@@ -34,6 +58,7 @@ function Logo({ collapsed }: { collapsed: boolean }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { user, can } = useAuth()
   const { t, locale, setLocale } = useTranslation()
   const { theme, toggleTheme } = useTheme()
   const { modelId } = usePlatform()
@@ -61,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Logo collapsed={collapsed} />
         </div>
         <nav className="flex-1 space-y-0.5 p-2">
-          {NAV.map(({ to, key, icon: Icon, end }) => (
+          {NAV.filter((n) => (!n.domain || can(n.domain)) && (!n.admin || user.admin)).map(({ to, key, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -128,6 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
+            <UserMenu />
           </div>
         </header>
 

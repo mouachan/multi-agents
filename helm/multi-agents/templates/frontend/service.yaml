@@ -5,6 +5,10 @@ kind: Service
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "5" # after frontend
+    {{- if .Values.auth.enabled }}
+    # TLS certificate of the OAuth proxy (re-encrypt route)
+    service.beta.openshift.io/serving-cert-secret-name: frontend-proxy-tls
+    {{- end }}
   name: frontend
   namespace: {{ include "multi-agents.namespace" . }}
   labels:
@@ -17,6 +21,12 @@ spec:
     targetPort: 8080
     protocol: TCP
     name: http
+  {{- if .Values.auth.enabled }}
+  - port: 8443
+    targetPort: 8443
+    protocol: TCP
+    name: https
+  {{- end }}
   selector:
     app: frontend
 {{- end }}

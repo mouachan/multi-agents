@@ -540,6 +540,53 @@ minio:
       memory: 1Gi
 
 # =============================================================================
+# Authentication and access profiles
+# Users log in with OpenShift OAuth (oauth-proxy in front of the UI). A profile is an
+# OpenShift group; what it may use is OpenShift RBAC, one Role per agent:
+#   - verb "use" on services/<agent>-agent: chat and business pages of that agent (backend
+#     SubjectAccessReview)
+#   - verb "call" on tools.mcp.multi-agents.io/<tool>: MCP tools, checked by the MCP Gateway
+#     AuthPolicy (Authorino SubjectAccessReview) on every tools/call, with the end user's token
+# Models: the users' MaaS subscription is granted to the profile groups.
+# =============================================================================
+auth:
+  enabled: false
+  profiles:
+    admin:
+      group: multi-agents-admins
+      displayName: Administration
+      agents: [claims, tenders, postal]
+      admin: true            # demo reset, every agent
+      users: []              # e.g. --set-json 'auth.profiles.admin.users=["alice"]'
+    finance:
+      group: multi-agents-finance
+      displayName: Finance
+      agents: [claims]
+      users: []
+    btp:
+      group: multi-agents-btp
+      displayName: BTP
+      agents: [tenders]
+      users: []
+    logistics:
+      group: multi-agents-logistics
+      displayName: Logistique
+      agents: [postal]
+      users: []
+  # MCP tools of each agent (granted with the agent, verb "call")
+  agentTools:
+    claims: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout, save_claim_decision,
+             ocr_document, retrieve_user_info, retrieve_similar_claims, search_knowledge_base, run_python]
+    tenders: [list_tenders, get_tender, get_tender_documents, get_tender_statistics, save_tender_decision,
+              ocr_document, retrieve_similar_references, retrieve_historical_tenders, retrieve_capabilities,
+              search_knowledge_base]
+    postal: [list_reclamations, get_reclamation, get_reclamation_documents, get_reclamation_statistics,
+             save_reclamation_decision, get_tracking, search_tracking, search_courrier_knowledge,
+             retrieve_similar_reclamations, ocr_document]
+  oauthProxy:
+    image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+
+# =============================================================================
 # Hibernation: CronJobs scaling the Helm-managed workloads (backend, frontend,
 # agents, PostgreSQL, MinIO) to zero at night and back up in the morning.
 # Operator-managed workloads stay up. Schedules are in the cluster time zone (UTC).

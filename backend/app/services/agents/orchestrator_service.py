@@ -12,7 +12,7 @@ Responsibilities:
 import logging
 import re
 import uuid
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
 import httpx
 
@@ -22,6 +22,7 @@ from app.services.pii.redactor import redact_text_pii
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import User, agent_domain, current_token
 from app.core.config import settings
 from app.prompts.orchestrator_prompts import (
     CHAT_AGENT_WRAPPER,
@@ -125,12 +126,14 @@ class OrchestratorService:
         db: AsyncSession,
         session_id: str,
         message: str,
-        user_id: Optional[str] = None,
+        user: Optional[User] = None,
     ) -> Dict[str, Any]:
         """
-        Process a user message: classify intent, route to agent, return response.
+        Process a user message: classify intent, route to an agent the user may use, return response.
         """
         from app.models.conversation import ChatMessage, ChatSession
+
+        user_id = user.username if user else None
 
         # Get session
         result = await db.execute(
@@ -150,7 +153,7 @@ class OrchestratorService:
         await db.commit()
 
         # Semantic routing over the A2A agent cards (keyword fallback)
-        classification = await self._classify(message, session.agent_id)
+        classification = await self._classify(message, session.agent_id, self._allowed_agents(user))
         intent = classification.get("intent", "general")
         agent_id = classification.get("agent_id") or session.agent_id
         response_text = classification.get("message", "")
@@ -308,7 +311,7 @@ class OrchestratorService:
         db: AsyncSession,
         session_id: str,
         message: str,
-        user_id: Optional[str] = None,
+        user: Optional[User] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process a user message with SSE streaming.
@@ -319,7 +322,7 @@ class OrchestratorService:
         """
         turn = TurnTrace(f"chat | {message[:80].strip()}", {"message": message}, session_id=session_id)
         try:
-            async for event in self._message_stream(db, session_id, message, user_id, turn):
+            async for event in self._message_stream(db, session_id, message, user, turn):
                 turn.add(event)
                 yield event
         finally:
@@ -330,10 +333,13 @@ class OrchestratorService:
         db: AsyncSession,
         session_id: str,
         message: str,
-        user_id: Optional[str],
+        user: Optional[User],
         turn: TurnTrace,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         from app.models.conversation import ChatMessage, ChatSession
+
+        user_id = user.username if user else None
+        allowed = self._allowed_agents(user)
 
         # Get session
         result = await db.execute(
@@ -354,7 +360,10 @@ class OrchestratorService:
         await db.commit()
 
         # Semantic routing over the A2A agent cards (keyword fallback)
-        classification = await self._classify(message, session.agent_id)
+        if allowed is not None and not allowed:
+            yield {"type": "error", "message": "Your profile gives access to no agent"}
+            return
+        classification = await self._classify(message, session.agent_id, allowed)
         yield classification["routing"]
         intent = classification.get("intent", "general")
         agent_id = classification.get("agent_id") or session.agent_id
@@ -575,15 +584,15 @@ class OrchestratorService:
         self,
         db: AsyncSession,
         limit: int = 20,
+        owner: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List recent chat sessions with last message preview."""
+        """List recent chat sessions (of an owner when given) with last message preview."""
         from app.models.conversation import ChatMessage, ChatSession
 
-        result = await db.execute(
-            select(ChatSession)
-            .order_by(ChatSession.updated_at.desc())
-            .limit(limit)
-        )
+        query = select(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit)
+        if owner is not None:
+            query = query.where(ChatSession.session_metadata["owner"].astext == owner)
+        result = await db.execute(query)
         sessions = result.scalars().all()
 
         session_list = []
@@ -671,16 +680,28 @@ class OrchestratorService:
     async def delete_all_sessions(
         self,
         db: AsyncSession,
+        owner: Optional[str] = None,
     ) -> int:
-        """Delete all sessions and their messages."""
+        """Delete all sessions (of an owner when given) and their messages."""
         from sqlalchemy import delete as sql_delete
         from app.models.conversation import ChatMessage, ChatSession
 
+        sessions = select(ChatSession.id)
+        if owner is not None:
+            sessions = sessions.where(ChatSession.session_metadata["owner"].astext == owner)
         # Delete messages first, then sessions
-        await db.execute(sql_delete(ChatMessage))
-        result = await db.execute(sql_delete(ChatSession))
+        await db.execute(sql_delete(ChatMessage).where(ChatMessage.session_id.in_(sessions)))
+        result = await db.execute(sql_delete(ChatSession).where(ChatSession.id.in_(sessions)))
         await db.commit()
         return result.rowcount
+
+    async def session_owner(self, db: AsyncSession, session_id: str) -> Optional[str]:
+        """Owner of a session ('' for sessions created before authentication); None if unknown."""
+        from app.models.conversation import ChatSession
+
+        session = (await db.execute(
+            select(ChatSession).where(ChatSession.session_id == session_id))).scalar_one_or_none()
+        return None if session is None else (session.session_metadata or {}).get("owner", "")
 
     async def get_session_prompt(
         self,
@@ -766,13 +787,15 @@ class OrchestratorService:
 
     @staticmethod
     def _a2a_metadata(agent_def, user_lang: str, session, previous_response_id: Optional[str]) -> Dict[str, Any]:
-        """A2A message metadata understood by the agents' executor (see agents/shared/executor.py)."""
+        """A2A message metadata understood by the agents' executor (see agents/shared/executor.py).
+        user_token: the user's OpenShift token, presented by the agent to the MCP Gateway."""
         return {
             "profile": agent_def.id,
             "mode": "chat",
             "language": user_lang,
             "previous_response_id": previous_response_id,
             "instructions_override": (session.session_metadata or {}).get("custom_prompt"),
+            "user_token": current_token(),
         }
 
     async def _call_via_a2a(
@@ -915,11 +938,20 @@ class OrchestratorService:
                     return True
         return False
 
-    async def _classify(self, message: str, current_agent_id: Optional[str] = None) -> Dict[str, Any]:
-        """Semantic routing (see semantic_router.py); keyword routing when disabled or on error."""
+    @staticmethod
+    def _allowed_agents(user: Optional[User]) -> Optional[Set[str]]:
+        """Registry agent ids the user may use (domain of their A2A agent); None = all."""
+        if user is None or not settings.auth_enabled:
+            return None
+        return {a.id for a in AgentRegistry.list_agents() if agent_domain(a.a2a_url) in user.domains}
+
+    async def _classify(self, message: str, current_agent_id: Optional[str] = None,
+                        allowed: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """Semantic routing (see semantic_router.py) among the allowed agents; keyword routing
+        when disabled or on error."""
         if settings.router_enabled:
             try:
-                decision = await self.router.route(message, current_agent_id)
+                decision = await self.router.route(message, current_agent_id, allowed)
                 intent = "follow_up" if decision.method == "sticky" else "agent_request"
                 return {
                     "intent": intent,
@@ -931,7 +963,9 @@ class OrchestratorService:
                 }
             except Exception as e:
                 logger.warning("Semantic routing failed, using keywords: %s", e)
-        result = self._fallback_classification(message, current_agent_id)
+        if allowed is not None and current_agent_id not in allowed:
+            current_agent_id = None
+        result = self._fallback_classification(message, current_agent_id, allowed)
         result["routing"] = {"type": "routing", "agent_id": result["agent_id"], "method": "keywords",
                              "score": None, "candidates": [], "duration_ms": 0}
         return result
@@ -940,6 +974,7 @@ class OrchestratorService:
         self,
         message: str,
         current_agent_id: Optional[str] = None,
+        allowed: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Fast intent classification using keyword matching from agent registry.
 
@@ -954,6 +989,8 @@ class OrchestratorService:
         intent = "general"
 
         for agent_def in AgentRegistry.list_agents():
+            if allowed is not None and agent_def.id not in allowed:
+                continue
             if agent_def.routing_keywords and self._match_keywords(
                 msg_lower, msg_words, agent_def.routing_keywords
             ):

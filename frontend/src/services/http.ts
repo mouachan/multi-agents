@@ -6,3 +6,10 @@ export const http = axios.create({
   headers: { 'Content-Type': 'application/json' },
   timeout: 300000, // agent processing can take minutes
 })
+
+// Session expired (the OAuth proxy no longer forwards a valid token): reload, the proxy sends
+// the browser to the OpenShift login
+http.interceptors.response.use(undefined, (error) => {
+  if (error?.response?.status === 401) window.location.reload()
+  return Promise.reject(error)
+})

@@ -28,14 +28,31 @@ from app.api.orchestrator.schemas import (
     SetPromptRequest,
     MessageItem,
 )
+from app.core.auth import User, agent_domain, current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.services.agents.orchestrator_service import OrchestratorService
+from app.services.agents.registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 orchestrator_service = OrchestratorService()
+
+
+async def _check_owner(db: AsyncSession, session_id: str, user: User) -> None:
+    """Sessions are private: the owner (or an administrator) only. 404 otherwise."""
+    owner = await orchestrator_service.session_owner(db, session_id)
+    if owner is None or (settings.auth_enabled and owner != user.username and not user.admin):
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+
+async def owned_session(session_id: str, user: User = Depends(current_user),
+                        db: AsyncSession = Depends(get_db)) -> str:
+    """Dependency for the /sessions/{session_id}/... routes."""
+    await _check_owner(db, session_id, user)
+    return session_id
 
 # Keep idle SSE streams alive (cloud load balancers close connections idle for ~60s
 # while the model generates or the guardrails hold the answer)
@@ -68,13 +85,18 @@ async def with_heartbeat(events: AsyncIterator[Dict[str, Any]]) -> AsyncIterator
 async def create_session(
     request: CreateSessionRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """Create a new chat session."""
+    """Create a new chat session owned by the user (with an agent they may use)."""
+    if settings.auth_enabled and request.agent_id:
+        agent_def = AgentRegistry.get(request.agent_id)
+        if agent_def and agent_domain(agent_def.a2a_url) not in user.domains:
+            raise HTTPException(status_code=403, detail="Your profile has no access to this agent")
     try:
         result = await orchestrator_service.create_session(
             db=db,
             agent_id=request.agent_id,
-            metadata=request.metadata,
+            metadata={**(request.metadata or {}), "owner": user.username},
             locale=request.locale,
         )
         return CreateSessionResponse(**result)
@@ -87,14 +109,16 @@ async def create_session(
 async def send_message(
     request: ChatMessageRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Send a message and get agent response."""
+    await _check_owner(db, request.session_id, user)
     try:
         result = await orchestrator_service.process_message(
             db=db,
             session_id=request.session_id,
             message=request.message,
-            user_id=request.user_id,
+            user=user,
         )
         return ChatMessageResponse(**result)
     except ValueError as e:
@@ -108,15 +132,18 @@ async def send_message(
 async def send_message_stream(
     request: ChatMessageRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Send a message and stream the agent response via SSE."""
+    await _check_owner(db, request.session_id, user)
+
     async def event_generator():
         try:
             async for event in with_heartbeat(orchestrator_service.process_message_stream(
                 db=db,
                 session_id=request.session_id,
                 message=request.message,
-                user_id=request.user_id,
+                user=user,
             )):
                 yield f"data: {json.dumps(event)}\n\n"
         except ValueError as e:
@@ -139,10 +166,12 @@ async def send_message_stream(
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """List all chat sessions."""
+    """List the user's chat sessions."""
     try:
-        sessions = await orchestrator_service.list_sessions(db)
+        sessions = await orchestrator_service.list_sessions(
+            db, owner=user.username if settings.auth_enabled else None)
         return SessionListResponse(
             sessions=[SessionSummary(**s) for s in sessions],
             total=len(sessions),
@@ -155,10 +184,12 @@ async def list_sessions(
 @router.delete("/sessions")
 async def delete_all_sessions(
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    """Delete all chat sessions and their messages."""
+    """Delete the user's chat sessions and their messages."""
     try:
-        count = await orchestrator_service.delete_all_sessions(db)
+        count = await orchestrator_service.delete_all_sessions(
+            db, owner=user.username if settings.auth_enabled else None)
         return {"status": "deleted", "count": count}
     except Exception as e:
         logger.error(f"Error deleting all sessions: {e}", exc_info=True)
@@ -167,7 +198,7 @@ async def delete_all_sessions(
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(
-    session_id: str,
+    session_id: str = Depends(owned_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a chat session and its messages."""
@@ -183,7 +214,7 @@ async def delete_session(
 
 @router.get("/sessions/{session_id}/prompt", response_model=PromptResponse)
 async def get_session_prompt(
-    session_id: str,
+    session_id: str = Depends(owned_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the effective prompt for a session."""
@@ -199,8 +230,8 @@ async def get_session_prompt(
 
 @router.put("/sessions/{session_id}/prompt", response_model=PromptResponse)
 async def set_session_prompt(
-    session_id: str,
     request: SetPromptRequest,
+    session_id: str = Depends(owned_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Set a custom prompt for this session."""
@@ -218,7 +249,7 @@ async def set_session_prompt(
 
 @router.delete("/sessions/{session_id}/prompt", response_model=PromptResponse)
 async def reset_session_prompt(
-    session_id: str,
+    session_id: str = Depends(owned_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Reset to default prompt."""
@@ -234,7 +265,7 @@ async def reset_session_prompt(
 
 @router.get("/sessions/{session_id}/messages", response_model=SessionMessagesResponse)
 async def get_session_messages(
-    session_id: str,
+    session_id: str = Depends(owned_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all messages for a session."""

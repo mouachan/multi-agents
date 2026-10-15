@@ -24,12 +24,21 @@ spec:
     kind: Service
     name: frontend
     weight: 100
+  {{- if .Values.auth.enabled }}
+  # through the OAuth proxy (TLS re-encrypted to its service-serving certificate)
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  {{- else }}
   port:
     targetPort: http
   {{- if .Values.frontend.route.tls.enabled }}
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+  {{- end }}
   {{- end }}
   wildcardPolicy: None
 {{- end }}

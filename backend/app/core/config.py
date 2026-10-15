@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     enable_pii_detection: bool = True
     pii_redaction_mode: str = "dual"  # "dual" = store original + redacted, "redact_only" = only redacted
 
+    # Authentication (app/core/auth.py): OpenShift OAuth token + RBAC access profiles
+    auth_enabled: bool = False  # AUTH_ENABLED
+    auth_profiles: str = "{}"  # AUTH_PROFILES: JSON {id: {group, displayName, agents, admin}}
+    auth_namespace: str = "multi-agents"  # AUTH_NAMESPACE: namespace of the RBAC Roles
+
     # CORS - default to restrictive, override in production via env vars
     cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
     cors_allow_credentials: bool = True

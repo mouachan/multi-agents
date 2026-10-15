@@ -10,6 +10,7 @@ import { PromptEditor } from '../components/chat/PromptEditor'
 import { SessionList } from '../components/chat/SessionList'
 import { Button, IconButton } from '../components/ui/Button'
 import { ErrorBanner, Spinner } from '../components/ui/Feedback'
+import { useAuth, type Domain } from '../auth/AuthContext'
 import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useTranslation } from '../i18n/LanguageContext'
@@ -57,6 +58,7 @@ export default function ChatPage() {
   const promptFromHome = (location.state as { prompt?: string } | null)?.prompt
   const { t, locale } = useTranslation()
   const { setModelId } = usePlatform()
+  const { can } = useAuth()
   const { agents } = useAgents()
   const chat = useChat(sessionId)
   const { messages, isSending } = chat
@@ -299,7 +301,7 @@ export default function ChatPage() {
                     <Sparkles className="h-3.5 w-3.5 text-brand-500" /> {t('conv.examples')}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {EXAMPLES.map((ex) => (
+                    {EXAMPLES.filter((ex) => can(agentVisual(ex.agent).domain as Domain)).map((ex) => (
                       <button
                         key={ex.key}
                         onClick={() => send(t(ex.key))}

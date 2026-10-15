@@ -21,7 +21,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -151,18 +151,26 @@ class SemanticRouter:
         answer = resp.json()["choices"][0]["message"]["content"].strip().strip("`'\".").lower()
         return next((c for c in candidates if c.lower() in answer), None)
 
-    async def route(self, message: str, current_agent_id: Optional[str] = None) -> RoutingDecision:
+    async def route(self, message: str, current_agent_id: Optional[str] = None,
+                    allowed: Optional[Set[str]] = None) -> RoutingDecision:
+        """Route among the agents the user may use (allowed; None = every agent)."""
         start = time.time()
+        if allowed is not None and current_agent_id not in allowed:
+            current_agent_id = None
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             await self._ensure_catalog(client)
             query = (await self._embed(client, [QUERY_PREFIX + message]))[0]
 
             best: Dict[str, float] = {}
             for agent_id, vec in self._entries:
+                if allowed is not None and agent_id not in allowed:
+                    continue
                 score = _cosine(query, vec)
                 if score > best.get(agent_id, -1.0):
                     best[agent_id] = score
             ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+            if not ranked:
+                raise PermissionError("No agent available for this user")
             (top_id, top_score), runner_up = ranked[0], (ranked[1] if len(ranked) > 1 else ("", 0.0))
 
             if top_score < self.min_score and current_agent_id:

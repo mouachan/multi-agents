@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import uuid
+from contextvars import ContextVar
 
 from a2a.helpers.proto_helpers import new_task, new_text_part
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -44,6 +45,11 @@ from .prompts import PromptStore, render
 from .response_parser import ResponseParser
 
 logger = logging.getLogger(__name__)
+
+# OpenShift token of the end user of the current A2A request (metadata "user_token"),
+# presented to the MCP Gateway on every OGX call (tools governance). One value per request
+# task; never logged nor traced.
+_user_token: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
 
 CHAT_WRAPPER_PROMPT = "chat-agent-wrapper"
 LANGUAGE_RULE_PROMPT = "orchestrator-language-rule"
@@ -186,6 +192,7 @@ class BaseA2AExecutor(AgentExecutor):
         await updater.start_work()
 
         meta = _metadata(context)
+        _user_token.set(meta.pop("user_token", None))
         profile_id = meta.get("profile") or self.default_profile
         profile = self.profiles.get(profile_id)
         if profile is None:
@@ -398,6 +405,7 @@ class BaseA2AExecutor(AgentExecutor):
             previous_response_id=previous_response_id,
             tool_choice=tool_choice,
             max_tool_calls=max_tool_calls,
+            authorization=_user_token.get(),
         ):
             etype = ev["type"]
             if etype == "text_delta":

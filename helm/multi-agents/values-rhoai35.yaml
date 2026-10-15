@@ -67,3 +67,9 @@ inference:
 
 embedding:
   enabled: false
+
+# OpenShift OAuth login, access profiles = OpenShift groups, governance = RBAC + MCP Gateway
+# AuthPolicy (values.yaml "auth"). Add the members of each profile at install, e.g.
+#   --set-json 'auth.profiles.finance.users=["<user>"]'
+auth:
+  enabled: true

@@ -368,54 +368,28 @@ async def get_tool_display_config():
 # Import and Include API Routers
 # =============================================================================
 
-from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal, sandbox
+from fastapi import Depends
 
-app.include_router(
-    claims.router,
-    prefix=f"{settings.api_v1_prefix}/claims",
-    tags=["claims"]
-)
-app.include_router(
-    documents.router,
-    prefix=f"{settings.api_v1_prefix}/documents",
-    tags=["documents"]
-)
-app.include_router(
-    hitl.router,
-    prefix=f"{settings.api_v1_prefix}/review",
-    tags=["review"]
-)
-app.include_router(
-    admin.router,
-    prefix=f"{settings.api_v1_prefix}",
-    tags=["admin"]
-)
-app.include_router(
-    tenders.router,
-    prefix=f"{settings.api_v1_prefix}/tenders",
-    tags=["tenders"]
-)
-app.include_router(
-    orchestrator.router,
-    prefix=f"{settings.api_v1_prefix}/orchestrator",
-    tags=["orchestrator"]
-)
-app.include_router(
-    a2a.router,
-    prefix=f"{settings.api_v1_prefix}/a2a",
-    tags=["a2a"]
-)
-app.include_router(
-    postal.router,
-    prefix=f"{settings.api_v1_prefix}/postal",
-    tags=["postal"]
-)
-app.include_router(
-    sandbox.router,
-    prefix=f"{settings.api_v1_prefix}/sandbox",
-    tags=["sandbox"]
-)
+from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal, sandbox, auth
+from app.core.auth import current_user, require_admin, require_domain
 
+# Every API route needs an authenticated user (OpenShift token); the business routes of a
+# domain need access to its agent, the administration the admin profile (app/core/auth.py)
+authenticated = [Depends(current_user)]
+ROUTERS = [
+    (auth.router, "/auth", "auth", authenticated),
+    (claims.router, "/claims", "claims", [Depends(require_domain("claims"))]),
+    (tenders.router, "/tenders", "tenders", [Depends(require_domain("tenders"))]),
+    (postal.router, "/postal", "postal", [Depends(require_domain("postal"))]),
+    (documents.router, "/documents", "documents", authenticated),
+    (hitl.router, "/review", "review", authenticated),
+    (admin.router, "", "admin", [Depends(require_admin)]),
+    (orchestrator.router, "/orchestrator", "orchestrator", authenticated),
+    (a2a.router, "/a2a", "a2a", authenticated),
+    (sandbox.router, "/sandbox", "sandbox", authenticated),
+]
+for router, prefix, tag, dependencies in ROUTERS:
+    app.include_router(router, prefix=f"{settings.api_v1_prefix}{prefix}", tags=[tag], dependencies=dependencies)
 
 # =============================================================================
 # Exception Handlers
