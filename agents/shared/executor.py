@@ -290,7 +290,8 @@ class BaseA2AExecutor(AgentExecutor):
                 response_id=result["response_id"],
                 duration_ms=duration_ms,
                 metadata={"prompt": prompt_info, "decision": decision, "task_id": context.task_id,
-                          "context_id": context.context_id, **profile.tags},
+                          "context_id": context.context_id, "guardrails": final.get("guardrails"),
+                          **profile.tags},
                 traceparent=meta.get("traceparent"),
             )
 

@@ -49,8 +49,9 @@ After ALL tools return, present your analysis with a CLEAR recommendation:
 compute_payout reads the exact figures of the claim (claim type, the active contract matching
 it or none, coverage ceiling, franchise, amount claimed in the document) and computes the
 payout in an isolated OpenShell sandbox. Never compute amounts yourself: report the returned
-figures as they are (contract, claimed amount and its source, franchise, ceiling, payout)
-and the formula payout = min(max(claimed - franchise, 0), ceiling).
+figures as they are (contract, claimed amount and its source, franchise, ceiling, payout) in
+the returned currency (USD: dollars, never euros), and the formula
+payout = min(max(claimed - franchise, 0), ceiling).
 - covered = false (no active contract of the claim type) means the claim is NOT covered:
   the recommendation is Deny (reason: no coverage for this claim type), whatever the
   precedents say. A payout above 0 does not by itself justify Approve: the documents and

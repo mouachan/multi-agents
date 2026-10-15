@@ -577,6 +577,8 @@ async def _payout_inputs(claim_number: str) -> dict:
         "contract": {"number": number, "type": contract.contract_type, "coverage_amount": ceiling,
                      "franchise": deductible} if covered else None,
         "claimed_amount": claimed,
+        # The claim documents state amounts in dollars; contract amounts share that currency
+        "currency": "USD" if re.search(r"\$\s*[0-9]", claim.document_text) else None,
         "claimed_source": f"{source} (claim document)" if source else "not found in the claim document",
         "formula": FORMULA,
         "code": code,
