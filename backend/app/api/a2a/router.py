@@ -10,9 +10,10 @@ import logging
 import uuid
 from typing import Dict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from app.core.auth import User, check_agent, current_user
 from app.core.config import settings
 from app.services.agents.registry import AgentRegistry
 from app.services.agent.responses_orchestrator import ResponsesOrchestrator
@@ -89,7 +90,7 @@ async def agent_card(request: Request):
 # =============================================================================
 
 @router.post("/{agent_id}")
-async def handle_a2a_request(agent_id: str, request: Request):
+async def handle_a2a_request(agent_id: str, request: Request, user: User = Depends(current_user)):
     """
     Handle A2A JSON-RPC 2.0 requests for a specific agent.
 
@@ -118,6 +119,8 @@ async def handle_a2a_request(agent_id: str, request: Request):
                 "message": f"Unknown agent: {agent_id}. Available: {[a.id for a in AgentRegistry.list_agents()]}"
             }
         }, status_code=404)
+
+    check_agent(user, agent_def)
 
     # Route to method handler
     if rpc_request.method == "tasks/send":

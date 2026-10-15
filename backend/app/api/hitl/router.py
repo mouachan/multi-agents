@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.claims import schemas
+from app.core.auth import User, agent_domain, current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.agents.registry import AgentRegistry
@@ -45,6 +46,19 @@ context_builder = ContextBuilder()
 # =============================================================================
 # Helpers
 # =============================================================================
+
+def may_review(entity_type: str, user: User) -> bool:
+    """The user's profile may use the agent of this entity type (claim -> claims agent...)."""
+    agent_def = AgentRegistry.get_by_entity_type(entity_type)
+    domain = agent_domain(agent_def.a2a_url) if agent_def else None
+    return domain is None or domain in user.domains
+
+
+async def entity_access(entity_type: str, user: User = Depends(current_user)) -> None:
+    """Route dependency: 403 for entities of an agent the user's profile may not use."""
+    if not may_review(entity_type, user):
+        raise HTTPException(status_code=403, detail=f"Your profile has no access to {entity_type} reviews")
+
 
 async def resolve_entity(entity_type: str, entity_id: UUID, db: AsyncSession):
     """Resolve an entity and its agent definition from the registry."""
@@ -223,7 +237,7 @@ class ReviewMessage(BaseModel):
 # WebSocket Endpoint
 # =============================================================================
 
-@router.websocket("/ws/review/{entity_type}/{entity_id}")
+@router.websocket("/ws/review/{entity_type}/{entity_id}", dependencies=[Depends(entity_access)])
 async def websocket_review_endpoint(
     websocket: WebSocket,
     entity_type: str,
@@ -335,7 +349,7 @@ async def websocket_review_endpoint(
 # REST Endpoints
 # =============================================================================
 
-@router.post("/{entity_type}/{entity_id}/action")
+@router.post("/{entity_type}/{entity_id}/action", dependencies=[Depends(entity_access)])
 async def submit_review_action(
     entity_type: str,
     entity_id: UUID,
@@ -393,7 +407,7 @@ async def submit_review_action(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{entity_type}/{entity_id}/messages")
+@router.get("/{entity_type}/{entity_id}/messages", dependencies=[Depends(entity_access)])
 async def get_review_messages(
     entity_type: str,
     entity_id: UUID,
@@ -448,11 +462,11 @@ async def get_review_messages(
 
 
 @router.get("/active")
-async def get_active_reviews():
+async def get_active_reviews(user: User = Depends(current_user)):
     """
     Get list of active review sessions.
 
-    Returns entities that currently have reviewers connected.
+    Returns entities that currently have reviewers connected (those the user may review).
     """
     active_sessions = []
 
@@ -463,6 +477,8 @@ async def get_active_reviews():
             parts = room_id.split(":", 1)
             entity_type = parts[0] if len(parts) == 2 else "unknown"
             entity_id = parts[1] if len(parts) == 2 else room_id
+            if not may_review(entity_type, user):
+                continue
             active_sessions.append({
                 "entity_type": entity_type,
                 "entity_id": entity_id,
@@ -503,7 +519,8 @@ async def notify_manual_review_required(entity_type: str, entity_id: UUID, reaso
 # POST /{entity_type}/{entity_id}/ask-agent - Conversational HITL with Agent
 # =============================================================================
 
-@router.post("/{entity_type}/{entity_id}/ask-agent", response_model=schemas.AskAgentResponse)
+@router.post("/{entity_type}/{entity_id}/ask-agent", response_model=schemas.AskAgentResponse,
+             dependencies=[Depends(entity_access)])
 async def ask_agent(
     entity_type: str,
     entity_id: UUID,

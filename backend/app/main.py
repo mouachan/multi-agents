@@ -381,7 +381,7 @@ ROUTERS = [
     (claims.router, "/claims", "claims", [Depends(require_domain("claims"))]),
     (tenders.router, "/tenders", "tenders", [Depends(require_domain("tenders"))]),
     (postal.router, "/postal", "postal", [Depends(require_domain("postal"))]),
-    (documents.router, "/documents", "documents", authenticated),
+    (documents.router, "/documents", "documents", [Depends(require_domain("claims"))]),  # claim PDFs
     (hitl.router, "/review", "review", authenticated),
     (admin.router, "", "admin", [Depends(require_admin)]),
     (orchestrator.router, "/orchestrator", "orchestrator", authenticated),

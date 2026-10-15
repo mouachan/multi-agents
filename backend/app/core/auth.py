@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import httpx
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException
+from starlette.requests import HTTPConnection
 
 from app.core.config import settings
 
@@ -117,12 +118,13 @@ async def _resolve(token: str) -> User:
     return user
 
 
-async def current_user(request: Request) -> User:
-    """FastAPI dependency: the authenticated user (401 without a valid token)."""
+async def current_user(connection: HTTPConnection) -> User:
+    """FastAPI dependency: the authenticated user (401 without a valid token).
+    HTTPConnection: the same dependency serves the HTTP and the WebSocket routes."""
     if not settings.auth_enabled:
         return LOCAL_ADMIN
-    token = request.headers.get("x-forwarded-access-token")
-    authorization = request.headers.get("authorization", "")
+    token = connection.headers.get("x-forwarded-access-token")
+    authorization = connection.headers.get("authorization", "")
     if not token and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
     if not token:
@@ -151,6 +153,13 @@ async def require_admin(user: User = Depends(current_user)) -> User:
     if not user.admin:
         raise HTTPException(status_code=403, detail="Administrator profile required")
     return user
+
+
+def check_agent(user: User, agent_def) -> None:
+    """403 when the user's profile may not use this agent (AgentDefinition of the registry)."""
+    domain = agent_domain(agent_def.a2a_url)
+    if domain and domain not in user.domains:
+        raise HTTPException(status_code=403, detail=f"Your profile has no access to the {domain} agent")
 
 
 def agent_domain(a2a_url: Optional[str]) -> Optional[str]:
