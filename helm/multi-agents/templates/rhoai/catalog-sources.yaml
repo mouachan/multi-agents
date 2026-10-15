@@ -1,4 +1,5 @@
 {{- if .Values.rhoaiCatalog.enabled }}
+{{- $logo := printf "data:image/svg+xml;base64,%s" (.Files.Get "files/branding/logo.svg" | b64enc) }}
 {{- $ns := include "multi-agents.namespace" . }}
 {{- $registry := include "multi-agents.imageRegistry" . }}
 {{- $cat := .Values.rhoaiCatalog }}
@@ -54,7 +55,7 @@ data:
         description: {{ $a.description | quote }}
         framework: a2a-sdk
         labels: {{ concat (list "a2a") $a.tags | toJson }}
-        logo: ""
+        logo: {{ $logo }}
         env: []
         readme: |
           {{ $a.displayName }} — A2A agent (a2a-sdk, JSON-RPC + SSE streaming on port 8090).
@@ -86,6 +87,7 @@ data:
       - name: {{ $name }}-mcp
         provider: Multi-agents
         version: "1.0.0"
+        logo: {{ $logo }}
         description: {{ printf "%s — %s" $m.displayName $m.description | quote }}
         transports: [http]
         deploymentMode: local

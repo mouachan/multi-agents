@@ -22,10 +22,7 @@ function Logo({ collapsed }: { collapsed: boolean }) {
   const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2.5 px-1">
-      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm">
-        <MessagesSquare className="h-4 w-4" />
-        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-redhat" />
-      </div>
+      <img src="/logo.svg" alt="" className="h-8 w-8 shrink-0 rounded-xl shadow-sm" />
       {!collapsed && (
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold tracking-tight text-ink">{t('nav.title')}</p>
