@@ -47,6 +47,13 @@ metadata:
   namespace: {{ $ns }}
   labels:
     {{- include "multi-agents.labels" $ | nindent 4 }}
+  {{- with (index ($.Values.models.maas.modelInfo | default dict) $m) }}
+  # Shown by OpenShift AI (AI asset endpoints, Gen AI playground) through maas-api
+  annotations:
+    openshift.io/display-name: {{ .displayName | quote }}
+    openshift.io/description: {{ .description | quote }}
+    opendatahub.io/genai-use-case: {{ .useCase | quote }}
+  {{- end }}
 spec:
   modelRef:
     kind: ExternalModel

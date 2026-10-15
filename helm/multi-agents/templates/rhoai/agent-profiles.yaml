@@ -1,0 +1,53 @@
+{{- /*
+Agent profiles of the OpenShift AI Gen AI studio (AI asset endpoints > Agents, playground):
+ConfigMaps agent-profile-<id> labelled opendatahub.io/agent-profile=true, holding a
+genai.redhat.com/v1alpha1 AgentProfile. Each one mirrors an A2A agent profile: the reasoning
+model through the users' MaaS subscription, the prompt of the MLflow Prompt Registry
+(latest version) and the MCP servers with the same tools, except the save_* tools (the
+playground stays read-only).
+*/}}
+{{- if and .Values.rhoaiCatalog.enabled .Values.rhoaiCatalog.agentProfiles }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- $maasUrl := include "multi-agents.maas.gatewayUrl" . | trimSuffix "/v1" }}
+{{- range .Values.rhoaiCatalog.agentProfiles }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-profile-{{ .id }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+    opendatahub.io/agent-profile: "true"
+    opendatahub.io/dashboard: "true"
+data:
+  profile.yaml: |
+    apiVersion: genai.redhat.com/v1alpha1
+    kind: AgentProfile
+    metadata:
+      name: {{ .id }}
+    spec:
+      displayName: {{ .displayName | quote }}
+      description: {{ .description | quote }}
+      model:
+        id: {{ $.Values.models.reasoning }}
+        uri: {{ $maasUrl }}
+        sourceType: maas
+        authorization:
+          maasSubscription: {{ $.Values.models.maas.subscriptionName }}-users
+      prompt:
+        name: {{ .prompt }}
+        source: mlflow
+      temperature: 0.2
+      stream: true
+      mcpServers:
+      {{- range .mcpServers }}
+      {{- if or (ne .server "sandbox") $.Values.mcp.sandbox.enabled }}
+      - serverRef:
+          kind: MCPServer
+          name: {{ .server }}-server
+        allowedTools: {{ .tools | toJson }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}

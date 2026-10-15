@@ -152,6 +152,16 @@ models:
     chatModels:
       - gpt-oss-120b
       - llama-scout-17b
+    # Display information of the chat models in OpenShift AI (AI asset endpoints, playground)
+    modelInfo:
+      gpt-oss-120b:
+        displayName: GPT-OSS 120B
+        description: OpenAI open-weight reasoning model, served by the external MaaS through the cluster MaaS gateway.
+        useCase: Reasoning, chat
+      llama-scout-17b:
+        displayName: Llama 4 Scout 17B
+        description: Meta Llama 4 Scout (16 experts) used by the multi-agents platform for chat, tool calling, document OCR (vision) and the guardrails self-check.
+        useCase: Agents, tool calling, vision, guardrails
 
 # =============================================================================
 # OGX (formerly LlamaStack) — RHOAI 3.5 OGXServer
@@ -840,6 +850,47 @@ rhoaiCatalog:
       description: Postal complaints (rembourser/reexpedier/rejeter/escalader), parcel tracking and postal information — three profiles.
       skills: [process-complaint, track-parcel, postal-info, query-complaints]
       tags: [postal, complaints, tracking]
+  # Gen AI studio agent profiles (AI asset endpoints > Agents, playground): same prompt
+  # (MLflow) and MCP tools as the A2A agent profiles. The id names the ConfigMap: keep it stable.
+  agentProfiles:
+    - id: aff29b12-57c8-4eca-a3ce-5075dd155751
+      displayName: Claims Processing Agent
+      description: Insurance claims — details, documents (OCR), contracts, precedents, payout computed in the OpenShell sandbox.
+      prompt: claims-processing-agent
+      mcpServers:
+        - {server: claims, tools: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout]}
+        - {server: ocr, tools: [ocr_document]}
+        - {server: rag, tools: [retrieve_user_info, retrieve_similar_claims, search_knowledge_base]}
+        - {server: sandbox, tools: [run_python]}
+    - id: f6f4c3a6-b1ea-46b9-aa14-a808bdefec55
+      displayName: Tenders Analysis Agent
+      description: BTP tenders — details, documents (OCR), company references, tender history and capabilities.
+      prompt: ao-processing-agent
+      mcpServers:
+        - {server: tenders, tools: [list_tenders, get_tender, get_tender_documents, get_tender_statistics]}
+        - {server: ocr, tools: [ocr_document]}
+        - {server: rag, tools: [retrieve_similar_references, retrieve_historical_tenders, retrieve_capabilities, search_knowledge_base]}
+    - id: 0dcc383d-a5d3-4aa0-9050-0137c9531d0e
+      displayName: Postal Complaints Agent
+      description: Postal complaints — details, documents, tracking history and similar complaints.
+      prompt: courrier-reclamation-instructions
+      mcpServers:
+        - {server: postal, tools: [list_reclamations, get_reclamation, get_reclamation_documents, get_reclamation_statistics]}
+        - {server: tracking, tools: [get_tracking]}
+        - {server: rag, tools: [search_courrier_knowledge, retrieve_similar_reclamations]}
+        - {server: ocr, tools: [ocr_document]}
+    - id: 7416e9b2-2ab2-4753-ab20-237ffabff78e
+      displayName: Parcel Tracking Agent
+      description: Parcel tracking by tracking number, or the parcels of a customer by email.
+      prompt: courrier-suivi-instructions
+      mcpServers:
+        - {server: tracking, tools: [get_tracking, search_tracking]}
+    - id: 41a792a3-730e-4f34-97a8-5847848960a9
+      displayName: Postal Information Agent
+      description: Postal rates, delivery times, packaging and customs, from the postal knowledge base.
+      prompt: courrier-info-instructions
+      mcpServers:
+        - {server: rag, tools: [search_courrier_knowledge]}
   mcpServers:
     ocr:
       displayName: Document OCR
