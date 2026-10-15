@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Claims records MCP server">
+  <title>Claims records MCP server</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#047857"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#glow)"/>
+  <!-- insurance shield -->
+  <path d="M32 11L48 17.5V30.5C48 41 41 48.5 32 53C23 48.5 16 41 16 30.5V17.5Z" fill="#ffffff"/>
+  <path d="M32 16.5L43.5 21.2V30.8C43.5 38.6 38.6 44.4 32 48C25.4 44.4 20.5 38.6 20.5 30.8V21.2Z" fill="#d1fae5"/>
+  <path d="M25 32L30 37L39.5 26.5" fill="none" stroke="#059669" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

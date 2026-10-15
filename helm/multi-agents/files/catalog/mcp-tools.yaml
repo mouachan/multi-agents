@@ -1,0 +1,460 @@
+# MCP tools published in the OpenShift AI catalog (AI hub > MCP servers): name, description,
+# access type and parameters, as listed by each server (tools/list).
+# accessType: read_only | read_write (writes to the database) | execute (runs code, in the OpenShell sandbox)
+ocr:
+- name: ocr_document
+  description: Extract text from a claim or tender document using OCR. Retrieves the document from OGX Files by
+    claim/tender number, then extracts text using the vision model. Supports PDF and images.
+  accessType: read_only
+  parameters:
+  - name: document_id
+    type: string
+    description: The claim number (e.g. CLM-2024-0024) or tender number (e.g. AO-2026-0042).
+    required: true
+  - name: document_type
+    type: string
+    description: Type hint (AUTO, MEDICAL, HOME, etc.) — informational only.
+    required: false
+- name: ocr_health_check
+  description: Check OCR server health and readiness.
+  accessType: read_only
+  parameters: []
+- name: list_supported_formats
+  description: List all supported file formats for OCR.
+  accessType: read_only
+  parameters: []
+rag:
+- name: retrieve_user_info
+  description: Retrieve user information and insurance contracts using vector search.
+  accessType: read_only
+  parameters:
+  - name: user_id
+    type: string
+    description: User identifier (e.g. USR026) OR claim number (e.g. CLM-2024-0026) to auto-resolve
+    required: true
+  - name: query
+    type: string
+    description: Search query for contracts (optional, used for similarity ranking)
+    required: false
+  - name: top_k
+    type: integer
+    description: 'Number of contracts to retrieve (default: 5)'
+    required: false
+- name: retrieve_similar_claims
+  description: Find similar historical claims using vector similarity search. Requires SQL JOINs on claim_documents
+    + claims tables with business filters.
+  accessType: read_only
+  parameters:
+  - name: claim_text
+    type: string
+    description: Text of the current claim OR claim number (e.g. CLM-2024-0026) to auto-resolve OCR text from DB
+    required: true
+  - name: claim_type
+    type: string
+    description: 'Optional filter by claim type (with a claim number: that claim''s type by default)'
+    required: false
+  - name: top_k
+    type: integer
+    description: 'Number of similar claims to retrieve (default: 10)'
+    required: false
+  - name: min_similarity
+    type: number
+    description: 'Minimum similarity score 0.0-1.0 (default: 0.5)'
+    required: false
+- name: search_knowledge_base
+  description: Search the knowledge base for relevant policy information.
+  accessType: read_only
+  parameters:
+  - name: query
+    type: string
+    description: Search query
+    required: true
+  - name: top_k
+    type: integer
+    description: 'Number of results to retrieve (default: 5)'
+    required: false
+  - name: category
+    type: string
+    description: Optional category filter
+    required: false
+- name: retrieve_similar_references
+  description: 'Find similar company project references using vector similarity search. Requires business columns:
+    montant, region, maitre_ouvrage, nature_travaux.'
+  accessType: read_only
+  parameters:
+  - name: project_description
+    type: string
+    description: Description of the project from the tender
+    required: true
+  - name: project_type
+    type: string
+    description: Optional filter by project type
+    required: false
+  - name: budget_range
+    type: string
+    description: Optional budget range description
+    required: false
+  - name: top_k
+    type: integer
+    description: 'Number of similar references to retrieve (default: 5)'
+    required: false
+  - name: min_similarity
+    type: number
+    description: 'Minimum similarity score 0.0-1.0 (default: 0.5)'
+    required: false
+- name: retrieve_historical_tenders
+  description: 'Find similar historical tenders (won/lost) using vector similarity search. Requires business columns:
+    resultat, note_technique, note_prix, montant_estime.'
+  accessType: read_only
+  parameters:
+  - name: tender_description
+    type: string
+    description: Description of the current tender
+    required: true
+  - name: tender_type
+    type: string
+    description: Optional filter by tender type
+    required: false
+  - name: client_type
+    type: string
+    description: Optional filter by client type
+    required: false
+  - name: top_k
+    type: integer
+    description: 'Number of similar tenders to retrieve (default: 5)'
+    required: false
+  - name: min_similarity
+    type: number
+    description: 'Minimum similarity score 0.0-1.0 (default: 0.5)'
+    required: false
+- name: retrieve_capabilities
+  description: 'Retrieve company internal capabilities, certifications, and resources. Requires business columns:
+    category, valid_until, availability.'
+  accessType: read_only
+  parameters:
+  - name: required_capabilities
+    type: string
+    description: Description of required capabilities
+    required: true
+  - name: project_type
+    type: string
+    description: Optional project type filter
+    required: false
+  - name: category
+    type: string
+    description: Optional category filter (certification, materiel, personnel)
+    required: false
+  - name: top_k
+    type: integer
+    description: 'Number of capabilities to retrieve (default: 10)'
+    required: false
+- name: generate_document_embedding
+  description: Generate and store an embedding for a claim or tender document. Uses OGX /v1/embeddings API for vector
+    creation, stores in pgvector.
+  accessType: read_write
+  parameters:
+  - name: entity_type
+    type: string
+    description: Type of entity - "claim" or "tender"
+    required: true
+  - name: entity_id
+    type: string
+    description: The entity number (e.g., CLM-2024-0001 or AO-2025-IDF-001)
+    required: true
+  - name: text_content
+    type: string
+    description: Optional OCR text to use if no document exists in DB yet
+    required: false
+- name: search_courrier_knowledge
+  description: Search the postal/courrier knowledge base for information about rates, delivery times, packaging,
+    customs, refunds, and regulations. Uses semantic vector search to find the most relevant knowledge base articles.
+  accessType: read_only
+  parameters:
+  - name: query
+    type: string
+    description: The search query (e.g., "tarif colissimo international")
+    required: true
+  - name: category
+    type: string
+    description: Optional category filter (tarifs, delais, emballage, douane, remboursement)
+    required: false
+  - name: limit
+    type: integer
+    description: Maximum number of results (default 5)
+    required: false
+- name: retrieve_similar_reclamations
+  description: Find similar past reclamations using semantic vector search on OCR-extracted document text. Compares
+    the input text against embeddings of previously processed reclamation documents to find similar cases and their
+    decisions.
+  accessType: read_only
+  parameters:
+  - name: reclamation_text
+    type: string
+    description: Text describing the reclamation or the reclamation number (RECL-YYYY-NNNN)
+    required: true
+  - name: limit
+    type: integer
+    description: Maximum number of similar reclamations to return (default 5)
+    required: false
+- name: rag_health_check
+  description: Check RAG server health and connectivity.
+  accessType: read_only
+  parameters: []
+claims:
+- name: list_claims
+  description: List insurance claims with optional status filter.
+  accessType: read_only
+  parameters:
+  - name: status
+    type: string
+    description: Optional status filter (pending, processing, completed, failed, manual_review)
+    required: false
+  - name: limit
+    type: integer
+    description: 'Maximum number of claims to return (default: 10)'
+    required: false
+- name: get_claim
+  description: 'Get detailed information about a specific claim. Returns: claim fields (number, type, status, dates,
+    has_document), claimant info (name, email, phone, address), existing AI decision, and processing logs. If has_document
+    is true, use ocr_document(document_id=claim_number) to extract text.'
+  accessType: read_only
+  parameters:
+  - name: claim_id
+    type: string
+    description: The claim number (e.g., CLM-2024-0001)
+    required: true
+- name: get_claim_documents
+  description: Get documents associated with a claim, including their OCR text. Returns the list of documents with
+    their raw OCR text (truncated to 1000 chars), structured data, confidence score, and file metadata (file_path,
+    mime_type, size). If no documents exist or OCR text is empty, use ocr_document(document_id=claim_number) to
+    extract text first.
+  accessType: read_only
+  parameters:
+  - name: claim_id
+    type: string
+    description: The claim number (e.g., CLM-2024-0001)
+    required: true
+- name: get_claim_statistics
+  description: Get aggregate statistics about all claims.
+  accessType: read_only
+  parameters: []
+- name: analyze_claim
+  description: 'Retrieve everything needed to evaluate a claim in a single call. Returns: claim details (type, status,
+    claimant name/email), the full OCR text extracted from the claim document (if available), the claimant''s active
+    insurance contracts (coverage amounts, key terms, exclusions), and the existing AI decision (if one was already
+    made). Use this instead of calling get_claim + get_claim_documents + retrieve_user_info separately.'
+  accessType: read_only
+  parameters:
+  - name: claim_id
+    type: string
+    description: The claim number (e.g., CLM-2024-0001)
+    required: true
+- name: compute_payout
+  description: 'Compute the payout of a claim (coverage check and amount) in the OpenShell sandbox. Reads the claim
+    type, the claimant''s ACTIVE contract matching that type (coverage ceiling, franchise) and the amount claimed
+    in the claim document (OCR text: call ocr_document first if it is missing). The computation runs in an isolated
+    OpenShell sandbox (no network, kernel-enforced policy). Report the returned figures as they are.'
+  accessType: read_only
+  parameters:
+  - name: claim_id
+    type: string
+    description: The claim number (e.g., CLM-2024-0001)
+    required: true
+- name: save_claim_decision
+  description: Save a claim decision (approve/deny/manual_review), update claim status, and generate an embedding
+    for future similarity search.
+  accessType: read_write
+  parameters:
+  - name: claim_id
+    type: string
+    description: The claim number (e.g., CLM-2024-0001)
+    required: true
+  - name: recommendation
+    type: string
+    description: Decision - "approve", "deny", or "manual_review"
+    required: true
+  - name: confidence
+    type: number
+    description: Confidence score between 0.0 and 1.0
+    required: true
+  - name: reasoning
+    type: string
+    description: Explanation of the decision
+    required: true
+tenders:
+- name: list_tenders
+  description: List tenders (appels d'offres) with optional status filter.
+  accessType: read_only
+  parameters:
+  - name: status
+    type: string
+    description: Optional status filter (pending, processing, completed, failed)
+    required: false
+  - name: limit
+    type: integer
+    description: 'Maximum number of tenders to return (default: 20)'
+    required: false
+- name: get_tender
+  description: 'Get detailed information about a specific tender (appel d''offres). Returns: tender fields (number,
+    type, status, dates, has_document, metadata with titre/budget/region/maitre_ouvrage), existing AI decision (with
+    risk_analysis, similar_references, historical analysis), and processing logs. If has_document is true, use ocr_document(document_id=tender_number)
+    to extract text.'
+  accessType: read_only
+  parameters:
+  - name: tender_id
+    type: string
+    description: The tender number (e.g., AO-2025-IDF-001)
+    required: true
+- name: get_tender_documents
+  description: Get documents associated with a tender, including their OCR text. Returns the list of documents with
+    their raw OCR text (truncated to 1000 chars), structured data, confidence score, and file metadata (file_path,
+    mime_type, size). If no documents exist or OCR text is empty, use ocr_document(document_id=tender_number) to
+    extract text first.
+  accessType: read_only
+  parameters:
+  - name: tender_id
+    type: string
+    description: The tender number (e.g., AO-2025-IDF-001)
+    required: true
+- name: get_tender_statistics
+  description: Get aggregate statistics about all tenders (appels d'offres).
+  accessType: read_only
+  parameters: []
+- name: analyze_tender
+  description: 'Retrieve everything needed to evaluate a tender (appel d''offres) in a single call. Returns: tender
+    details (type, status, metadata with titre/budget/region/maitre_ouvrage), the full OCR text from tender documents
+    (if available), and the existing AI decision (if one was already made). Use this instead of calling get_tender
+    + get_tender_documents separately.'
+  accessType: read_only
+  parameters:
+  - name: tender_id
+    type: string
+    description: The tender number (e.g., AO-2025-IDF-001)
+    required: true
+- name: save_tender_decision
+  description: Save a tender Go/No-Go decision, update tender status, and generate an embedding for future similarity
+    search.
+  accessType: read_write
+  parameters:
+  - name: tender_id
+    type: string
+    description: The tender number (e.g., AO-2025-IDF-001)
+    required: true
+  - name: recommendation
+    type: string
+    description: Decision - "go", "no_go", or "a_approfondir"
+    required: true
+  - name: confidence
+    type: number
+    description: Confidence score between 0.0 and 1.0
+    required: true
+  - name: reasoning
+    type: string
+    description: Explanation of the decision
+    required: true
+postal:
+- name: list_reclamations
+  description: List reclamations with optional status filter.
+  accessType: read_only
+  parameters:
+  - name: status
+    type: string
+    description: Optional status filter (pending, processing, completed, rejected, escalated, failed)
+    required: false
+  - name: limit
+    type: integer
+    description: 'Maximum number of reclamations to return (default: 10)'
+    required: false
+- name: get_reclamation
+  description: 'Get detailed information about a specific reclamation. Returns: reclamation fields (number, type,
+    status, dates, has_document), user info (name, email, phone, address), latest tracking events, existing AI decision,
+    and processing logs.'
+  accessType: read_only
+  parameters:
+  - name: reclamation_id
+    type: string
+    description: The reclamation number (e.g., RECL-2024-0001) or UUID
+    required: true
+- name: get_reclamation_documents
+  description: Get documents associated with a reclamation, including their OCR text. Returns the list of documents
+    with their raw OCR text (truncated to 1000 chars), structured data, confidence score, and file metadata (file_path,
+    mime_type, size).
+  accessType: read_only
+  parameters:
+  - name: reclamation_id
+    type: string
+    description: The reclamation number (e.g., RECL-2024-0001) or UUID
+    required: true
+- name: get_reclamation_statistics
+  description: Get aggregate statistics about all reclamations.
+  accessType: read_only
+  parameters: []
+- name: analyze_reclamation
+  description: 'Retrieve everything needed to evaluate a reclamation in a single call. Returns: reclamation details
+    (type, status, user name/email), the full OCR text extracted from the reclamation document (if available), tracking
+    timeline (all events), and the existing AI decision (if one was already made). Use this instead of calling get_reclamation
+    + get_reclamation_documents separately.'
+  accessType: read_only
+  parameters:
+  - name: reclamation_id
+    type: string
+    description: The reclamation number (e.g., RECL-2024-0001) or UUID
+    required: true
+- name: save_reclamation_decision
+  description: Save a reclamation decision (rembourser/reexpedier/rejeter/escalader), update reclamation status,
+    and generate an embedding for future similarity search.
+  accessType: read_write
+  parameters:
+  - name: reclamation_id
+    type: string
+    description: The reclamation number (e.g., RECL-2024-0001)
+    required: true
+  - name: recommendation
+    type: string
+    description: Decision - "rembourser", "reexpedier", "rejeter", or "escalader"
+    required: true
+  - name: confidence
+    type: number
+    description: Confidence score between 0.0 and 1.0
+    required: true
+  - name: reasoning
+    type: string
+    description: Explanation of the decision
+    required: true
+tracking:
+- name: get_tracking
+  description: Get the complete tracking timeline for a parcel. Returns the full list of tracking events ordered
+    chronologically, whether the parcel has been delivered, the last event details, and the related reclamation
+    if one exists.
+  accessType: read_only
+  parameters:
+  - name: numero_suivi
+    type: string
+    description: The parcel tracking number (e.g., TRACK-2024-00001)
+    required: true
+- name: search_tracking
+  description: Search tracking information by client email. Finds all reclamations for the given email address and
+    returns each parcel with its latest tracking status.
+  accessType: read_only
+  parameters:
+  - name: client_email
+    type: string
+    description: The client's email address
+    required: true
+sandbox:
+- name: run_python
+  description: 'Execute Python code in an isolated OpenShell sandbox and return its output. Use it for exact computations
+    (e.g. claim payout: amount minus deductible, capped by the policy limit). The sandbox has NO network access
+    and can only write to /sandbox and /tmp; print() the results you need. Standard library and numpy are available.
+    Write the code on one line, statements separated by "; " and strings in single quotes, e.g. "a=6200.0; b=350.0;
+    print(''payout:'', a-b)".'
+  accessType: execute
+  parameters:
+  - name: code
+    type: string
+    description: Python source code to run with python3.12
+    required: true
+  - name: timeout_s
+    type: integer
+    description: Maximum execution time in seconds (default 20)
+    required: false

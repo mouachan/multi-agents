@@ -1,14 +1,88 @@
 {{- if .Values.rhoaiCatalog.enabled }}
-{{- $logo := printf "data:image/svg+xml;base64,%s" (.Files.Get "files/branding/logo.svg" | b64enc) }}
 {{- $ns := include "multi-agents.namespace" . }}
 {{- $registry := include "multi-agents.imageRegistry" . }}
 {{- $cat := .Values.rhoaiCatalog }}
+{{- $appLogo := .Files.Get "files/branding/logo.svg" }}
+{{- $mcpTools := .Files.Get "files/catalog/mcp-tools.yaml" | fromYaml }}
+{{- $repo := $cat.repository.url | default "" | trimSuffix "/" }}
+{{- $support := dict "supportTier" (dict "metadataType" "MetadataStringValue" "string_value" $cat.supportTier) }}
 {{- /*
 OpenShift AI 3.5 AI hub catalogs (Developer Preview): the model-catalog service in
 rhoai-model-registries loads every ConfigMap labelled opendatahub.io/catalog-source=true
 (sources.yaml + YAML catalogs). Agents are browse-only entries (the "running agents" view
 only lists OpenShell Sandboxes); MCP entries describe our servers and their tools.
+Entries are built as dicts and written with toYaml (multi-line READMEs, logos as data URIs).
+The card badge comes from customProperties.supportTier: the dashboard only knows
+redHatSupported, partnerSupported and communitySupported.
 */}}
+{{- /* MCP tool -> its server, for the agents' READMEs */}}
+{{- $toolServer := dict }}
+{{- range $name, $tools := $mcpTools }}
+{{- range $tools }}{{ $_ := set $toolServer .name (index $cat.mcpServers $name).displayName }}{{ end }}
+{{- end }}
+{{- $mcpServers := list }}
+{{- range $name, $m := $cat.mcpServers }}
+{{- $cfg := index $.Values.mcp $name }}
+{{- if $cfg.enabled }}
+{{- $tools := index $mcpTools $name | default list }}
+{{- $readOnly := true }}
+{{- range $tools }}{{ if ne .accessType "read_only" }}{{ $readOnly = false }}{{ end }}{{ end }}
+{{- $image := printf "%s/%s:%s" $registry $cfg.image.repository $cfg.image.tag }}
+{{- $logo := $.Files.Get (printf "files/branding/mcp/%s.svg" $name) | default $appLogo }}
+{{- $readme := printf "%s\n\n%s\n" ($.Files.Get (printf "files/catalog/mcp/%s.md" $name) | trim)
+      (include "multi-agents.catalog.mcpReadme" (dict "root" $ "name" $name "tools" $tools "readOnly" $readOnly "image" $image)) }}
+{{- $entry := dict
+      "name" (printf "%s-mcp" $name)
+      "displayName" $m.displayName
+      "provider" $cat.provider
+      "version" ($cfg.image.tag | trimPrefix "v")
+      "license" $cat.license.id
+      "license_link" $cat.license.link
+      "description" $m.description
+      "readme" $readme
+      "logo" (printf "data:image/svg+xml;base64,%s" ($logo | b64enc))
+      "transports" (list "http" "sse")
+      "deploymentMode" "local"
+      "tags" (concat (list "multi-agents") ($m.tags | default list))
+      "tools" $tools
+      "artifacts" (list (dict "uri" (printf "oci://%s" $image)))
+      "runtimeMetadata" (dict "defaultPort" 8080 "mcpPath" "/mcp")
+      "securityIndicators" (dict "verifiedSource" true "secureEndpoint" (and $.Values.auth.enabled $.Values.mcpGateway.enabled) "sast" true "readOnlyTools" $readOnly)
+      "customProperties" $support }}
+{{- if $repo }}
+{{- $_ := set $entry "repositoryUrl" (printf "%s/tree/%s/%s" $repo $cat.repository.ref $m.source) }}
+{{- $_ := set $entry "sourceCode" (printf "%s/%s" ($repo | splitList "/" | last) $m.source) }}
+{{- $_ := set $entry "documentationUrl" (printf "%s/blob/%s/README.md" $repo $cat.repository.ref) }}
+{{- end }}
+{{- $mcpServers = append $mcpServers $entry }}
+{{- end }}
+{{- end }}
+{{- $agents := list }}
+{{- range $name, $a := $cat.agents }}
+{{- $img := index $.Values.agents $name "image" }}
+{{- $logo := $.Files.Get (printf "files/branding/agents/%s.svg" $name) | default $appLogo }}
+{{- $card := printf "http://%s-agent.%s.svc.cluster.local:8090/.well-known/agent-card.json" $name $ns }}
+{{- $readme := printf "%s\n\n%s\n" ($.Files.Get (printf "files/catalog/agents/%s.md" $name) | trim)
+      (include "multi-agents.catalog.agentReadme" (dict "root" $ "name" $name "agent" $a "tools" $toolServer)) }}
+{{- $entry := dict
+      "name" (printf "%s-agent" $name)
+      "displayName" $a.displayName
+      "description" $a.description
+      "framework" "a2a-sdk"
+      "labels" (concat (list "a2a") $a.tags)
+      "logo" (printf "data:image/svg+xml;base64,%s" ($logo | b64enc))
+      "env" (list)
+      "readme" $readme
+      "artifacts" (list (dict "uri" (printf "oci://%s/%s:%s" $registry $img.repository $img.tag)))
+      "customProperties" (merge (dict
+          "agent_card_url" (dict "metadataType" "MetadataStringValue" "string_value" $card)
+          "skills" (dict "metadataType" "MetadataStringValue" "string_value" (join ", " $a.skills))
+          "protocol" (dict "metadataType" "MetadataStringValue" "string_value" "A2A")) $support) }}
+{{- if $repo }}
+{{- $_ := set $entry "repositoryUrl" (printf "%s/tree/%s/agents/%s-agent" $repo $cat.repository.ref $name) }}
+{{- end }}
+{{- $agents = append $agents $entry }}
+{{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -39,71 +113,16 @@ data:
     labels:
       - name: Multi-agents
         assetType: agents
-        displayName: Multi-agents A2A agents
+        displayName: {{ printf "%s agents" $cat.supportedBy | quote }}
         description: Decoupled A2A agents of the multi-agents platform (claims, tenders, postal)
       - name: Multi-agents MCP
         assetType: mcp_servers
-        displayName: Multi-agents MCP servers
-        description: MCP servers federated by the multi-agents MCP Gateway
+        displayName: {{ printf "%s MCP servers" $cat.supportedBy | quote }}
+        description: MCP servers of the multi-agents platform, federated by its MCP Gateway
   agents.yaml: |
-    source: Multi-agents
-    agents:
-    {{- range $name, $a := $cat.agents }}
-    {{- $img := index $.Values.agents $name "image" }}
-      - name: {{ $name }}-agent
-        displayName: {{ $a.displayName | quote }}
-        description: {{ $a.description | quote }}
-        framework: a2a-sdk
-        labels: {{ concat (list "a2a") $a.tags | toJson }}
-        logo: {{ $logo }}
-        env: []
-        readme: |
-          {{ $a.displayName }} — A2A agent (a2a-sdk, JSON-RPC + SSE streaming on port 8090).
-          Agent card: http://{{ $name }}-agent.{{ $ns }}.svc.cluster.local:8090/.well-known/agent-card.json
-          Skills: {{ join ", " $a.skills }}.
-          Callers authenticate with a SPIFFE JWT-SVID (audience a2a:{{ $name }}-agent).
-        {{- with $cat.repositoryUrl }}
-        repositoryUrl: {{ . | quote }}
-        {{- end }}
-        artifacts:
-          - uri: oci://{{ $registry }}/{{ $img.repository }}:{{ $img.tag }}
-        customProperties:
-          agent_card_url:
-            metadataType: MetadataStringValue
-            string_value: http://{{ $name }}-agent.{{ $ns }}.svc.cluster.local:8090/.well-known/agent-card.json
-          skills:
-            metadataType: MetadataStringValue
-            string_value: {{ join ", " $a.skills | quote }}
-          protocol:
-            metadataType: MetadataStringValue
-            string_value: A2A
-    {{- end }}
+    {{- dict "source" "Multi-agents" "agents" $agents | toYaml | nindent 4 }}
   mcp.yaml: |
-    source: Multi-agents MCP
-    mcp_servers:
-    {{- range $name, $m := $cat.mcpServers }}
-    {{- $cfg := index $.Values.mcp $name }}
-    {{- if $cfg.enabled }}
-      - name: {{ $name }}-mcp
-        provider: Multi-agents
-        version: "1.0.0"
-        logo: {{ $logo }}
-        description: {{ printf "%s — %s" $m.displayName $m.description | quote }}
-        transports: [http]
-        deploymentMode: local
-        artifacts:
-          - uri: oci://{{ $registry }}/{{ $cfg.image.repository }}:{{ $cfg.image.tag }}
-        runtimeMetadata:
-          defaultPort: 8080
-          mcpPath: /mcp
-        tags: [multi-agents]
-        tools:
-        {{- range $t := $m.tools }}
-          - name: {{ $t }}
-            accessType: {{ if hasPrefix "save_" $t }}read_write{{ else if eq $t "run_python" }}execute{{ else }}read_only{{ end }}
-        {{- end }}
-    {{- end }}
-    {{- end }}
+    {{- dict "source" "Multi-agents MCP" "mcp_servers" $mcpServers | toYaml | nindent 4 }}
 {{- if $cat.playground.enabled }}
 ---
 # Gen AI Studio playground: MCP servers offered to the chat (in-cluster Streamable HTTP URLs)

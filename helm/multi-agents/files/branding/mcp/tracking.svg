@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Parcel tracking MCP server">
+  <title>Parcel tracking MCP server</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#0e7490"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#glow)"/>
+  <!-- parcel route to its destination -->
+  <path d="M15 49C23 41 26 51 33 43S38 34 38 34" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round" stroke-dasharray="3.2 3.8"/>
+  <rect x="9.5" y="44" width="10" height="10" rx="1.8" fill="#ffffff"/>
+  <path d="M9.5 48H19.5M14.5 44V48" stroke="#0891b2" stroke-width="1.6"/>
+  <path d="M38 9C32 9 28 13.6 28 19C28 26.5 38 36 38 36C38 36 48 26.5 48 19C48 13.6 44 9 38 9Z" fill="#ffffff"/>
+  <circle cx="38" cy="19" r="4" fill="#0891b2"/>
+</svg>

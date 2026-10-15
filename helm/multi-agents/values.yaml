@@ -880,7 +880,18 @@ rhoaiCatalog:
   # model-catalog (AI hub > Agents / MCP servers) loads the ConfigMaps of this namespace
   # labelled opendatahub.io/catalog-source=true (the catalog pod restarts to reload them)
   namespace: rhoai-model-registries
-  repositoryUrl: ""        # optional source link, e.g. https://github.com/<org>/<repo>
+  # Source links of the entries ("Open repository", "Source code"); empty = no link
+  repository:
+    url: ""                # e.g. https://github.com/<org>/<repo>
+    ref: main              # branch or tag of the links
+  provider: MO
+  supportedBy: MO supported          # catalog section titles: "<supportedBy> agents / MCP servers"
+  # Card badge. The dashboard only displays redHatSupported, partnerSupported, communitySupported
+  supportTier: communitySupported
+  license:
+    id: apache-2.0
+    name: Apache License 2.0
+    link: https://www.apache.org/licenses/LICENSE-2.0
   agents:
     claims:
       displayName: Claims Processing Agent
@@ -938,35 +949,43 @@ rhoaiCatalog:
       prompt: courrier-info-instructions
       mcpServers:
         - {server: rag, tools: [search_courrier_knowledge]}
+  # Tools, descriptions and parameters: files/catalog/mcp-tools.yaml; READMEs: files/catalog/mcp/<name>.md
   mcpServers:
     ocr:
       displayName: Document OCR
       description: Text extraction from PDF and image documents with the vision model.
-      tools: [ocr_document, list_supported_formats]
+      source: backend/mcp_servers/ocr_server
+      tags: [ocr, documents, vision]
     rag:
       displayName: Knowledge & similarity search
       description: pgvector retrieval — user contracts, similar claims/tenders/complaints, references, capabilities, knowledge bases.
-      tools: [retrieve_user_info, retrieve_similar_claims, search_knowledge_base, retrieve_similar_references, retrieve_historical_tenders, retrieve_capabilities, search_courrier_knowledge, retrieve_similar_reclamations]
+      source: backend/mcp_servers/rag_server
+      tags: [rag, pgvector, similarity, knowledge-base]
     claims:
       displayName: Claims records
-      description: Insurance claims — list, details, documents, statistics, save decisions.
-      tools: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout, save_claim_decision]
+      description: Insurance claims — list, details, documents, statistics, payout computed in the OpenShell sandbox, save decisions.
+      source: backend/mcp_servers/claims_server
+      tags: [insurance, claims]
     tenders:
       displayName: Tenders records
       description: BTP tenders — list, details, documents, statistics, save decisions.
-      tools: [list_tenders, get_tender, get_tender_documents, get_tender_statistics, save_tender_decision]
+      source: backend/mcp_servers/tenders_server
+      tags: [btp, tenders]
     postal:
       displayName: Postal complaints records
       description: Postal complaints — list, details, documents, statistics, save decisions.
-      tools: [list_reclamations, get_reclamation, get_reclamation_documents, get_reclamation_statistics, analyze_reclamation, save_reclamation_decision]
+      source: backend/mcp_servers/postal_server
+      tags: [postal, complaints]
     tracking:
       displayName: Parcel tracking
       description: Parcel and mail tracking timelines.
-      tools: [get_tracking, search_tracking]
+      source: backend/mcp_servers/tracking_server
+      tags: [postal, tracking]
     sandbox:
       displayName: Sandboxed code interpreter
       description: run_python executes LLM-generated Python in an OpenShell sandbox (no network, Landlock).
-      tools: [run_python]
+      source: backend/mcp_servers/sandbox_exec_server
+      tags: [sandbox, openshell, code-execution]
   # Gen AI Studio playground MCP list (ConfigMap gen-ai-aa-mcp-servers in the RHOAI apps namespace)
   playground:
     enabled: true
