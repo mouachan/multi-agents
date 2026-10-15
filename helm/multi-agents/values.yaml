@@ -203,7 +203,7 @@ mcp:
     replicas: 1
     image:
       repository: ocr-server
-      tag: v3.5
+      tag: v3.5.2
     service:
       type: ClusterIP
       port: 8080
@@ -231,7 +231,7 @@ mcp:
     replicas: 1
     image:
       repository: rag-server
-      tag: v3.5
+      tag: v3.5.1
     service:
       type: ClusterIP
       port: 8080
@@ -252,7 +252,7 @@ mcp:
     replicas: 1
     image:
       repository: claims-server
-      tag: v3.5
+      tag: v3.5.3
     service:
       type: ClusterIP
       port: 8080
@@ -339,7 +339,7 @@ mcp:
     replicas: 1
     image:
       repository: sandbox-exec-server
-      tag: v3.5
+      tag: v3.5.5
     service:
       type: ClusterIP
       port: 8080
@@ -381,7 +381,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v3.5
+    tag: v3.5.17
 
   # Service
   service:
@@ -429,7 +429,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v3.5
+    tag: v3.5.11
 
   # Service
   service:
@@ -605,7 +605,7 @@ dataInit:
   enabled: true
   image:
     repository: data-init
-    tag: v3.5
+    tag: v3.5.3
   documentsArchiveUrl: "https://github.com/mouachan/multi-agents/archive/refs/heads/main.tar.gz"
   forceReinit: "false"
   backoffLimit: 6
@@ -814,7 +814,7 @@ agents:
     replicas: 1
     image:
       repository: claims-agent
-      tag: v3.5
+      tag: v3.5.18
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -830,7 +830,7 @@ agents:
     replicas: 1
     image:
       repository: tenders-agent
-      tag: v3.5
+      tag: v3.5.18
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -846,7 +846,7 @@ agents:
     replicas: 1
     image:
       repository: postal-agent
-      tag: v3.5
+      tag: v3.5.18
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:

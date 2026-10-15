@@ -1,143 +1,61 @@
-🎉 Agentic Claims Processing Demo has been deployed!
+{{- $ns := include "multi-agents.namespace" . -}}
+{{- $frontend := .Values.frontend.route.host | default (printf "%s.%s" (include "frontend_route_prefix" .) .Values.global.clusterDomain) -}}
+{{- $backend := .Values.backend.route.host | default (printf "%s.%s" (include "backend_route_prefix" .) .Values.global.clusterDomain) -}}
+Multi-agents platform {{ .Chart.AppVersion }} — release {{ .Release.Name }}, namespace {{ $ns }}
 
-📋 Deployment Summary:
-  Namespace: {{ .Values.global.namespace }}
-  Release:   {{ .Release.Name }}
-  Chart:     {{ .Chart.Name }}-{{ .Chart.Version }}
+URLs
+{{- if and .Values.frontend.enabled .Values.frontend.route.enabled }}
+  Frontend:     https://{{ $frontend }}{{ if .Values.auth.enabled }}   (OpenShift login){{ end }}
+{{- end }}
+{{- if and .Values.backend.enabled .Values.backend.route.enabled }}
+  Backend API:  https://{{ $backend }}/api/v1{{ if .Values.auth.enabled }}   (Authorization: Bearer $(oc whoami -t)){{ end }}
+{{- end }}
 
-🔗 Access URLs:
-{{- if .Values.frontend.enabled }}
-  {{- if .Values.frontend.route.enabled }}
-    {{- if .Values.frontend.route.host }}
-      {{- if .Values.frontend.route.tls.enabled }}
-  Frontend:   https://{{ .Values.frontend.route.host }}
-      {{- else }}
-  Frontend:   http://{{ .Values.frontend.route.host }}
-      {{- end }}
-    {{- else }}
-      {{- if .Values.frontend.route.tls.enabled }}
-  Frontend:   https://{{ include "frontend_route_prefix" . }}.{{ .Values.global.clusterDomain }}
-      {{- else }}
-  Frontend:   http://{{ include "frontend_route_prefix" . }}.{{ .Values.global.clusterDomain }}
-      {{- end }}
-    {{- end }}
-  {{- else }}
-  Frontend:   http://frontend.{{ .Values.global.clusterDomain }}.svc.cluster.local:8080
-  {{- end }}
-{{- end }}
-{{- if .Values.backend.enabled }}
-  {{- if .Values.backend.route.enabled }}
-    {{- if .Values.backend.route.host }}
-      {{- if .Values.backend.route.tls.enabled }}
-  Backend:    https://{{ .Values.backend.route.host }}/api/v1/claims
-      {{- else }}
-  Backend:    http://{{ .Values.backend.route.host }}/api/v1/claims
-      {{- end }}
-    {{- else }}
-      {{- if .Values.backend.route.tls.enabled }}
-  Backend:    https://{{ include "backend_route_prefix" . }}.{{ .Values.global.clusterDomain }}/api/v1/claims
-      {{- else }}
-  Backend:    http://{{ include "backend_route_prefix" . }}.{{ .Values.global.clusterDomain }}/api/v1/claims
-      {{- end }}
-    {{- end }}
-  {{- else }}
-  Backend:  http://backend.{{ .Values.global.clusterDomain }}.svc.cluster.local:8080/api/v1/claims
-  {{- end }}
-{{- end }}
+Components
 {{- if .Values.ogx.enabled }}
-  OGX:        {{ include "multi-agents.ogx.endpoint" . }}
-{{- end }}
-
-📦 Components Deployed:
-{{- if .Values.postgresql.enabled }}
-  ✅ PostgreSQL Database
-{{- end }}
-{{- if .Values.ogx.enabled }}
-  ✅ OGX server (OpenShift AI 3.5) — chat via {{ ternary "cluster MaaS" "external MaaS" .Values.models.maas.enabled }}: {{ .Values.models.reasoning }}, {{ .Values.models.vision }}; embeddings: {{ .Values.models.embedding }}
+  - OGX server: {{ .Values.models.reasoning }} (reasoning), {{ .Values.models.vision }} (vision), {{ .Values.models.embedding }} (embeddings)
 {{- end }}
 {{- if .Values.agents.enabled }}
-  ✅ A2A agents: claims-agent, tenders-agent, postal-agent{{ if .Values.spiffe.enabled }} (SPIFFE JWT-SVID auth){{ end }}
+  - A2A agents: claims-agent, tenders-agent, postal-agent{{ if .Values.spiffe.enabled }} (SPIFFE JWT-SVID){{ end }}
 {{- end }}
+{{- $servers := list }}{{ range $name := splitList " " (include "multi-agents.mcp.serverKeys" .) }}{{ if (index $.Values.mcp $name).enabled }}{{ $servers = append $servers $name }}{{ end }}{{ end }}
+  - MCP servers: {{ join ", " $servers }}{{ if .Values.mcpGateway.enabled }} (behind the MCP Gateway){{ end }}
 {{- if .Values.guardrails.enabled }}
-  ✅ NeMo Guardrails ({{ .Values.guardrails.name }}) — PII masking on agent input/output
+  - NeMo Guardrails: PII masking and input checks
 {{- end }}
 {{- if .Values.mlflow.enabled }}
-  ✅ MLflow tracing + Prompt Registry (alias @{{ .Values.mlflow.prompts.alias }}, workspace {{ include "multi-agents.mlflow.workspace" . }})
+  - MLflow: traces in experiment {{ .Values.mlflow.experimentName }}, prompts @{{ .Values.mlflow.prompts.alias }} (workspace {{ include "multi-agents.mlflow.workspace" . }})
 {{- end }}
-{{- if .Values.mcpGateway.enabled }}
-  ✅ MCP Gateway: {{ include "multi-agents.mcpGateway.url" . }}
-{{- end }}
-{{- if .Values.inference.enabled }}
-  ✅ Llama 3 Reasoning InferenceService (OpenShift AI)
-{{- end }}
-{{- if .Values.embedding.enabled }}
-  ✅ Gemma Embedding InferenceService (OpenShift AI)
-{{- end }}
-{{- if .Values.mcp.ocr.enabled }}
-  ✅ OCR MCP Server (EasyOCR)
-{{- end }}
-{{- if .Values.mcp.rag.enabled }}
-  ✅ RAG MCP Server (pgvector)
-{{- end }}
-{{- if .Values.backend.enabled }}
-  ✅ Backend API (FastAPI)
-{{- end }}
-{{- if .Values.frontend.enabled }}
-  ✅ Frontend (React)
+{{- if .Values.auth.enabled }}
+{{- $profiles := list }}{{ range $id, $p := .Values.auth.profiles }}{{ $profiles = append $profiles (printf "%s (%s)" $p.displayName $p.group) }}{{ end }}
+  - Access profiles (OpenShift groups): {{ join ", " $profiles }}
 {{- end }}
 
-🚀 Next Steps:
-
- * Wait for all pods to be ready.
-   oc wait --for=condition=ready pod -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Values.global.namespace }} --timeout=300s
-{{- if .Values.backend.enabled }}
-
- * Optional: create more demo claims
-   cd scripts && ./reset_and_create_claims.sh
+Next steps
+  1. Wait for the pods and the post-install Jobs (init-postgres, data-init, prompt-sync, maas-api-key):
+       oc get pods,jobs -n {{ $ns }}
+{{- if .Values.rhoaiCatalog.enabled }}
+  2. Restart the OpenShift AI catalog so it loads the agents and MCP servers, then check it is ready.
+     Needed after every install or upgrade that changes the catalog entries: until the restart,
+     the whole AI hub catalog (models, agents, MCP servers) can be unavailable.
+       oc rollout restart deploy/model-catalog -n {{ .Values.rhoaiCatalog.namespace }}
+       oc exec -n {{ .Values.rhoaiCatalog.namespace }} deploy/model-catalog -c catalog -- curl -s http://127.0.0.1:8080/readyz
+       # -> {"plugins":{"agent":true,"mcp":true,"model":true},"status":"ready"}
 {{- end }}
-{{- if .Values.frontend.enabled }}
+{{- if .Values.auth.enabled }}
+{{- $admins := dig "admin" "users" list .Values.auth.profiles }}
+  3. Access profiles: Admin page > Users and access profiles, or
+       oc adm groups add-users <group> <user>
+{{- if not $admins }}
+     WARNING: no administrator was given at install (auth.profiles.admin.users):
+       oc adm groups add-users {{ dig "admin" "group" "<admin-group>" .Values.auth.profiles }} <user>
+{{- end }}
+{{- end }}
+{{- if not .Values.mcp.sandbox.enabled }}
 
-3. Access the application:
-   Open: https://frontend-{{ .Values.global.namespace }}.{{ .Values.global.clusterDomain }}
-  {{- if .Values.frontend.route.enabled }}
-    {{- if .Values.frontend.route.host }}
-      {{- if .Values.frontend.route.tls.enabled }}
-  Open: https://{{ .Values.frontend.route.host }}
-      {{- else }}
-  Open: http://{{ .Values.frontend.route.host }}
-      {{- end }}
-    {{- else }}
-      {{- if .Values.frontend.route.tls.enabled }}
-  Open: https://{{ include "frontend_route_prefix" . }}.{{ .Values.global.clusterDomain }}
-      {{- else }}
-  Open: http://{{ include "frontend_route_prefix" . }}.{{ .Values.global.clusterDomain }}
-      {{- end }}
-    {{- end }}
-  {{- else }}
-  Run: oc port-forward -n {{ .Values.global.namespace }} deploy/frontend 8080
-  Then open: http://127.0.0.1:8080
-  {{- end }}
+NOTE: the OpenShell sandbox is disabled (mcp.sandbox.enabled=false): claim payouts are not
+computed (compute_payout returns an error instead of the amount). Install the OpenShell gateway
+(openshell/README.md), then upgrade with --set mcp.sandbox.enabled=true.
 {{- end }}
 
-📚 Documentation:
-   GitHub: https://github.com/your-org/multi-agents
-   README: https://github.com/your-org/multi-agents/blob/main/README.md
-
-🛠️  Useful Commands:
-
-  # Check deployment status
-  helm status {{ .Release.Name }} -n {{ .Values.global.namespace }}
-
-  # View logs
-  oc logs -l app=backend -n {{ .Values.global.namespace }}
-  oc logs -l app.kubernetes.io/instance={{ .Values.ogx.name }} -n {{ .Values.global.namespace }}
-  oc logs -l component=a2a-agent -n {{ .Values.global.namespace }}
-
-  # Upgrade release
-  helm upgrade {{ .Release.Name }} ./helm/multi-agents -n {{ .Values.global.namespace }}
-
-  # Rollback
-  helm rollback {{ .Release.Name }} -n {{ .Values.global.namespace }}
-
-  # Uninstall
-  helm uninstall {{ .Release.Name }} -n {{ .Values.global.namespace }}
+Verify: RHOAI-3.5-SETUP.md, section 8. Upgrades: helm upgrade ... --reset-then-reuse-values

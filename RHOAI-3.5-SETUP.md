@@ -327,10 +327,15 @@ API key bound to the `multi-agents` subscription). MaaS external models are chat
 so **embeddings** (`nomic-embed-text-v1-5`, 768 dims) are served straight from the
 external MaaS.
 
+**Image tags**: `values.yaml` pins the tag of every image of this release, so a fresh install
+deploys the current code. When you rebuild an image, bump its tag in `values.yaml` (or
+`--set backend.image.tag=...`, `agents.<name>.image.tag`, `mcp.<name>.image.tag`,
+`frontend.image.tag`, `dataInit.image.tag`).
+
 **Upgrades**: use `--reset-then-reuse-values` (`--reuse-values` ignores new chart
-defaults) and pin the image tags you built (`--set backend.image.tag=...`,
-`agents.<name>.image.tag`, `mcp.<name>.image.tag`, `frontend.image.tag`,
-`dataInit.image.tag`): a release value left at an older tag rolls the workload back.
+defaults); a tag passed with `--set` stays in the release values and overrides the chart
+default until it is set again. The install and upgrade notes (`helm status`) list the
+remaining manual steps (catalog restart, administrators, sandbox).
 Hook Jobs use `before-hook-creation`, so a Job left by an interrupted upgrade does not
 block the next one.
 
@@ -593,7 +598,8 @@ one.
   session to the server) reaches the client as a `500` of the broker; the router log shows
   `server returned 4xx for initialize POST`.
 * When the `version` of a catalog entry changes, the catalog keeps the previous record next
-  to the new one (duplicate cards). Disabling the source (`enabled: false` in the
+  to the new one (duplicate cards). The entries use the chart `appVersion`, so image rebuilds
+  do not change it; after an `appVersion` bump, clean up as follows. Disabling the source (`enabled: false` in the
   `sources.yaml` of ConfigMap `multi-agents-catalog`) removes its records; enable it again
   with a `helm upgrade`, and restart `model-catalog` after each change (see above).
 * The model-catalog loads the sources only as leader: after a restart, the new pod can log

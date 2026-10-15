@@ -12,6 +12,8 @@ rhoai-model-registries loads every ConfigMap labelled opendatahub.io/catalog-sou
 (sources.yaml + YAML catalogs). Agents are browse-only entries (the "running agents" view
 only lists OpenShell Sandboxes); MCP entries describe our servers and their tools.
 Entries are built as dicts and written with toYaml (multi-line READMEs, logos as data URIs).
+version = the chart appVersion, not the image tag: the catalog keeps the previous record when the
+version of an entry changes (duplicate cards), so image rebuilds must not change it.
 The card badge comes from customProperties.supportTier: the dashboard only knows
 redHatSupported, partnerSupported and communitySupported.
 */}}
@@ -35,7 +37,7 @@ redHatSupported, partnerSupported and communitySupported.
       "name" (printf "%s-mcp" $name)
       "displayName" $m.displayName
       "provider" $cat.provider
-      "version" ($cfg.image.tag | trimPrefix "v")
+      "version" $.Chart.AppVersion
       "license" $cat.license.id
       "license_link" $cat.license.link
       "description" $m.description
