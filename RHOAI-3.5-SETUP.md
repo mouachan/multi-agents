@@ -411,8 +411,11 @@ curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}
   Security indicators: *Verified source*, *Secure endpoint* (MCP Gateway with per-user
   authorization), *SAST* (Bandit, see below) and *Read only tools* (computed from the tools'
   access types).
-  The catalog loads its sources at startup: after an upgrade,
-  `oc rollout restart deploy/model-catalog -n rhoai-model-registries`. Check them with
+  **After any change to the catalog entries, restart the catalog**:
+  `oc rollout restart deploy/model-catalog -n rhoai-model-registries`. The catalog reloads a
+  modified source file by itself, but its *model* plugin fails that reload (`label with name
+  'Multi-agents' already exists from another origin`) and the pod turns NotReady: the whole
+  AI hub catalog (models, agents, MCP servers) is then unavailable until the restart. Check them with
   `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
   (`multi_agents_agents`, `multi_agents_mcp`).
 
@@ -583,6 +586,10 @@ one.
 * A tool call refused by the MCP Gateway (`mcp-tools-rbac`, 403 when the router opens the
   session to the server) reaches the client as a `500` of the broker; the router log shows
   `server returned 4xx for initialize POST`.
+* When the `version` of a catalog entry changes, the catalog keeps the previous record next
+  to the new one (duplicate cards). Disabling the source (`enabled: false` in the
+  `sources.yaml` of ConfigMap `multi-agents-catalog`) removes its records; enable it again
+  with a `helm upgrade`, and restart `model-catalog` after each change (see above).
 * The model-catalog loads the sources only as leader: after a restart, the new pod can log
   `Lock held by another instance` until the lease of the previous pod expires, and serves
   the previous entries meanwhile.
