@@ -18,7 +18,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,12 +96,17 @@ def handed_over(spec: DomainSpec, decision: Dict[str, Any], removed: int) -> Dic
     return {**decision, "recommendation": spec.review_decision, "review": review}
 
 
-async def ask_agent(spec: DomainSpec, case, request: str) -> Dict[str, Any]:
-    """Run the processing task on the domain's A2A agent; returns the agent's final answer."""
+async def ask_agent(spec: DomainSpec, case, request: str, prompt_alias: Optional[str] = None,
+                    session: Optional[str] = None) -> Dict[str, Any]:
+    """Run the processing task on the domain's A2A agent; returns the agent's final answer.
+
+    prompt_alias: version of the agent's prompt (registry alias, default "production"; evaluations);
+    session: MLflow session of the trace (default "<entity>-<id>", the case's processings).
+    """
     profile = get_profile(spec.agent_profile)
     if profile is None or not profile.a2a_url:
         raise RuntimeError(f"The {spec.name} agent is not deployed")
-    session = f"{spec.entity}-{case.id}"
+    session = session or f"{spec.entity}-{case.id}"
     trace = TurnTrace(f"process | {spec.entity} {case_number(spec, case)}", {"message": request}, session_id=session)
     metadata = {
         "profile": profile.id,
@@ -112,6 +117,8 @@ async def ask_agent(spec: DomainSpec, case, request: str) -> Dict[str, Any]:
         "human_decisions": spec.human_decisions,
         "user_token": current_token(),   # the agent presents it to the MCP Gateway (per-user tool rights)
     }
+    if prompt_alias:
+        metadata["prompt_alias"] = prompt_alias
     traceparent = trace.start_a2a(profile.id)
     if traceparent:
         metadata["traceparent"] = traceparent

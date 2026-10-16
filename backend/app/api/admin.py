@@ -4,9 +4,12 @@
     GET  /api/v1/admin/overview                what the database holds: cases per domain and status, embeddings
     GET  /api/v1/admin/users                   users and their access profiles (app/services/access_profiles.py)
     PUT  /api/v1/admin/users/<name>/profiles   give a user exactly these profiles   {profiles}
+    POST /api/v1/admin/evaluations             evaluate the agents' decisions on the precedents   {prompt_alias}
+    GET  /api/v1/admin/evaluations/current     the running or last evaluation (app/services/evaluation.py)
 """
+import asyncio
 import logging
-from typing import List
+from typing import List, Set
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,17 +19,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User, require_admin
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.domains import all_domains
-from app.services import access_profiles
+from app.services import access_profiles, evaluation
 from app.services.demo_reset import REFERENCE_KEYS, reset_demo_data
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_background: Set[asyncio.Task] = set()     # keeps the evaluation task referenced while it runs
 
 
 class ProfilesUpdate(BaseModel):
     profiles: List[str]
+
+
+class EvaluationRequest(BaseModel):
+    prompt_alias: str = "production"
 
 
 @router.post("/reset")
@@ -80,3 +88,21 @@ async def set_user_profiles(username: str, update: ProfilesUpdate, admin: User =
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"OpenShift API: {access_profiles.api_error(e)}")
+
+
+@router.post("/evaluations")
+async def start_evaluation(body: EvaluationRequest):
+    """Process the precedents again (nothing saved) and compare with their decision; runs in the background."""
+    if evaluation.is_running():
+        raise HTTPException(status_code=409, detail="An evaluation is already running")
+    alias = body.prompt_alias.strip() or "production"
+    run = evaluation.start(alias)
+    task = asyncio.create_task(evaluation.run(AsyncSessionLocal, run), name="decision-evaluation")
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return run.to_api()
+
+
+@router.get("/evaluations/current")
+async def current_evaluation():
+    return evaluation.current()

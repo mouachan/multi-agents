@@ -119,8 +119,24 @@ export interface Overview {
   references: Record<string, { rows: number; with_embedding: number }>
 }
 
+/** An evaluation of the agents' decisions on the precedents (admin page). */
+export interface Evaluation {
+  prompt_alias: string
+  started_at: string
+  status: 'running' | 'completed' | 'failed'
+  total: number
+  done: number
+  results: { domain: Domain; number: string; expected: string; decision?: string | null; confidence?: number | null; correct?: boolean | null; error?: string | null }[]
+  metrics: Record<string, number>
+  prompts: Record<string, string>
+  mlflow_url?: string | null
+  error?: string | null
+}
+
 export const adminApi = {
   overview: async (): Promise<Overview> => (await http.get('/admin/overview')).data,
+  evaluation: async (): Promise<Evaluation | null> => (await http.get('/admin/evaluations/current')).data,
+  evaluate: async (promptAlias: string): Promise<Evaluation> => (await http.post('/admin/evaluations', { prompt_alias: promptAlias })).data,
   reset: async () => (await http.post('/admin/reset')).data,
   users: async (): Promise<{ profiles: AccessProfile[]; users: ManagedUser[] }> => (await http.get('/admin/users')).data,
   setProfiles: async (username: string, profiles: string[]): Promise<ManagedUser> =>

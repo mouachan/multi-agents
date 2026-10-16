@@ -10,6 +10,8 @@ A request is one A2A message. Its metadata (all optional) comes from the backend
     language              "fr" | "en", enforced by the language-rule prompt
     previous_response_id  OGX response to continue (the conversation)
     instructions_override prompt of the chat session (replaces the registry prompt)
+    prompt_alias          alias of the profile's prompt in the registry (default "production"; an
+                          evaluation sets "candidate" to try a new version)
     user_token            OpenShift token of the end user, presented to the MCP Gateway
     traceparent           W3C trace of the caller: the agent's spans join it
 
@@ -181,7 +183,7 @@ class DomainAgentExecutor(AgentExecutor):
             base = meta["instructions_override"]
             prompt_info = {"name": profile.prompt, "version": None, "source": "session"}
         else:
-            prompt = await self.prompts.get(profile.prompt)
+            prompt = await self.prompts.get(profile.prompt, meta.get("prompt_alias"))
             base, prompt_info = prompt.text, prompt.info()
 
         instructions = base

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Database, RotateCcw, Settings, TriangleAlert } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
+import { DecisionEvaluation } from '../components/admin/DecisionEvaluation'
 import { UserProfiles } from '../components/admin/UserProfiles'
 import { Button } from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
@@ -12,7 +13,8 @@ import { useResource } from '../hooks/useResource'
 import { useTranslation } from '../i18n/LanguageContext'
 import { adminApi } from '../services/api'
 
-/** Administration: what the database holds, the demo reset, and the users' access profiles. */
+/** Administration: what the database holds, the demo reset, the quality of the agents' decisions,
+ *  and the users' access profiles. */
 export default function AdminPage() {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -90,6 +92,7 @@ export default function AdminPage() {
         </Card>
       </div>
 
+      <div className="mt-5"><DecisionEvaluation /></div>
       {user.authEnabled && <div className="mt-5"><UserProfiles /></div>}
 
       <ConfirmDialog

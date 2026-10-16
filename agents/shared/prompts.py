@@ -49,7 +49,7 @@ class PromptStore:
         self.ttl = settings.prompt_cache_ttl
         self.dir = Path(settings.prompts_dir)
         self.enabled = mlflow_auth.configure(settings)
-        self._cache: Dict[str, tuple[float, PromptValue]] = {}
+        self._cache: Dict[tuple, tuple[float, PromptValue]] = {}
 
     def _from_file(self, name: str) -> Optional[PromptValue]:
         path = self.dir / f"{name}.txt"
@@ -57,28 +57,31 @@ class PromptStore:
             return None
         return PromptValue(name, path.read_text(encoding="utf-8"), None, "file")
 
-    def _from_mlflow(self, name: str) -> Optional[PromptValue]:
+    def _from_mlflow(self, name: str, alias: str) -> Optional[PromptValue]:
         import mlflow
 
-        prompt = mlflow.genai.load_prompt(f"prompts:/{name}@{self.alias}")
+        prompt = mlflow.genai.load_prompt(f"prompts:/{name}@{alias}")
         return PromptValue(name, prompt.template, str(prompt.version), "mlflow")
 
-    async def get(self, name: str) -> PromptValue:
-        cached = self._cache.get(name)
+    async def get(self, name: str, alias: Optional[str] = None) -> PromptValue:
+        """The prompt at the alias (default PROMPT_ALIAS, "production"); an evaluation can ask for another
+        one ("candidate") to compare a new version before promoting it."""
+        alias = alias or self.alias
+        cached = self._cache.get((name, alias))
         if cached and time.monotonic() - cached[0] < self.ttl:
             return cached[1]
 
         value: Optional[PromptValue] = None
         if self.enabled:
             try:
-                value = await asyncio.to_thread(self._from_mlflow, name)
+                value = await asyncio.to_thread(self._from_mlflow, name, alias)
             except Exception as e:
                 logger.warning("Prompt '%s@%s' not loaded from MLflow (%s) — using fallback",
-                               name, self.alias, e)
+                               name, alias, e)
         if value is None:
             value = self._from_file(name) or (cached[1] if cached else PromptValue(name, ""))
         if not value.text:
             logger.error("Prompt '%s' unavailable (MLflow and %s)", name, self.dir)
 
-        self._cache[name] = (time.monotonic(), value)
+        self._cache[(name, alias)] = (time.monotonic(), value)
         return value
