@@ -27,11 +27,12 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.agents import get_profile
 from app.core import tracing
-from app.core.auth import User, current_token
+from app.core.auth import User
 from app.domains import DomainSpec
 from app.services import decisions
 from app.services.a2a_client import get_a2a_client
 from app.services.cases import case_number, case_to_api
+from app.services.maas_keys import agent_credentials
 from app.services.turn_trace import TurnTrace
 
 
@@ -127,7 +128,7 @@ async def ask_agent(db: AsyncSession, spec: DomainSpec, case, question: str, lan
     trace = TurnTrace(f"review | {spec.entity} {case_number(spec, case)}", {"message": question}, session_id=session)
     metadata = {"profile": profile.id, "mode": "chat", "language": language,
                 "tools": spec.processing_tools,   # read-only tools: no save_*_decision in a review
-                "user_token": current_token()}
+                **await agent_credentials()}
     traceparent = trace.start_a2a(profile.id)
     if traceparent:
         metadata["traceparent"] = traceparent

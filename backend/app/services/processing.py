@@ -24,13 +24,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import get_profile
-from app.core.auth import current_token
 from app.core.prompts import load_prompt
 from app.domains import DomainSpec
 from app.services import decisions
 from app.services.a2a_client import get_a2a_client
 from app.services.cases import case_data, case_number
 from app.services.embeddings import embed_case_document
+from app.services.maas_keys import agent_credentials
 from app.services.pii_report import record_personal_data
 from app.services.turn_trace import TurnTrace
 
@@ -115,7 +115,7 @@ async def ask_agent(spec: DomainSpec, case, request: str, prompt_alias: Optional
         "decision_values": spec.decision_values,
         "review_decision": spec.review_decision,      # with it, the agent writes the brief for the reviewer
         "human_decisions": spec.human_decisions,
-        "user_token": current_token(),   # the agent presents it to the MCP Gateway (per-user tool rights)
+        **await agent_credentials(),     # the user's token (MCP Gateway) and MaaS key (models)
     }
     if prompt_alias:
         metadata["prompt_alias"] = prompt_alias

@@ -36,10 +36,13 @@ models:
 * OGX registers the chat models on provider `maas` (cluster gateway) and the embedding model on
   provider `maas-direct` (external MaaS): MaaS external models are chat-only.
 * With authentication and `callAsUser` (the default), the agents call the chat models **as the
-  user**: OGX presents the user's OpenShift token to the cluster MaaS instead of the platform key
-  (provider data `vllm_api_token`, for that request only). The MaaS then applies the token quota of
-  the user's access profile (`auth.profiles.<id>.tokenQuota`, below) and its usage view shows each
-  person. The token never goes to the external MaaS: chat models always use the cluster gateway.
+  user**. The backend mints the user's MaaS API key with the user's own token, bound to the
+  subscription of their access profile (`app/services/maas_keys.py`), and OGX calls the cluster MaaS
+  with it instead of the platform key (provider data `vllm_api_token`, for that request only). The
+  MaaS then applies the token quota of the profile (`auth.profiles.<id>.tokenQuota`, below) and its
+  usage view shows each person. A key, rather than the user's token: the MaaS refuses a token that
+  matches several subscriptions (it would need the `X-MaaS-Subscription` header, which OGX cannot
+  send). The key never goes to the external MaaS: chat models always use the cluster gateway.
 * `tokenRateLimit` is the platform key's quota: NeMo, the OCR, and the agents without
   authentication. A case processing uses about 20–30k tokens, a chat answer 3–8k. Above a quota the
   gateway answers `429`; the agent then says the profile's quota is used up (chat), and the
@@ -68,9 +71,9 @@ tool call, `auth.agentTools`). Administrators give profiles on the admin page, o
   of its workflow, else the API answers `403` with the missing tools. The admin page lists the tools
   of each profile.
 * **Quota.** `tokenQuota: {limit, window, priority}` creates the profile's `MaaSSubscription`
-  (`<subscriptionName>-<id>`), one counter per member; a member of several profiles gets the
-  highest priority (keep them above `models.maas.userAccess.priority`). Without `tokenQuota`, the
-  members have the `userAccess` quota. To show a quota live, lower one profile's limit (e.g.
+  (`<subscriptionName>-<id>`), one counter per member; the key of a member of several profiles is
+  bound to the one of highest priority. Without `tokenQuota`, the members use the `userAccess`
+  subscription (`<subscriptionName>-users`). To show a quota live, lower one profile's limit (e.g.
   `--set auth.profiles.logistics.tokenQuota.limit=30000`): after a processing or a few chat
   answers, its members get the quota message while the other profiles keep working.
 

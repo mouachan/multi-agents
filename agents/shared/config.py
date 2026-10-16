@@ -15,11 +15,6 @@ class AgentSettings(BaseSettings):
     ogx_process_model: str = ""
     ogx_timeout: int = 300
     ogx_max_tokens: int = 4096
-    # The model is called as the end user: OGX presents the user's OpenShift token to the cluster
-    # MaaS instead of the platform's key, so the MaaS applies the token quota of the user's profile
-    # (its MaaSSubscription) and reports the usage per person. Only with the cluster MaaS: the
-    # token must never be sent to an external provider.
-    maas_as_user: bool = False
 
     # MCP tools — either one MCP Gateway URL for all tools, or one URL per server
     # (MCP_SERVER_URL_TEMPLATE is formatted with the server name, e.g. claims-server)

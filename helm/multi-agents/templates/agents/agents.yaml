@@ -94,10 +94,6 @@ spec:
           value: {{ $.Values.agents.maxTokens | quote }}
         - name: OGX_TIMEOUT
           value: {{ $.Values.agents.timeout | quote }}
-        {{- if include "multi-agents.maas.asUser" $ }}
-        - name: MAAS_AS_USER
-          value: "true"
-        {{- end }}
         {{- include "multi-agents.mcp.agentEnv" $ | nindent 8 }}
         {{- if $.Values.guardrails.enabled }}
         - name: GUARDRAILS_ENDPOINT

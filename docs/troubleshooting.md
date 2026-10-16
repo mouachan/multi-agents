@@ -142,6 +142,8 @@ differ (e.g. a role changed less than a minute ago).
 The MaaS answered 429 for this user: the tokens of the last window exceed the quota of the user's
 profile (`auth.profiles.<id>.tokenQuota`, `oc get maassubscription -n models-as-a-service`). Wait for
 the window to pass, or raise the profile's limit. The counters are per person: the other members of
-the profile are not affected. Which subscription a user gets: `curl -sk
-https://maas.<cluster-domain>/maas-api/v1/subscriptions -H "Authorization: Bearer $(oc whoami -t)"`
-(the highest priority applies).
+the profile are not affected. The subscriptions a user may use: `curl -sk
+https://maas.<cluster-domain>/maas-api/v1/subscriptions -H "Authorization: Bearer $(oc whoami -t)"`;
+the backend logs `MaaS key minted for <user> on subscription <name>` (the profile of highest
+priority). `No MaaS key for <user>` means the MaaS refused to mint it: the platform key is used
+(no quota per profile) until the cause is fixed.

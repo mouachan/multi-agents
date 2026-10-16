@@ -6,9 +6,9 @@ Streams /v1/responses with MCP tools and normalizes the SSE events into:
     {"type": "text_delta",  "delta"}
     {"type": "done", "output", "tool_calls", "response_id", "model", "usage"}
 
-model_token: the end user's token for the cluster MaaS (config.maas_as_user), sent as OGX provider
-data: OGX calls the model with it instead of the platform's key, for this request only. When the
-MaaS refuses the call because the quota is used up (429), stream() raises QuotaExceeded.
+model_key: the end user's MaaS API key (metadata "model_key"), sent as OGX provider data: OGX calls
+the model with it instead of the platform's key, for this request only. When the MaaS refuses the
+call because the quota is used up (429), stream() raises QuotaExceeded.
 """
 import json
 import logging
@@ -120,7 +120,7 @@ class OGXClient:
         max_tool_calls: Optional[int] = None,
         max_infer_iters: Optional[int] = None,
         authorization: Optional[str] = None,
-        model_token: Optional[str] = None,
+        model_key: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
             "model": model,
@@ -146,7 +146,7 @@ class OGXClient:
             # model for a text about the result
             payload["max_infer_iters"] = max_infer_iters
 
-        headers = {"X-OGX-Provider-Data": json.dumps({"vllm_api_token": model_token})} if model_token else {}
+        headers = {"X-OGX-Provider-Data": json.dumps({"vllm_api_token": model_key})} if model_key else {}
 
         full_text: List[str] = []
         tool_calls: List[Dict[str, Any]] = []

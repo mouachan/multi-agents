@@ -43,6 +43,12 @@ data:
   AUTH_NAMESPACE: {{ $ns | quote }}
   AUTH_PROFILES: {{ .Values.auth.profiles | toJson | quote }}
   AUTH_AGENT_TOOLS: {{ .Values.auth.agentTools | toJson | quote }}
+  {{- if include "multi-agents.maas.asUser" . }}
+  # the agents call the models with the user's MaaS key (app/services/maas_keys.py)
+  MAAS_API_URL: {{ printf "%s/maas-api/v1" (trimSuffix "/v1" (include "multi-agents.maas.gatewayUrl" .)) | quote }}
+  MAAS_SUBSCRIPTION_PREFIX: {{ .Values.models.maas.subscriptionName | quote }}
+  MAAS_TLS_VERIFY: {{ .Values.models.maas.tlsVerify | quote }}
+  {{- end }}
 
   # Demo reset (admin page): the database seed and the precedent decisions of the installation
   SEED_DATA_FILE: /app/seed/seed.sql

@@ -173,9 +173,10 @@ The governance is visible rather than an error:
   (`allowed_tools`): the model is never offered a tool the gateway would refuse. In a chat the agent
   says which tools the profile does not allow (and the trace shows them); a processing that needs a
   tool the profile lacks is refused upfront with the missing tools.
-* **Models.** The agents call the models as the user (`MAAS_AS_USER`): the MaaS counts the tokens of
-  each person against the quota of their profile (one `MaaSSubscription` per profile). Beyond it the
-  MaaS answers 429 and the agent answers that the profile's quota is used up.
+* **Models.** The agents call the models as the user: the backend mints the user's MaaS API key on
+  the subscription of their profile (one `MaaSSubscription` per profile) and the agents call the
+  models with it (`model_key`), so the MaaS counts the tokens of each person against the quota of
+  their profile. Beyond it the MaaS answers 429 and the agent answers that the profile's quota is used up.
 
 ## Prompts
 

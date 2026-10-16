@@ -14,8 +14,10 @@ A request is one A2A message. Its metadata (all optional) comes from the backend
     instructions_override prompt of the chat session (replaces the registry prompt)
     prompt_alias          alias of the profile's prompt in the registry (default "production"; an
                           evaluation sets "candidate" to try a new version)
-    user_token            OpenShift token of the end user, presented to the MCP Gateway, and to the
-                          MaaS when the model is called as the user (MAAS_AS_USER)
+    user_token            OpenShift token of the end user, presented to the MCP Gateway
+    model_key             MaaS API key of the end user, bound to the subscription of their access
+                          profile: OGX calls the model with it (the profile's quota) instead of the
+                          platform key
     traceparent           W3C trace of the caller: the agent's spans join it
 
 The answer is streamed as the "response" artifact; tool activity and guardrails verdicts are
@@ -57,9 +59,11 @@ from .streaming import AnswerStream
 
 logger = logging.getLogger(__name__)
 
-# OpenShift token of the end user of the current request (metadata "user_token"), presented to the
-# MCP Gateway on every OGX call (tools governance). Never logged nor traced.
+# Credentials of the end user of the current request, never logged nor traced: the OpenShift token
+# (metadata "user_token"), presented to the MCP Gateway on every OGX call (tools governance), and
+# the MaaS API key ("model_key"), with which OGX calls the model (the quota of the user's profile)
 _user_token: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
+_model_key: ContextVar[Optional[str]] = ContextVar("model_key", default=None)
 
 CHAT_RULES_PROMPT = "chat-rules"
 LANGUAGE_RULE_PROMPT = "language-rule"
@@ -143,6 +147,7 @@ class DomainAgentExecutor(AgentExecutor):
 
         meta = _metadata(context)
         _user_token.set(meta.pop("user_token", None))
+        _model_key.set(meta.pop("model_key", None))
         profile_id = meta.get("profile") or self.default_profile
         profile = self.profiles.get(profile_id)
         if profile is None:
@@ -330,7 +335,7 @@ class DomainAgentExecutor(AgentExecutor):
             max_tokens=self.settings.ogx_max_tokens, previous_response_id=previous,
             tool_choice=tool_choice, max_tool_calls=max_tool_calls, max_infer_iters=max_infer_iters,
             authorization=_user_token.get(),
-            model_token=_user_token.get() if self.settings.maas_as_user else None,
+            model_key=_model_key.get(),
         ):
             if event["type"] == "text_delta":
                 await answer.add(event["delta"])

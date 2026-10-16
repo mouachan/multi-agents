@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     auth_namespace: str = "multi-agents"
     auth_agent_tools: str = "{}"      # JSON {agent: [MCP tools]}: what the RBAC grants with each agent
 
+    # ---- models called as the user (app/services/maas_keys.py); empty URL: the platform key
+    maas_api_url: str = ""            # cluster MaaS API, e.g. https://maas.<cluster-domain>/maas-api/v1
+    maas_subscription_prefix: str = "multi-agents"   # profile <id> -> MaaSSubscription <prefix>-<id>
+    maas_tls_verify: bool = True
+
     # ---- OpenShell sandbox page (app/api/sandbox.py); empty = not deployed
     sandbox_server_url: str = ""
 

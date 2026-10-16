@@ -43,6 +43,7 @@ CACHE_TTL = 60  # seconds
 
 _token: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
 _username: ContextVar[Optional[str]] = ContextVar("username", default=None)
+_user: ContextVar[Optional["User"]] = ContextVar("user", default=None)
 _cache: Dict[str, Tuple[float, "User"]] = {}
 
 
@@ -77,6 +78,11 @@ def current_token() -> Optional[str]:
 def current_username() -> Optional[str]:
     """User of the current request (MLflow traces: user.id), None without authentication."""
     return _username.get()
+
+
+def request_user() -> Optional["User"]:
+    """User of the current request, also in the background jobs it started (None without authentication)."""
+    return _user.get()
 
 
 def load_profiles() -> Dict[str, Dict]:
@@ -192,6 +198,7 @@ async def current_user(connection: HTTPConnection) -> User:
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
     _token.set(token)
     _username.set(user.username)
+    _user.set(user)
     return user
 
 

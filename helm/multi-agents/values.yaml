@@ -100,11 +100,12 @@ models:
       tokenRateLimit:
         limit: 200000
         window: 1h
-    # With authentication, the agents call the chat models as the end user (OGX presents the
-    # user's OpenShift token instead of the platform key): the MaaS applies the token quota of
-    # the user's access profile (auth.profiles.<id>.tokenQuota), answers 429 beyond it (the agent
-    # explains it), and its usage view shows each person. The guardrails and the OCR stay on the
-    # platform key. Needs userAccess (the profiles must be granted the models).
+    # With authentication, the agents call the chat models as the end user: the backend mints the
+    # user's MaaS API key on the subscription of their access profile, OGX calls the MaaS with it
+    # instead of the platform key. The MaaS applies the token quota of the profile
+    # (auth.profiles.<id>.tokenQuota), answers 429 beyond it (the agent explains it), and its usage
+    # view shows each person. The guardrails and the OCR stay on the platform key. Needs userAccess
+    # (the profiles must be granted the models).
     callAsUser: true
     # MaaS API key (sk-oai-...) used by OGX and NeMo. Leave empty to let the
     # maas-api-key Job mint one with its ServiceAccount token (expires: keyExpiration).
@@ -502,7 +503,7 @@ auth:
       admin: true            # demo reset, every agent
       users: []              # e.g. --set-json 'auth.profiles.admin.users=["alice"]'
       # MaaS token quota of each member (its own MaaSSubscription, see models.maas.callAsUser);
-      # a member of several profiles gets the one of highest priority (above userAccess.priority).
+      # the key of a member of several profiles is bound to the one of highest priority.
       # Without it: models.maas.userAccess.tokenRateLimit. An evaluation of the 30 precedents
       # uses ~750k tokens, a processing 20-30k, a chat answer 3-8k.
       tokenQuota: {limit: 3000000, window: 1h, priority: 9}

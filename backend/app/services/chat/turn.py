@@ -23,12 +23,13 @@ import re
 from typing import Any, AsyncIterator, Dict, Optional
 
 from app.agents import get_profile, profiles_for_domains
-from app.core.auth import User, current_token
+from app.core.auth import User
 from app.models.conversation import ChatMessage, ChatSession
 from app.services.a2a_client import get_a2a_client
 from app.services.chat.config import detect_language, follow_up_actions
 from app.services.chat.routing import route_message
 from app.services.guardrails import mask_by_pattern
+from app.services.maas_keys import agent_credentials
 from app.services.turn_trace import TurnTrace
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ async def _turn(db, session: ChatSession, message: str, user: User, trace: TurnT
         "profile": profile.id, "mode": "chat", "language": language,
         "previous_response_id": metadata.get("last_response_id"),
         "instructions_override": metadata.get("custom_prompt"),   # prompt editor (prompts.py)
-        "user_token": current_token(),   # the agent presents it to the MCP Gateway (per-user tool rights)
+        **await agent_credentials(),     # the user's token (MCP Gateway) and MaaS key (models)
     }
     if user.tools is not None:
         a2a_metadata["allowed_tools"] = sorted(user.tools)   # the agent only offers these, explains the others
