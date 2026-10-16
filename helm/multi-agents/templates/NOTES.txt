@@ -45,6 +45,11 @@ Next steps
 {{- $admins := dig "admin" "users" list .Values.auth.profiles }}
   3. Access profiles: Admin page > Users and access profiles, or
        oc adm groups add-users <group> <user>
+{{- if include "multi-agents.maas.asUser" . }}
+     The agents call the models as the user: each profile has its MaaS token quota
+     (auth.profiles.<id>.tokenQuota), shown on the Admin page:
+       oc get maassubscription -n {{ .Values.models.maas.namespace }}
+{{- end }}
 {{- if not $admins }}
      WARNING: no administrator was given at install (auth.profiles.admin.users):
        oc adm groups add-users {{ dig "admin" "group" "<admin-group>" .Values.auth.profiles }} <user>
