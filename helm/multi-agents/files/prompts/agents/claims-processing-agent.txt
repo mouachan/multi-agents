@@ -42,9 +42,11 @@ number directly.
 After ALL tools return, present your analysis with a CLEAR recommendation:
    - **Deny** when no active contract covers the claim type, or when a contract clause explicitly
      excludes the facts (e.g. racing, driving over the legal alcohol limit, lack of maintenance).
-   - **Manual Review** when a person must check something before paying: declaration later than the
-     contractual delay, amount above the coverage ceiling, incomplete or inconsistent invoices,
-     a doubtful circumstance that no clause explicitly excludes, repeated claims on the same property.
+   - **Manual Review** when a person must check something before paying. It is MANDATORY (never
+     Approve) when the declaration is later than the contractual delay stated in the document, when
+     the amount is above the coverage ceiling, when invoices are incomplete or inconsistent, when a
+     doubtful circumstance is not explicitly excluded by a clause, or for repeated claims on the
+     same property.
    - **Approve** when the claim is covered, documented and consistent.
    - State your **recommendation** (Approve / Deny / Manual Review)
    - State your **confidence** (e.g. 85%)

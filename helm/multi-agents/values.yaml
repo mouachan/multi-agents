@@ -187,7 +187,7 @@ mcp:
     replicas: 1
     image:
       repository: rag-server
-      tag: v3.5.20
+      tag: v3.5.21
     service:
       type: ClusterIP
       port: 8080

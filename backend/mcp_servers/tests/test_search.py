@@ -15,7 +15,7 @@ async def test_similar_claims_find_the_decided_precedent(servers, auto_claims):
     found = {p["claim_number"]: p for p in result["similar_claims"]}
     assert result["claim_type"] == "Auto" and number not in found       # the claim itself is left out
     assert found[precedent]["decision"] == "deny" and found[precedent]["similarity_score"] == 1.0
-    assert "jean.martin" not in found[precedent]["claim_text"]           # personal data masked
+    assert "claim_text" not in found[precedent]       # the decision and its reasoning, not the document
 
 
 async def test_tender_searches_accept_a_tender_number(servers):

@@ -6,7 +6,12 @@ to the business rows, and only the embedding model is called through OGX (shared
 
 A tool that searches "similar" records accepts a case number (CLM-..., AO-..., RECL-...) as well as
 a text: with a number it searches with the text of that case (its document), and leaves it out of
-the results.
+the results. A precedent comes with its decision and reasoning, not its document: that is what the
+agent compares, and the less text, the less personal data to mask.
+
+The company's reference data (references, past tenders, capabilities) and the knowledge bases hold no
+personal data: their tools are declared personal_data=False, their results do not go through NeMo
+(masking a page of text takes seconds).
 """
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,7 +23,6 @@ from shared.tools import ToolError, required, tool
 
 mcp = create_mcp("rag-server")
 
-EXCERPT_CHARS = 500   # text of a precedent returned with it
 
 
 async def _search_text(text_or_number: str, name: str) -> Tuple[str, Optional[str]]:
@@ -78,7 +82,7 @@ async def retrieve_user_info(user_id: str, query: str = "", top_k: int = 5) -> D
 
 
 @tool(mcp)
-async def retrieve_similar_claims(claim_text: str, claim_type: Optional[str] = None, top_k: int = 10,
+async def retrieve_similar_claims(claim_text: str, claim_type: Optional[str] = None, top_k: int = 5,
                                   min_similarity: float = 0.5) -> Dict[str, Any]:
     """
     Find decided claims similar to a claim (precedents), each with its decision, confidence and
@@ -87,15 +91,14 @@ async def retrieve_similar_claims(claim_text: str, claim_type: Optional[str] = N
     Args:
         claim_text: A claim number (e.g. CLM-2024-0026) or the text of a claim
         claim_type: Optional claim type filter (Auto, Home, Medical, Life)
-        top_k: Maximum number of precedents (default 10)
+        top_k: Maximum number of precedents (default 5)
         min_similarity: Minimum similarity, 0.0 to 1.0 (default 0.5)
     """
     text, current = await _search_text(claim_text, "claim_text")
     if current and not claim_type:
         claim_type = (await find_case(CLAIMS, current))["claim_type"]
     precedents = await _nearest(f"""
-        SELECT c.claim_number, c.claim_type, c.status::text AS outcome,
-               LEFT(doc.raw_ocr_text, :excerpt) AS claim_text, {similarity('doc.embedding')} AS similarity_score,
+        SELECT c.claim_number, c.claim_type, c.status::text AS outcome, {similarity('doc.embedding')} AS similarity_score,
                d.initial_decision::text AS decision, d.initial_confidence AS confidence, LEFT(d.initial_reasoning, 300) AS reasoning
         FROM claim_documents doc JOIN claims c ON c.id = doc.claim_id
         JOIN LATERAL (SELECT initial_decision, initial_confidence, initial_reasoning FROM claim_decisions
@@ -105,12 +108,12 @@ async def retrieve_similar_claims(claim_text: str, claim_type: Optional[str] = N
           AND (CAST(:current AS text) IS NULL OR c.claim_number <> :current)
           AND {similarity('doc.embedding')} >= :min_similarity
         {by_similarity('doc.embedding')} LIMIT :limit""",
-        text, excerpt=EXCERPT_CHARS, type=claim_type, current=current,
+        text, type=claim_type, current=current,
         min_similarity=min(max(min_similarity, 0.0), 1.0), limit=min(max(top_k, 1), 100))
     return {"similar_claims": precedents, "total_found": len(precedents), "claim_type": claim_type}
 
 
-@tool(mcp)
+@tool(mcp, personal_data=False)
 async def search_knowledge_base(query: str, top_k: int = 5, category: Optional[str] = None) -> Dict[str, Any]:
     """
     Search the insurance knowledge base (policies, coverage rules, procedures).
@@ -129,7 +132,7 @@ async def search_knowledge_base(query: str, top_k: int = 5, category: Optional[s
 
 # ---------------------------------------------------------------------------------- tenders
 
-@tool(mcp)
+@tool(mcp, personal_data=False)
 async def retrieve_similar_references(project_description: str, top_k: int = 5) -> Dict[str, Any]:
     """
     Find the company's past projects (references) similar to a tender: client, type of works,
@@ -148,7 +151,7 @@ async def retrieve_similar_references(project_description: str, top_k: int = 5) 
     return {"references": references, "total_found": len(references)}
 
 
-@tool(mcp)
+@tool(mcp, personal_data=False)
 async def retrieve_historical_tenders(tender_description: str, top_k: int = 5) -> Dict[str, Any]:
     """
     Find past tenders similar to a tender, won or lost, with the reason of the result, the
@@ -169,7 +172,7 @@ async def retrieve_historical_tenders(tender_description: str, top_k: int = 5) -
             "win_rate_percentage": round(100 * won / len(tenders), 1) if tenders else 0}
 
 
-@tool(mcp)
+@tool(mcp, personal_data=False)
 async def retrieve_capabilities(required_capabilities: str, category: Optional[str] = None,
                                 top_k: int = 10) -> Dict[str, Any]:
     """
@@ -193,7 +196,7 @@ async def retrieve_capabilities(required_capabilities: str, category: Optional[s
 
 # ---------------------------------------------------------------------------------- postal
 
-@tool(mcp)
+@tool(mcp, personal_data=False)
 async def search_courrier_knowledge(query: str, category: str = "", limit: int = 5) -> Dict[str, Any]:
     """
     Search the postal knowledge base: rates, delivery times, packaging, customs, refunds, rules.
@@ -225,7 +228,7 @@ async def retrieve_similar_reclamations(reclamation_text: str, limit: int = 5) -
         raise ToolError("reclamation_text must be a complaint number (RECL-...) or a text")
     precedents = await _nearest(f"""
         SELECT r.reclamation_number, r.reclamation_type::text AS reclamation_type, r.status::text AS status,
-               r.description, LEFT(doc.raw_ocr_text, :excerpt) AS raw_ocr_text,
+               r.description,
                d.decision::text AS decision, d.confidence, d.reasoning,
                {similarity('doc.embedding')} AS similarity_score
         FROM reclamation_documents doc JOIN reclamations r ON r.id = doc.reclamation_id
@@ -233,7 +236,7 @@ async def retrieve_similar_reclamations(reclamation_text: str, limit: int = 5) -
                            WHERE reclamation_id = r.id ORDER BY created_at DESC LIMIT 1) d ON true
         WHERE doc.embedding IS NOT NULL AND (CAST(:current AS text) IS NULL OR r.reclamation_number <> :current)
         {by_similarity('doc.embedding')} LIMIT :limit""",
-        text, excerpt=EXCERPT_CHARS, current=current, limit=min(max(limit, 1), 20))
+        text, current=current, limit=min(max(limit, 1), 20))
     return {"similar_reclamations": precedents, "total_found": len(precedents)}
 
 
