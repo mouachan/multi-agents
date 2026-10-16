@@ -11,11 +11,12 @@ backend/
     domains/        the business domains: one file each (claims.py, tenders.py, postal.py) + spec.py
     agents.py       the agent profiles (prompt, names, routing keywords) and their A2A URLs
     api/            HTTP routes: domains.py (generated per domain), review.py, chat.py, admin.py...
-    services/       what the routes do: processing, decisions, review, cases, chat/, demo_reset...
+    services/       what the routes do: processing, decisions, review, cases, chat/, evaluation,
+                    maas_keys (the users' MaaS keys), access_profiles, demo_reset...
     models/         SQLAlchemy tables (case.py holds the columns every domain shares)
     core/           settings, database, authentication, tracing, prompt files
   mcp_servers/
-    shared/         what every MCP server uses: @tool, cases.py, personal_data.py, db.py, server.py
+    shared/         what every MCP server uses: @tool, cases.py, personal_data.py, injection.py, db.py, server.py
     <name>_server/  one server each: server.py + Containerfile (+ requirements.txt for extras)
   tests/            backend tests (real PostgreSQL in podman compose)
 agents/
@@ -46,8 +47,9 @@ documents/          the sample PDFs, French with their English translation (_en)
 * **Prompts are files**, not strings in the code: `helm/multi-agents/files/prompts/`.
 * **The backend owns the decisions.** Agents and tools never write a decision; the backend saves the
   agent's decision after a processing and the reviewer's decision after a review.
-* **A tool returns a dict** and is declared with `@tool(mcp)`: JSON, errors, timing and personal-data
-  masking are done by the decorator (`backend/mcp_servers/shared/tools.py`).
+* **A tool returns a dict** and is declared with `@tool(mcp)`: JSON, errors, timing, personal-data
+  masking and the removal of instructions aimed at the AI are done by the decorator
+  (`backend/mcp_servers/shared/tools.py`).
 * **Comments say why**, the names say what. Module docstrings explain the flow of the module.
 * **Tests use the real database** (PostgreSQL with the same schema and seed); only the models and the
   agents are replaced by stubs.

@@ -533,7 +533,7 @@ precedents on every upgrade; the backend embeds each processed document.
 * Set `mlflow.prompts.promoteOnSync=false` to keep UI promotions across upgrades.
 
 **Measure a version before promoting it.** The precedents (`precedent_decisions.json`, 30 cases
-with a known decision) are the reference. *Admin → Evaluation of the decisions* (or
+with a known decision) are the reference. *Admin → Decision quality* (or
 `POST /api/v1/admin/evaluations {"prompt_alias": "..."}`) processes them again with the agents,
 exactly as a processing but without saving anything, and logs a run in the MLflow experiment
 `decision-evaluation`: accuracy overall and per domain, share of cases handed to a person, the

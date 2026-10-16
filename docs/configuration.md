@@ -98,18 +98,23 @@ JSON-RPC on `/`. The backend finds them with `CLAIMS_AGENT_A2A_URL`, `TENDERS_AG
 |---|---|
 | `profile` | the agent profile (default: the agent's first) |
 | `mode` | `chat` (the chat rules are added to the prompt) or `process` (case processing) |
-| `tools` | subset of the profile's tools, in this order |
+| `tools` | the profile's tools this task uses, in this order (never adds one) |
+| `allowed_tools` | the MCP tools the user's profile allows: the others are not offered, and in a chat the agent says the profile does not give them |
 | `decision_values`, `review_decision`, `human_decisions` | processing: the decisions allowed, the one handing the case to a person, what that person can decide |
 | `language` | `fr` / `en`, enforced by the `language-rule` prompt |
 | `previous_response_id` | OGX response to continue (the conversation) |
 | `instructions_override` | the chat session's own prompt |
+| `prompt_alias` | the version of the profile's prompt in the registry (default `production`; an evaluation sets `candidate`) |
 | `user_token` | the user's OpenShift token, presented to the MCP Gateway |
+| `model_key` | the user's MaaS API key: OGX calls the model with it (the quota of the user's profile) |
 | `traceparent` | the caller's trace: the agent's spans join it |
 
-**Answer**: tool activity and guardrails verdicts are `working` status updates
-(`event: tool_call | tool_result | guardrails | fallback`), the text is the `response` artifact. The
-final status message carries `output`, `decision`, `tool_calls`, `response_id`, `model`, `usage`,
-`duration_ms`, `prompt {name, version, source}`, `guardrails {input, output}` and `caller`.
+**Answer**: tool activity, guardrails verdicts and the tools the profile withholds are `working`
+status updates (`event: tool_call | tool_result | guardrails | fallback | governance`), the text is
+the `response` artifact. The final status message carries `output`, `decision`, `tool_calls`,
+`response_id`, `model`, `usage`, `duration_ms`, `prompt {name, version, source}`,
+`guardrails {input, output}` and `caller`. When the MaaS refuses the model call (the profile's quota
+is used up), the task is rejected with a message saying so (`error: quota_exceeded`).
 
 **SPIFFE** (optional, `spiffe.enabled`): the backend sends a JWT-SVID for the audience
 `a2a:<agent>-agent`; each agent validates it with its local SPIRE agent and only accepts
