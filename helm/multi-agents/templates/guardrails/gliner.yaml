@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: gliner
-          image: {{ include "multi-agents.imageRegistry" . }}/{{ $g.image.repository }}:{{ $g.image.tag }}
+          image: {{ $g.image.registry | default (include "multi-agents.imageRegistry" .) }}/{{ $g.image.repository }}:{{ $g.image.tag }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           env:
             - name: MODEL_NAME

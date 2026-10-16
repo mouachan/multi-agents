@@ -599,6 +599,7 @@ guardrails:
   gliner:
     enabled: true
     image:
+      registry: ""                         # empty = global.imageRegistry
       repository: gliner-server
       tag: v3.5.20
     model: urchade/gliner_multi_pii-v1     # Apache-2.0; en, fr, de, es, it, pt
