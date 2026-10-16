@@ -30,6 +30,9 @@ logger = logging.getLogger("gliner-server")
 MODEL_NAME = os.getenv("MODEL_NAME", "urchade/gliner_multi_pii-v1")
 DEFAULT_LABELS = os.getenv("DEFAULT_LABELS", "person").split(",")
 CHUNK_CHARS = int(os.getenv("CHUNK_CHARS", "1500"))   # ~250 words, under the model's 384
+# The model sometimes takes a personal pronoun for a person ("Je peux vous aider" -> "Je": 0.86)
+PRONOUNS = {"je", "j", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles", "moi", "toi", "lui", "eux",
+            "i", "you", "he", "she", "we", "they", "me", "him", "her", "us", "them"}
 
 model = None
 
@@ -74,7 +77,7 @@ def extract(request: ExtractRequest) -> Dict[str, Any]:
     found = [{"value": entity["text"], "suggested_label": entity["label"], "score": float(entity["score"]),
               "start_position": offset + entity["start"], "end_position": offset + entity["end"]}
              for (offset, _), chunk_entities in zip(pieces, results) for entity in chunk_entities]
-    entities = without_overlaps(found)
+    entities = without_overlaps([e for e in found if e["value"].strip(" '’").lower() not in PRONOUNS])
     return {"entities": entities, "total_entities": len(entities), "tagged_text": tagged(request.text, entities)}
 
 

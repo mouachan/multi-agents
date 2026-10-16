@@ -2,7 +2,7 @@
     podman run --rm -v ./guardrails/gliner-server:/src:ro,Z -w /src registry.access.redhat.com/ubi9/python-312 \
       bash -c "pip install -q fastapi pytest && python -m pytest -q -p no:cacheprovider test_server.py"
 """
-from server import chunks, tagged, without_overlaps
+from server import PRONOUNS, chunks, tagged, without_overlaps
 
 TEXT = "Le sinistre de Jean Martin a été déclaré à Lyon. " * 20
 
@@ -26,3 +26,7 @@ def test_a_name_seen_twice_is_kept_once_and_every_occurrence_stays():
 def test_tagged_text():
     entity = {"suggested_label": "person", "start_position": 15, "end_position": 26}
     assert tagged("Le sinistre de Jean Martin.", [entity]) == "Le sinistre de [Jean Martin](person)."
+
+
+def test_pronouns_are_not_names():
+    assert {"je", "vous", "i", "we"} <= PRONOUNS and "marie" not in PRONOUNS
