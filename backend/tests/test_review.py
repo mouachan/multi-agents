@@ -96,3 +96,18 @@ async def test_unknown_choice_is_refused(client, agent, fresh_data):
     claim = await handed_over_claim(client, agent)
     response = await client.post(f"{API}/review/claims/{claim['id']}/decision", json={"decision": "go"})
     assert response.status_code == 409
+
+
+async def test_the_decision_is_recorded_as_feedback_on_the_trace(client, agent, fresh_data, monkeypatch):
+    feedback = []
+
+    async def log_feedback(trace_id, name, value, source, rationale=None):
+        feedback.append((name, value, source))
+        return True
+    monkeypatch.setattr("app.services.review.tracing.log_feedback", log_feedback)
+
+    claim = await handed_over_claim(client, agent)           # the agent leans to "deny"
+    await client.post(f"{API}/review/claims/{claim['id']}/decision",
+                      json={"decision": "approve", "justification": "Invoice received"})
+    assert ("reviewer_decision", "approve", "test-user") in [(n, v, "test-user") for n, v, _ in feedback]
+    assert ("agent_correct", False) in [(n, v) for n, v, _ in feedback]

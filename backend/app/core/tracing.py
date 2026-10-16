@@ -220,3 +220,26 @@ def mlflow_trace_id(span) -> Optional[str]:
 
 def experiment_id() -> Optional[str]:
     return _experiment_id
+
+
+async def log_feedback(trace_id: str, name: str, value, source: str, rationale: Optional[str] = None) -> bool:
+    """A human assessment on a trace (MLflow 3 assessments): the reviewer's decision on a processing.
+
+    It appears on the trace in the MLflow UI and in the experiment's evaluation views. A failure is only
+    logged: the decision is already saved.
+    """
+    if not settings.mlflow_tracking_uri or not trace_id:
+        return False
+    body = {"assessment": {"assessment_name": name, "trace_id": trace_id, "feedback": {"value": value},
+                           "source": {"source_type": "HUMAN", "source_id": source}}}
+    if rationale:
+        body["assessment"]["rationale"] = rationale
+    url = f"{settings.mlflow_tracking_uri.rstrip('/')}/api/3.0/mlflow/traces/{trace_id}/assessments"
+    try:
+        async with httpx.AsyncClient(timeout=10, verify=mlflow_verify()) as client:
+            response = await client.post(url, json=body, headers=mlflow_headers())
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logger.warning("Feedback %s on trace %s not logged: %s", name, trace_id, e)
+        return False

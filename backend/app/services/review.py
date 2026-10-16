@@ -14,6 +14,9 @@ A case waits for a reviewer when the agent's decision is the domain's review dec
      processing, traced in MLflow (session "review-<entity>-<id>");
   4. decides (decide()): one of the domain's human decisions. Going against the agent requires a
      justification. The case gets the status of the decision; the decision keeps who, when and why.
+     The decision is also recorded as feedback on the MLflow trace of the processing
+     ("reviewer_decision", and "agent_correct": the agent decided or suggested the same thing), which
+     measures the agent's quality over time.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -23,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.agents import get_profile
+from app.core import tracing
 from app.core.auth import User, current_token
 from app.domains import DomainSpec
 from app.services import decisions
@@ -164,4 +168,8 @@ async def decide(db: AsyncSession, spec: DomainSpec, case, choice: str, justific
     _record(case, {"type": "decision", "decision": choice, "agent_decision": _value(decision.initial_decision),
                    "justification": justification, "by": user.username, "at": _now()})
     await db.commit()
+    trace_id = ((case.meta or {}).get("trace") or {}).get("mlflow_trace_id")
+    await tracing.log_feedback(trace_id, "reviewer_decision", choice, user.username, justification or None)
+    await tracing.log_feedback(trace_id, "agent_correct", agent_choice == choice, user.username,
+                               f"agent: {agent_choice or _value(decision.initial_decision)}, reviewer: {choice}")
     return decisions.decision_to_api(decision)
