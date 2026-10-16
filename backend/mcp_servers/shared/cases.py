@@ -38,14 +38,15 @@ class CaseTable:
 
 
 async def list_cases(t: CaseTable, status: Optional[str], limit: int) -> Dict[str, Any]:
-    """The most recent cases, optionally of one status, with their current decision."""
-    cases = await fetch_all(f"""
-        {t.select(details=False)}
-        WHERE c.is_archived = false AND (CAST(:status AS text) IS NULL OR c.status::text = :status)
-        ORDER BY c.submitted_at DESC LIMIT :limit""", status=status or None, limit=min(max(limit, 1), 100))
+    """The most recent cases, optionally of one status, with their current decision. "total" counts
+    every matching case, the list holds the `limit` most recent ones."""
+    where = "c.is_archived = false AND (CAST(:status AS text) IS NULL OR c.status::text = :status)"
+    cases = await fetch_all(f"{t.select(details=False)} WHERE {where} ORDER BY c.submitted_at DESC LIMIT :limit",
+                            status=status or None, limit=min(max(limit, 1), 100))
     for case in cases:
         case["decision"] = await _current_decision(t, case["id"], summary=True)
-    return {f"{t.key}s": cases, "total_found": len(cases)}
+    total = await fetch_one(f"SELECT COUNT(*) AS n FROM {t.table} c WHERE {where}", status=status or None)
+    return {f"{t.key}s": cases, "listed": len(cases), "total": total["n"]}
 
 
 async def find_case(t: CaseTable, reference: str) -> Row:

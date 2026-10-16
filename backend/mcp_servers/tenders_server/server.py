@@ -15,7 +15,8 @@ mcp = create_mcp("tenders-server")
 @tool(mcp)
 async def list_tenders(status: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
     """
-    List tenders (appels d'offres), the most recent first, with their details and current decision.
+    List tenders (appels d'offres), the most recent first, with their details and current decision. "total" is the number of
+    matching tenders (use it to answer "how many"), the list holds the most recent ones.
 
     Args:
         status: Optional status filter (pending, processing, completed, manual_review, declined, failed)

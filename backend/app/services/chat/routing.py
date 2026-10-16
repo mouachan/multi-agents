@@ -5,6 +5,8 @@ A2A agent card (description + examples) tagged ``profile:<profile id>``. Entries
 with the OGX embedding model (nomic prefixes "search_document: " / "search_query: ").
 
 Decision for a message:
+    0. a message that names one domain without ambiguity ("appel d'offres", "sinistre", "colis", a case
+       number) is routed among that domain's agents only, whatever its phrasing resembles
     1. score = best cosine similarity between the message and each agent's entries
     2. clear winner (score >= min_score and margin over the runner-up) -> that agent
     3. weak match on a follow-up -> keep the session's current agent ("sticky")
@@ -30,6 +32,14 @@ from app.agents import PROFILES, get_profile
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Words that name a domain without ambiguity (not the broader routing keywords of app/agents.py:
+# "remboursement" or "livraison" belong to several domains)
+DOMAIN_WORDS = {
+    "claims": ("sinistre", "claim", "clm-"),
+    "tenders": ("appel d'offres", "appels d'offres", "appel d offres", "tender", "ao-"),
+    "postal": ("réclamation", "reclamation", "recl-", "colis", "courrier"),
+}
 
 PROFILE_TAG = "profile:"
 DOC_PREFIX = "search_document: "
@@ -168,6 +178,9 @@ class SemanticRouter:
                 score = _cosine(query, vec)
                 if score > best.get(agent_id, -1.0):
                     best[agent_id] = score
+            named = named_domain(message)
+            if named and any(get_profile(agent_id).domain == named for agent_id in best):
+                best = {agent_id: score for agent_id, score in best.items() if get_profile(agent_id).domain == named}
             ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
             if not ranked:
                 raise PermissionError("No agent available for this user")
@@ -202,6 +215,13 @@ def get_semantic_router() -> SemanticRouter:
     if _router is None:
         _router = SemanticRouter(min_score=settings.router_min_score, margin=settings.router_margin)
     return _router
+
+
+def named_domain(message: str) -> Optional[str]:
+    """The only domain the message names (DOMAIN_WORDS), None when it names none or several."""
+    text = message.lower()
+    named = {domain for domain, words in DOMAIN_WORDS.items() if any(word in text for word in words)}
+    return named.pop() if len(named) == 1 else None
 
 
 # ------------------------------------------------------------------ fallback: keywords

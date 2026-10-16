@@ -6,7 +6,7 @@ analysis, then one JSON block. parse_decision() reads that block back; the backe
 
     recommendation  one of the decision values sent by the backend (metadata "decision_values")
     confidence      0.0 to 1.0
-    reasoning       2 to 4 sentences
+    reasoning       2 to 4 sentences, in French (the language of the business users)
     reasoning_en    the same reasoning in English (shown to English readers)
     review          only when the recommendation hands the case to a person (metadata "review_decision"):
                       reasons     why a person must decide
@@ -23,7 +23,7 @@ FINAL_REQUEST = """All workflow tools have returned. This request comes from the
 pipeline, not from a chat: write your analysis based on the tool results{optional}, then end your
 answer with exactly one JSON code block:
 ```json
-{{"recommendation": <one of {values}>, "confidence": <number between 0.0 and 1.0>, "reasoning": "<2 to 4 sentences>", "reasoning_en": "<the same reasoning in English>", "review": null}}
+{{"recommendation": <one of {values}>, "confidence": <number between 0.0 and 1.0>, "reasoning": "<2 to 4 sentences, in French>", "reasoning_en": "<the same reasoning in English>", "review": null}}
 ```{review}"""
 
 REVIEW_REQUEST = """

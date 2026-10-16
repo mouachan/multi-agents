@@ -277,6 +277,7 @@ R=quay.io/<your-org>/multi-agents; T=<tag>
 podman build --platform linux/amd64 -t $R/backend:$T backend/
 podman build --platform linux/amd64 -t $R/frontend:$T frontend/              # npm build inside the image
 podman build --platform linux/amd64 -t $R/data-init:$T data-init/
+podman build --platform linux/amd64 -t $R/gliner-server:$T guardrails/gliner-server/   # names, for NeMo
 for a in claims tenders postal; do                                           # one Containerfile, three agents
   podman build --platform linux/amd64 -f agents/Containerfile --build-arg AGENT=$a-agent -t $R/$a-agent:$T .
 done
@@ -586,8 +587,9 @@ one.
 
 * MaaS **external models** are Technology Preview and chat-only (no embeddings).
 * NeMo Presidio runs the **English** spaCy model, unreliable for French names in both
-  directions ("Liste les appels" tagged `PERSON`, "Marie Martin" missed): `PERSON` is not
-  masked; French identifiers rely on the custom regex recognizers.
+  directions ("Liste les appels" tagged `PERSON`, "Marie Martin" missed): names are masked by
+  the GLiNER rail instead (`guardrails.gliner`), French identifiers by the custom regex
+  recognizers. The GLiNER pod downloads its model from Hugging Face at the first start.
 * The external MaaS latency is variable (gpt-oss-120b: 2–70 s per call): agents use
   llama-scout-17b. AWS Classic load balancers close connections idle for 60 s; the chat
   stream sends a `heartbeat` event every 10 s.

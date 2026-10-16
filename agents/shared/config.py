@@ -20,6 +20,9 @@ class AgentSettings(BaseSettings):
     # (MCP_SERVER_URL_TEMPLATE is formatted with the server name, e.g. claims-server)
     mcp_gateway_url: str = ""
     mcp_server_url_template: str = "http://{server}:8080/mcp"
+    # Without the gateway: the servers deployed, comma-separated (empty = all). OGX fails the whole
+    # response when one server of the request is unreachable (e.g. no sandbox in the local stack).
+    mcp_servers: str = ""
 
     # NeMo Guardrails (TrustyAI) — PII masking + input/output rails
     guardrails_endpoint: str = ""

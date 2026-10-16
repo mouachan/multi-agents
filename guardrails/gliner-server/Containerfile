@@ -1,0 +1,12 @@
+# GLiNER PII server for NeMo Guardrails (server.py). The model is downloaded at the first start into
+# HF_HOME (a volume on OpenShift), not stored in the image.
+#   podman build --platform linux/amd64 -t <registry>/gliner-server:<tag> guardrails/gliner-server/
+FROM registry.access.redhat.com/ubi9/python-312:latest
+WORKDIR /opt/app-root/src
+COPY requirements.txt .
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
+COPY server.py .
+ENV HF_HOME=/models PYTHONUNBUFFERED=1
+EXPOSE 8080
+CMD ["python", "server.py"]

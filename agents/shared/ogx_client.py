@@ -47,11 +47,13 @@ class OGXClient:
         timeout: float = 300.0,
         mcp_gateway_url: str = "",
         mcp_server_url_template: str = "http://{server}:8080/mcp",
+        mcp_servers: Optional[List[str]] = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.mcp_gateway_url = mcp_gateway_url
         self.mcp_server_url_template = mcp_server_url_template
+        self.mcp_servers = set(mcp_servers or SERVER_TOOLS)   # deployed servers, without the gateway
 
     def build_mcp_tools(self, tools: List[str], authorization: Optional[str] = None) -> List[Dict[str, Any]]:
         """MCP tool definitions; authorization (the end user's token) is sent to the MCP Gateway,
@@ -74,10 +76,10 @@ class OGXClient:
         servers: Dict[str, set] = {}
         for tool in tools:
             server = TOOL_TO_SERVER.get(tool)
-            if server:
+            if server in self.mcp_servers:
                 servers.setdefault(server, set()).add(tool)
             else:
-                logger.warning("Unknown tool '%s' — skipped", tool)
+                logger.debug("Tool '%s' skipped: its server is not deployed", tool)
         return [
             {
                 "type": "mcp",
@@ -99,6 +101,7 @@ class OGXClient:
         previous_response_id: Optional[str] = None,
         tool_choice: Optional[str] = None,
         max_tool_calls: Optional[int] = None,
+        max_infer_iters: Optional[int] = None,
         authorization: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
@@ -112,11 +115,18 @@ class OGXClient:
         }
         if previous_response_id:
             payload["previous_response_id"] = previous_response_id
+        if payload["tools"]:
+            # One tool call per model turn: parallel calls come back from the MaaS with their arguments
+            # merged ("{..}{..}"), which OGX drops, leaving an empty answer (2 chat answers out of 3)
+            payload["parallel_tool_calls"] = False
         if tool_choice and payload["tools"]:
             payload["tool_choice"] = tool_choice
         if max_tool_calls:
             payload["max_tool_calls"] = max_tool_calls
-            payload["parallel_tool_calls"] = False  # no duplicated call (arguments "{..}{..}")
+        if max_infer_iters:
+            # 1: OGX runs the model's tool call, then stops (status "incomplete") instead of asking the
+            # model for a text about the result
+            payload["max_infer_iters"] = max_infer_iters
 
         full_text: List[str] = []
         tool_calls: List[Dict[str, Any]] = []

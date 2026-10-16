@@ -38,6 +38,8 @@ x-agent-env: &agent-env
   OGX_MAX_TOKENS: 4096
   OGX_TIMEOUT: 300
   MCP_SERVER_URL_TEMPLATE: http://{server}:8080/mcp
+  # no OpenShell sandbox locally: run_python and the payout's sandbox run are not available
+  MCP_SERVERS: ocr-server,rag-server,claims-server,tenders-server,postal-server,tracking-server
   MLFLOW_TRACKING_URI: http://mlflow:5000
   PROMPT_ALIAS: production
   PROMPT_CACHE_TTL: 60

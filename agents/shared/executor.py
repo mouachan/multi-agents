@@ -22,7 +22,8 @@ The final status message carries in its metadata:
 Processing (mode=process with decision values) is a guided workflow: one model call per tool, in
 the caller's order, then the final analysis and the decision block (decision.py). Llama writes
 several tool calls as Python-like text when it wants many tools at once, which OGX cannot parse;
-with one tool offered per step and tool_choice=required it always makes real tool calls.
+with one tool offered per step and tool_choice=required it always makes real tool calls. A step
+stops once its tool has run (max_infer_iters=1): the model writes only the final analysis.
 """
 import json
 import logging
@@ -91,7 +92,8 @@ class DomainAgentExecutor(AgentExecutor):
         self.default_profile = next(iter(profiles))
         self.llm = OGXClient(settings.ogx_endpoint, settings.ogx_timeout,
                              mcp_gateway_url=settings.mcp_gateway_url,
-                             mcp_server_url_template=settings.mcp_server_url_template)
+                             mcp_server_url_template=settings.mcp_server_url_template,
+                             mcp_servers=[s for s in settings.mcp_servers.split(",") if s])
         self.prompts = PromptStore(settings)
         self.guardrails = Guardrails(settings)
 
@@ -258,9 +260,11 @@ class DomainAgentExecutor(AgentExecutor):
         for attempt in range(1, GUIDED_STEP_ATTEMPTS + 1):
             logger.info("Guided step %s (attempt %d)", tool, attempt)
             try:
-                # max_tool_calls=1: with tool_choice=required OGX would otherwise call the tool again on every turn
+                # max_tool_calls=1: with tool_choice=required OGX would otherwise call the tool again on every
+                # turn; max_infer_iters=1: no text about the result (it was discarded, and took most of the time)
                 return await self._respond(updater, model, instructions, request, [tool], previous,
-                                           tool_choice="required", max_tool_calls=1, show_text=False)
+                                           tool_choice="required", max_tool_calls=1, max_infer_iters=1,
+                                           show_text=False)
             except RuntimeError as e:
                 # intermittent: malformed tool-call arguments ("Extra data"), MaaS disconnects
                 logger.warning("Guided step %s failed (attempt %d): %s", tool, attempt, e)
@@ -268,7 +272,8 @@ class DomainAgentExecutor(AgentExecutor):
 
     async def _respond(self, updater: TaskUpdater, model: str, instructions: str, message: str,
                        tools: List[str], previous: Optional[str], tool_choice: Optional[str] = None,
-                       max_tool_calls: Optional[int] = None, show_text: bool = True) -> Dict[str, Any]:
+                       max_tool_calls: Optional[int] = None, max_infer_iters: Optional[int] = None,
+                       show_text: bool = True) -> Dict[str, Any]:
         """One OGX response, streamed: text to the "response" artifact (through the output rails),
         tool activity as status updates. Returns OGX's `done` event, plus `streamed_output` (the text
         sent) and `guardrails_output` (the output rails verdict)."""
@@ -277,7 +282,8 @@ class DomainAgentExecutor(AgentExecutor):
         async for event in self.llm.stream(
             model=model, instructions=instructions, input_message=message, tools=tools,
             max_tokens=self.settings.ogx_max_tokens, previous_response_id=previous,
-            tool_choice=tool_choice, max_tool_calls=max_tool_calls, authorization=_user_token.get(),
+            tool_choice=tool_choice, max_tool_calls=max_tool_calls, max_infer_iters=max_infer_iters,
+            authorization=_user_token.get(),
         ):
             if event["type"] == "text_delta":
                 await answer.add(event["delta"])

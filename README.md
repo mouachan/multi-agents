@@ -17,8 +17,9 @@ What the demo shows:
 * **Human in the loop**: a review inbox; for each case the agent's brief (why it did not decide, what
   to check, what it leans to), facts taken from the tools without any model, questions to the agent,
   and a decision that needs a justification when it goes against the agent.
-* **Personal data never reaches the model**: NeMo Guardrails on the messages and answers, masking in
-  the MCP servers on the tool results.
+* **Personal data never reaches the model**: NeMo Guardrails on the messages and answers (Presidio for
+  identifiers, GLiNER for names in French and five other languages), masking in the MCP servers on the
+  tool results.
 * **Governance**: OpenShift login, access profiles (OpenShift groups), every tool call checked for the
   user by the **MCP Gateway**.
 * **Observability**: one **MLflow** trace per chat turn or processing, agent prompts versioned in the
@@ -114,6 +115,7 @@ curl -N -X POST "$B/chat/sessions/$SESSION/messages" -H 'Content-Type: applicati
 | `backend/app/` | FastAPI backend: domains, processing, decisions, review, chat, access profiles |
 | `backend/mcp_servers/` | the MCP servers (tools) and what they share |
 | `agents/` | the A2A agents (one shared executor, one profile file per agent) |
+| `guardrails/gliner-server/` | finds people's names for NeMo Guardrails (GLiNER, six languages) |
 | `frontend/` | React UI |
 | `helm/multi-agents/` | the Helm chart, the prompt files, the catalog entries |
 | `data-init/` | the job that prepares the data at installation |

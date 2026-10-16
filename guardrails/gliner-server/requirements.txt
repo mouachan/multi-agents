@@ -1,0 +1,7 @@
+# torch comes from the CPU wheel index (see the Containerfile): no CUDA libraries in the image
+gliner==0.2.29
+# transformers 5.x converts the mDeBERTa tokenizer differently (needs tiktoken): stay on 4.x
+transformers>=4.51.3,<5
+protobuf>=4                    # reads the SentencePiece tokenizer of mDeBERTa
+fastapi>=0.115
+uvicorn>=0.30

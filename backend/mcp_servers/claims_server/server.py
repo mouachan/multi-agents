@@ -19,7 +19,8 @@ mcp = create_mcp("claims-server")
 @tool(mcp)
 async def list_claims(status: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
     """
-    List insurance claims, the most recent first, with their current decision.
+    List insurance claims, the most recent first, with their current decision. "total" is the number of
+    matching claims (use it to answer "how many"), the list holds the most recent ones.
 
     Args:
         status: Optional status filter (pending, processing, completed, denied, manual_review, failed)

@@ -1,9 +1,10 @@
 {{- if .Values.guardrails.enabled }}
 {{- /*
 NeMo Guardrails config (RHOAI 3.5 TrustyAI, Colang 1.0) served from /app/config/<configId>.
-Called by the A2A agents through POST /v1/checks:
-  input  rails: Presidio PII masking first (the LLM never sees raw PII), then LLM self-check
-  output rails: Presidio PII masking
+Called by the A2A agents and the MCP servers through POST /v1/checks:
+  input  rails: Presidio PII masking first (the LLM never sees raw PII), GLiNER for the names
+                (guardrails.gliner), then the LLM self-check
+  output rails: Presidio, then GLiNER
 Presidio runs with the English spaCy model (en_core_web_lg); custom recognizers must
 declare supported_language: en. Masked entities become <ENTITY_TYPE>.
 */}}
@@ -70,15 +71,30 @@ data:
             score_threshold: {{ .Values.guardrails.pii.scoreThreshold }}
             entities:
               {{- toYaml .Values.guardrails.pii.outputEntities | nindent 14 }}
+{{- if .Values.guardrails.gliner.enabled }}
+        gliner:
+          server_endpoint: {{ printf "http://gliner-server.%s.svc.cluster.local:8080/v1/extract" (include "multi-agents.namespace" .) }}
+          threshold: {{ .Values.guardrails.gliner.threshold }}
+          input:
+            entities: {{ .Values.guardrails.gliner.entities | toJson }}
+          output:
+            entities: {{ .Values.guardrails.gliner.entities | toJson }}
+{{- end }}
       input:
         flows:
           - mask sensitive data on input
+{{- if .Values.guardrails.gliner.enabled }}
+          - gliner mask pii on input
+{{- end }}
 {{- if .Values.guardrails.selfCheckInput }}
           - self check input
 {{- end }}
       output:
         flows:
           - mask sensitive data on output
+{{- if .Values.guardrails.gliner.enabled }}
+          - gliner mask pii on output
+{{- end }}
 
     prompts:
       - task: self_check_input

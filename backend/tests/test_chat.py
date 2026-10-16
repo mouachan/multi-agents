@@ -60,3 +60,12 @@ async def test_conversations_are_listed_and_deleted(client, agent):
     assert created in listed
     await client.delete(f"{API}/chat/sessions/{created}")
     assert (await client.get(f"{API}/chat/sessions/{created}/messages")).status_code == 404
+
+
+def test_a_message_naming_one_domain_stays_in_it():
+    from app.services.chat.routing import named_domain
+    assert named_domain("Liste les appels d'offres en revue manuelle") == "tenders"
+    assert named_domain("Où est mon colis 6C123456789FR ?") == "postal"
+    assert named_domain("Détail du sinistre CLM-2024-0011") == "claims"
+    assert named_domain("Combien de dossiers en attente ?") is None             # no domain named
+    assert named_domain("Sinistres et réclamations en attente") is None         # several domains

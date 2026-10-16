@@ -212,8 +212,14 @@ one Streamable HTTP endpoint per server
 - name: MCP_GATEWAY_URL
   value: {{ include "multi-agents.mcpGateway.url" . | quote }}
 {{- else -}}
+{{- $servers := list }}
+{{- range $name := splitList " " (include "multi-agents.mcp.serverKeys" .) }}
+{{- if (index $.Values.mcp $name).enabled }}{{ $servers = append $servers (printf "%s-server" $name) }}{{ end }}
+{{- end }}
 - name: MCP_SERVER_URL_TEMPLATE
   value: {{ printf "http://{server}.%s.svc.cluster.local:8080/mcp" (include "multi-agents.namespace" .) | quote }}
+- name: MCP_SERVERS
+  value: {{ join "," $servers | quote }}
 {{- end -}}
 {{- end -}}
 

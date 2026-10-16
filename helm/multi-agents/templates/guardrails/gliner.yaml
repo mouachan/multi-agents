@@ -1,0 +1,111 @@
+{{- if and .Values.guardrails.enabled .Values.guardrails.gliner.enabled }}
+{{- /*
+GLiNER server for the NeMo rails "gliner mask pii on input / output": finds the names of people in
+French and five other languages (guardrails/gliner-server). The model is downloaded from Hugging
+Face at the first start into the PVC, then loaded from it.
+*/}}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- $g := .Values.guardrails.gliner }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gliner-models
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    component: guardrails
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ $g.modelStorage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gliner-server
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: gliner-server
+    component: guardrails
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # the model volume is ReadWriteOnce
+  selector:
+    matchLabels:
+      app: gliner-server
+  template:
+    metadata:
+      labels:
+        app: gliner-server
+        component: guardrails
+    spec:
+      containers:
+        - name: gliner
+          image: {{ include "multi-agents.imageRegistry" . }}/{{ $g.image.repository }}:{{ $g.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: MODEL_NAME
+              value: {{ $g.model | quote }}
+            - name: DEFAULT_LABELS
+              value: {{ join "," $g.entities | quote }}
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            {{- toYaml $g.resources | nindent 12 }}
+          startupProbe:           # the first start downloads the model (~1 GB)
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: gliner-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gliner-server
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: gliner-server
+spec:
+  selector:
+    app: gliner-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# Only the pods of this namespace (NeMo) may call it
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gliner-server-same-namespace
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: gliner-server
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+{{- end }}
