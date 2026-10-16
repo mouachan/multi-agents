@@ -166,6 +166,17 @@ plus the admin page. The backend checks the profile on every domain route; the a
 user's token to the MCP Gateway, which checks every tool call (SubjectAccessReview on
 `tools.mcp.multi-agents.io/<tool>`). Admins manage the members of the profiles on the admin page.
 
+The governance is visible rather than an error:
+
+* **Tools.** The backend runs the gateway's check itself when the user logs in (one
+  SubjectAccessReview per tool of the user's agents) and gives the agent only the allowed tools
+  (`allowed_tools`): the model is never offered a tool the gateway would refuse. In a chat the agent
+  says which tools the profile does not allow (and the trace shows them); a processing that needs a
+  tool the profile lacks is refused upfront with the missing tools.
+* **Models.** The agents call the models as the user (`MAAS_AS_USER`): the MaaS counts the tokens of
+  each person against the quota of their profile (one `MaaSSubscription` per profile). Beyond it the
+  MaaS answers 429 and the agent answers that the profile's quota is used up.
+
 ## Prompts
 
 | Prompt | File | Versioned in MLflow |

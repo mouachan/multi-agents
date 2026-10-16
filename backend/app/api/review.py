@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import User, current_user
+from app.core.auth import User, current_user, require_tools
 from app.core.database import get_db
 from app.domains import DOMAINS, DomainSpec
 from app.services import review
@@ -65,6 +65,7 @@ async def brief(domain: str, case_id: UUID, user: User = Depends(current_user), 
 async def ask(domain: str, case_id: UUID, body: Question,
               user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     spec = _domain(domain, user)
+    require_tools(user, spec.processing_tools, "to answer a question about the case")
     try:
         return await review.ask_agent(db, spec, await _case(db, spec, case_id), body.question, body.language, user)
     except review.ReviewError as e:

@@ -37,6 +37,10 @@ function applyEvent(msg: ChatMessage, event: StreamEvent, now: number = Date.now
       steps.push({ kind: 'guardrails', at, event })
       return { ...msg, trace: { ...trace, steps } }
 
+    case 'governance':
+      steps.push({ kind: 'governance', at, withheld: event.withheld_tools })
+      return { ...msg, trace: { ...trace, steps } }
+
     case 'tool_call': {
       steps.push({ kind: 'tool', at, name: event.name, server: event.server, status: 'running' })
       const tool_calls = [...(msg.tool_calls ?? []), { name: event.name, status: 'running', server_label: event.server }]

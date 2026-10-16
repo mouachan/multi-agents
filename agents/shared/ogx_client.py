@@ -5,6 +5,10 @@ Streams /v1/responses with MCP tools and normalizes the SSE events into:
     {"type": "tool_result", "name", "server", "status", "output", "error"}
     {"type": "text_delta",  "delta"}
     {"type": "done", "output", "tool_calls", "response_id", "model", "usage"}
+
+model_token: the end user's token for the cluster MaaS (config.maas_as_user), sent as OGX provider
+data: OGX calls the model with it instead of the platform's key, for this request only. When the
+MaaS refuses the call because the quota is used up (429), stream() raises QuotaExceeded.
 """
 import json
 import logging
@@ -38,6 +42,19 @@ _TEXT_TOOL_CALL = re.compile(r'\[\w+\(.*?\)\]|\[\s*\{\s*"name"\s*:\s*"\w+"\s*,\s
 
 def wrote_tool_calls_as_text(text: str) -> bool:
     return bool(text) and bool(_TEXT_TOOL_CALL.search(text))
+
+
+class QuotaExceeded(Exception):
+    """The MaaS refused the model call: the token quota of the user's profile is used up (HTTP 429).
+    Not a RuntimeError: retrying, or falling back to another model, would be refused too."""
+
+
+# OGX reports the MaaS refusal as "Error code: 429" (HTTP error or response.failed event)
+_QUOTA_ERROR = re.compile(r"(error code:|/v1/responses) 429\b|too many requests|rate limit", re.IGNORECASE)
+
+
+def _failure(message: str) -> Exception:
+    return QuotaExceeded(message) if _QUOTA_ERROR.search(message) else RuntimeError(message)
 
 
 class OGXClient:
@@ -103,6 +120,7 @@ class OGXClient:
         max_tool_calls: Optional[int] = None,
         max_infer_iters: Optional[int] = None,
         authorization: Optional[str] = None,
+        model_token: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
             "model": model,
@@ -128,16 +146,18 @@ class OGXClient:
             # model for a text about the result
             payload["max_infer_iters"] = max_infer_iters
 
+        headers = {"X-OGX-Provider-Data": json.dumps({"vllm_api_token": model_token})} if model_token else {}
+
         full_text: List[str] = []
         tool_calls: List[Dict[str, Any]] = []
         seen_calls: set = set()
         response: Dict[str, Any] = {}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", f"{self.base_url}/v1/responses", json=payload) as resp:
+            async with client.stream("POST", f"{self.base_url}/v1/responses", json=payload, headers=headers) as resp:
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode(errors="replace")
-                    raise RuntimeError(f"OGX /v1/responses {resp.status_code}: {body[:500]}")
+                    raise _failure(f"OGX /v1/responses {resp.status_code}: {body[:500]}")
 
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
@@ -174,7 +194,7 @@ class OGXClient:
                         response = event.get("response", {}) or {}
                         if etype == "response.failed":
                             err = response.get("error") or {}
-                            raise RuntimeError(f"OGX response failed: {err.get('message', err)}")
+                            raise _failure(f"OGX response failed: {err.get('message', err)}")
 
         # Fallback: collect anything the delta stream did not carry
         for out in response.get("output", []):

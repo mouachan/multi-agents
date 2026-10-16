@@ -10,6 +10,7 @@ Events sent to the UI (server-sent events, app/api/chat.py):
     agent_resolved the profile that answers
     a2a            the A2A request and task states (agent card, authentication, task id)
     guardrails     NeMo verdicts on the message (input) and the answer (output)
+    governance     the agent's tools the user's profile does not allow (withheld_tools)
     tool_call / tool_result   each MCP tool call of the agent
     text_delta / text_replace the answer, as it is written
     done           the end: usage, model, tool calls, follow-up actions, MLflow trace link
@@ -32,7 +33,7 @@ from app.services.turn_trace import TurnTrace
 
 logger = logging.getLogger(__name__)
 
-FORWARDED_EVENTS = {"tool_call", "tool_result", "text_delta", "text_replace", "a2a", "guardrails"}
+FORWARDED_EVENTS = {"tool_call", "tool_result", "text_delta", "text_replace", "a2a", "guardrails", "governance"}
 
 
 def clean_for_display(text: str) -> str:
@@ -98,6 +99,8 @@ async def _turn(db, session: ChatSession, message: str, user: User, trace: TurnT
         "instructions_override": metadata.get("custom_prompt"),   # prompt editor (prompts.py)
         "user_token": current_token(),   # the agent presents it to the MCP Gateway (per-user tool rights)
     }
+    if user.tools is not None:
+        a2a_metadata["allowed_tools"] = sorted(user.tools)   # the agent only offers these, explains the others
     traceparent = trace.start_a2a(profile.id)
     if traceparent:
         a2a_metadata["traceparent"] = traceparent

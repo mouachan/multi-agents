@@ -12,6 +12,7 @@ and exposes the A2A exchange itself (shown in the UI):
     {"type": "a2a", "phase": "request", "agent": {...card}, "auth": {...}, "profile", "method"}
     {"type": "a2a", "phase": "status", "state", "task_id", "context_id"}   (state transitions)
     {"type": "guardrails", "stage": "input"|"output", "status", "rail"}
+    {"type": "governance", "withheld_tools": [...]}  (tools the user's profile does not allow)
 """
 
 import logging
@@ -180,6 +181,8 @@ class A2AClient:
                         # traceability: arguments, and the run_python sandbox execution
                         **{k: meta[k] for k in ("arguments", "sandbox", "error") if k in meta},
                     }
+                elif st.state == TaskState.TASK_STATE_WORKING and meta.get("event") == "governance":
+                    yield {"type": "governance", "withheld_tools": meta.get("withheld_tools", [])}
                 elif st.state == TaskState.TASK_STATE_WORKING and meta.get("event") == "guardrails":
                     yield {
                         "type": "guardrails",

@@ -42,6 +42,7 @@ data:
   AUTH_ENABLED: {{ .Values.auth.enabled | quote }}
   AUTH_NAMESPACE: {{ $ns | quote }}
   AUTH_PROFILES: {{ .Values.auth.profiles | toJson | quote }}
+  AUTH_AGENT_TOOLS: {{ .Values.auth.agentTools | toJson | quote }}
 
   # Demo reset (admin page): the database seed and the precedent decisions of the installation
   SEED_DATA_FILE: /app/seed/seed.sql

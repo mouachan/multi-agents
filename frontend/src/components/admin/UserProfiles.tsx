@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { RefreshCw, ShieldCheck, UserCog, UserPlus } from 'lucide-react'
+import { Gauge, RefreshCw, ShieldCheck, UserCog, UserPlus, Wrench } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useResource } from '../../hooks/useResource'
+import { useToolDisplay } from '../../hooks/useToolDisplay'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { agentVisual } from '../../lib/agents'
 import { cn } from '../../lib/cn'
@@ -19,7 +20,9 @@ function upsert(users: ManagedUser[], user: ManagedUser): ManagedUser[] {
 }
 
 function ProfileLegend({ profile }: { profile: AccessProfile }) {
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
+  const { getToolLabel } = useToolDisplay()
+  const quota = profile.tokenQuota
   return (
     <div className="rounded-xl border border-line px-3 py-2">
       <div className="flex items-center gap-1.5 text-sm font-semibold text-ink">
@@ -35,6 +38,18 @@ function ProfileLegend({ profile }: { profile: AccessProfile }) {
         ))}
         {profile.admin && <Badge tone="brand">{t('nav.admin')}</Badge>}
       </div>
+      <details className="mt-1.5 text-[11px] text-ink-muted">
+        <summary className="flex cursor-pointer items-center gap-1">
+          <Wrench className="h-3 w-3" /> {t('adm.accessTools').replace('{count}', String(profile.tools.length))}
+        </summary>
+        <p className="mt-1 leading-relaxed">{profile.tools.map((name) => getToolLabel(name, locale)).join(' · ') || '—'}</p>
+      </details>
+      <p className="mt-1 flex items-center gap-1 text-[11px] text-ink-muted" title={t('adm.accessQuotaHint')}>
+        <Gauge className="h-3 w-3" />
+        {quota
+          ? t('adm.accessQuota').replace('{limit}', quota.limit.toLocaleString(locale)).replace('{window}', quota.window)
+          : t('adm.accessQuotaDefault')}
+      </p>
     </div>
   )
 }

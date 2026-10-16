@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import User, require_admin
+from app.core.auth import User, require_admin, require_tools
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.domains import all_domains
@@ -91,8 +91,11 @@ async def set_user_profiles(username: str, update: ProfilesUpdate, admin: User =
 
 
 @router.post("/evaluations")
-async def start_evaluation(body: EvaluationRequest):
-    """Process the precedents again (nothing saved) and compare with their decision; runs in the background."""
+async def start_evaluation(body: EvaluationRequest, admin: User = Depends(require_admin)):
+    """Process the precedents again (nothing saved) and compare with their decision; runs in the background
+    as the administrator (their tool rights, their MaaS quota)."""
+    require_tools(admin, sorted({t for spec in all_domains() for t in spec.processing_tools}),
+                  "to process the precedents")
     if evaluation.is_running():
         raise HTTPException(status_code=409, detail="An evaluation is already running")
     alias = body.prompt_alias.strip() or "production"

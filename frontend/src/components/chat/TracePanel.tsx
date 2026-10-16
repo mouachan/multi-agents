@@ -180,6 +180,13 @@ function StepRow({ step, isLast, now, startedAt, streaming }: { step: TraceStep;
       tone = 'bg-violet-500/10 text-violet-600 ring-violet-500/25 dark:text-violet-300'
       break
     }
+    case 'governance': {
+      icon = <ShieldX className="h-3.5 w-3.5" />
+      title = t('a2a.toolsWithheld')
+      detail = step.withheld.map((name) => getToolLabel(name, locale)).join(', ')
+      tone = 'bg-slate-500/10 text-slate-600 ring-slate-500/25 dark:text-slate-300'
+      break
+    }
     case 'tool': {
       const running = step.status === 'running'
       const sandboxed = step.name === SANDBOX_TOOL || !!step.sandbox

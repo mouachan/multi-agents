@@ -106,6 +106,10 @@ export interface AccessProfile {
   agents: string[]
   admin: boolean
   exists: boolean
+  /** MCP tools the profile's group may call (OpenShift RBAC, as the MCP Gateway checks) */
+  tools: string[]
+  /** MaaS token quota of each member (the profile's MaaSSubscription); null: the default user quota */
+  tokenQuota?: { limit: number; window: string } | null
 }
 
 export interface ManagedUser {

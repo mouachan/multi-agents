@@ -3,7 +3,9 @@
 A request is one A2A message. Its metadata (all optional) comes from the backend:
     profile               profile id (e.g. "courrier_info"); default: the agent's first profile
     mode                  "chat" (the chat rules are added to the prompt) or "process" (case processing)
-    tools                 subset of the profile tools, in this order (never extends the profile)
+    tools                 the profile tools this task uses, in this order (never extends the profile)
+    allowed_tools         the MCP tools the user's access profile allows: the others are not offered,
+                          and in a chat the agent tells the user their profile does not give them
     decision_values       mode=process: the decisions the agent may take (see decision.py)
     review_decision       mode=process: the decision that hands the case to a person
     human_decisions       mode=process: what that person can decide
@@ -12,11 +14,14 @@ A request is one A2A message. Its metadata (all optional) comes from the backend
     instructions_override prompt of the chat session (replaces the registry prompt)
     prompt_alias          alias of the profile's prompt in the registry (default "production"; an
                           evaluation sets "candidate" to try a new version)
-    user_token            OpenShift token of the end user, presented to the MCP Gateway
+    user_token            OpenShift token of the end user, presented to the MCP Gateway, and to the
+                          MaaS when the model is called as the user (MAAS_AS_USER)
     traceparent           W3C trace of the caller: the agent's spans join it
 
 The answer is streamed as the "response" artifact; tool activity and guardrails verdicts are
-"working" status updates (metadata "event": tool_call | tool_result | guardrails | fallback).
+"working" status updates (metadata "event": tool_call | tool_result | guardrails | fallback | governance).
+When the MaaS refuses the model call (token quota of the profile used up), the task is rejected with
+a message saying so.
 The final status message carries in its metadata:
     output, decision, tool_calls, response_id, model, usage, prompt{name,version,source},
     guardrails{input,output}, caller (SPIFFE ID), duration_ms, profile, agent_id
@@ -46,7 +51,7 @@ from . import spiffe_auth, tracing
 from .config import AgentSettings
 from .decision import final_request, parse_decision
 from .guardrails import Guardrails, blocked_message
-from .ogx_client import OGXClient, wrote_tool_calls_as_text
+from .ogx_client import OGXClient, QuotaExceeded, wrote_tool_calls_as_text
 from .prompts import PromptStore, render
 from .streaming import AnswerStream
 
@@ -62,6 +67,18 @@ LANGUAGE_RULE_PROMPT = "language-rule"
 EMPTY_ANSWER_RETRY = "Answer the user's request now, in the user's language."
 TEXT_TOOL_CALL_RETRY = ("You wrote tool calls as text instead of calling them. "
                         "Use the function calling mechanism to actually execute the tools now.")
+
+# Chat: the tools of the task the user's access profile does not allow (metadata "allowed_tools")
+WITHHELD_TOOLS_RULE = ("\n\nTools that the user's access profile does not allow: {tools}. They are not available. "
+                       "If the request needs one of them, tell the user that their profile does not give "
+                       "access to it (an administrator can grant it), and do not try to do it another way.")
+QUOTA_MESSAGES = {
+    "fr": "Le quota de tokens de votre profil est atteint : la plateforme de modèles (MaaS) refuse de nouvelles "
+          "requêtes pour le moment. Réessayez plus tard, ou demandez à un administrateur d'augmenter le quota "
+          "de votre profil.",
+    "en": "Your profile's token quota is used up: the model platform (MaaS) refuses new requests for now. "
+          "Try again later, or ask an administrator to raise your profile's quota.",
+}
 
 # Processing: tools only offered in the final analysis (the others are one step each)
 OPTIONAL_TOOLS = {"search_knowledge_base", "search_courrier_knowledge"}
@@ -88,6 +105,18 @@ class Profile:
     # Chat: call a tool before answering (an agent that answers from a knowledge base). The model
     # sometimes answers from memory while saying it searched.
     search_first: bool = False
+
+    def offered_tools(self, meta: Dict[str, Any]) -> List[str]:
+        """The tools of the request: those of the task that the user's profile allows."""
+        return [t for t in self._task_tools(meta) if t in meta.get("allowed_tools", self.tools)]
+
+    def withheld_tools(self, meta: Dict[str, Any]) -> List[str]:
+        """The tools of the task that the user's profile does not allow."""
+        return [t for t in self._task_tools(meta) if t not in meta.get("allowed_tools", self.tools)]
+
+    def _task_tools(self, meta: Dict[str, Any]) -> List[str]:
+        """The profile's tools, or those the task selects (metadata "tools", in its order)."""
+        return [t for t in meta["tools"] if t in self.tools] if "tools" in meta else self.tools
 
 
 class DomainAgentExecutor(AgentExecutor):
@@ -135,6 +164,9 @@ class DomainAgentExecutor(AgentExecutor):
 
         try:
             instructions, prompt_info = await self._instructions(profile, meta)
+            if meta.get("mode", "chat") == "chat" and profile.withheld_tools(meta):
+                await updater.update_status(TaskState.TASK_STATE_WORKING, _message("governance", metadata={
+                    "event": "governance", "withheld_tools": profile.withheld_tools(meta)}))
             result = await self._answer(updater, profile, meta, instructions, checked_input.text)
 
             checked_output = result["guardrails_output"]
@@ -168,6 +200,10 @@ class DomainAgentExecutor(AgentExecutor):
                 traceparent=meta.get("traceparent"),
             )
             await updater.complete(_message(output, context, metadata=final))
+        except QuotaExceeded as e:
+            logger.warning("Agent %s/%s: model call refused by the MaaS (%s)", self.settings.agent_id, profile_id, e)
+            refusal = QUOTA_MESSAGES.get(meta.get("language") or "fr", QUOTA_MESSAGES["fr"])
+            await updater.reject(_message(refusal, context, metadata={"output": refusal, "error": "quota_exceeded"}))
         except Exception as e:
             logger.error("Agent %s/%s failed: %s", self.settings.agent_id, profile_id, e, exc_info=True)
             await updater.failed(_message(f"Agent error: {e}", context))
@@ -190,6 +226,8 @@ class DomainAgentExecutor(AgentExecutor):
         if meta.get("mode", "chat") == "chat":
             rules = await self.prompts.get(CHAT_RULES_PROMPT)
             instructions = render(rules.text, agent_instructions=base) if rules.text else base
+            if profile.withheld_tools(meta):
+                instructions += WITHHELD_TOOLS_RULE.format(tools=", ".join(profile.withheld_tools(meta)))
         if meta.get("language"):
             rule = await self.prompts.get(LANGUAGE_RULE_PROMPT)
             if rule.text:
@@ -202,7 +240,7 @@ class DomainAgentExecutor(AgentExecutor):
         processing = meta.get("mode") == "process"
         model = profile.model or (processing and self.settings.ogx_process_model) or self.settings.ogx_default_model
         # in the caller's order: the processing runs the OCR before the precedent search, which reads it
-        tools = [t for t in meta["tools"] if t in profile.tools] if meta.get("tools") else profile.tools
+        tools = profile.offered_tools(meta)
         previous = meta.get("previous_response_id")
 
         async def run(model: str) -> Dict[str, Any]:
@@ -292,6 +330,7 @@ class DomainAgentExecutor(AgentExecutor):
             max_tokens=self.settings.ogx_max_tokens, previous_response_id=previous,
             tool_choice=tool_choice, max_tool_calls=max_tool_calls, max_infer_iters=max_infer_iters,
             authorization=_user_token.get(),
+            model_token=_user_token.get() if self.settings.maas_as_user else None,
         ):
             if event["type"] == "text_delta":
                 await answer.add(event["delta"])

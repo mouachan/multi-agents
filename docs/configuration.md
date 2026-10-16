@@ -25,7 +25,8 @@ models:
     enabled: true            # chat models through the cluster MaaS gateway
     tlsVerify: false         # self-signed gateway certificate on lab clusters
     subscriptionName: multi-agents
-    tokenRateLimit: {limit: 3000000, window: 1h}   # one counter per release; 429 above it
+    tokenRateLimit: {limit: 3000000, window: 1h}   # the platform key; 429 above it
+    callAsUser: true         # with authentication: the agents call the models as the user
     chatModels: [gpt-oss-120b, llama-scout-17b]
 ```
 
@@ -34,26 +35,44 @@ models:
   ServiceAccounts. Job `maas-api-key` mints the API key into Secret `maas-api-key`.
 * OGX registers the chat models on provider `maas` (cluster gateway) and the embedding model on
   provider `maas-direct` (external MaaS): MaaS external models are chat-only.
-* `tokenRateLimit` is shared by the backend, the agents and NeMo. A case processing uses about
-  20–30k tokens, a chat answer 3–8k; above the limit the gateway answers `429`, the chat shows the
-  error and the processing ends `failed` (it can be processed again).
+* With authentication and `callAsUser` (the default), the agents call the chat models **as the
+  user**: OGX presents the user's OpenShift token to the cluster MaaS instead of the platform key
+  (provider data `vllm_api_token`, for that request only). The MaaS then applies the token quota of
+  the user's access profile (`auth.profiles.<id>.tokenQuota`, below) and its usage view shows each
+  person. The token never goes to the external MaaS: chat models always use the cluster gateway.
+* `tokenRateLimit` is the platform key's quota: NeMo, the OCR, and the agents without
+  authentication. A case processing uses about 20–30k tokens, a chat answer 3–8k. Above a quota the
+  gateway answers `429`; the agent then says the profile's quota is used up (chat), and the
+  processing ends `failed` with that message on the case page (it can be processed again).
 
 ## Access profiles
 
 An access profile is an OpenShift group; its rights are OpenShift RBAC in the namespace
 (`templates/auth/`):
 
-| Profile | Group | Agents |
-|---|---|---|
-| Administration | `multi-agents-admins` | all, admin page |
-| Finance | `multi-agents-finance` | claims |
-| BTP | `multi-agents-btp` | tenders |
-| Logistique | `multi-agents-logistics` | postal |
+| Profile | Group | Agents | MaaS quota per person (`tokenQuota`) |
+|---|---|---|---|
+| Administration | `multi-agents-admins` | all, admin page | 3M tokens/h (an evaluation uses ~750k) |
+| Finance | `multi-agents-finance` | claims | 500k tokens/h |
+| BTP | `multi-agents-btp` | tenders | 500k tokens/h |
+| Logistique | `multi-agents-logistics` | postal | 500k tokens/h |
 
 The same rule is applied by the UI (pages, chat routing), the backend API and the MCP Gateway (each
 tool call, `auth.agentTools`). Administrators give profiles on the admin page, or with
 `oc adm groups add-users <group> <user>`; first members at install:
 `--set-json 'auth.profiles.<id>.users=["<user>"]'`.
+
+* **Tools.** The backend asks OpenShift which tools of `auth.agentTools` the user may call (the
+  RBAC rule the gateway applies) and gives the agent only those: in a chat, the agent tells the user
+  which tools the profile does not allow; a processing (or a reviewer's question) needs every tool
+  of its workflow, else the API answers `403` with the missing tools. The admin page lists the tools
+  of each profile.
+* **Quota.** `tokenQuota: {limit, window, priority}` creates the profile's `MaaSSubscription`
+  (`<subscriptionName>-<id>`), one counter per member; a member of several profiles gets the
+  highest priority (keep them above `models.maas.userAccess.priority`). Without `tokenQuota`, the
+  members have the `userAccess` quota. To show a quota live, lower one profile's limit (e.g.
+  `--set auth.profiles.logistics.tokenQuota.limit=30000`): after a processing or a few chat
+  answers, its members get the quota message while the other profiles keep working.
 
 ## Agents (A2A)
 

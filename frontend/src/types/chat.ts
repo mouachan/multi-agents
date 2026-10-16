@@ -162,6 +162,12 @@ export interface GuardrailsEvent {
   rail?: string | null
 }
 
+/** The agent's tools the user's access profile does not allow (not offered to the model) */
+export interface GovernanceEvent {
+  type: 'governance'
+  withheld_tools: string[]
+}
+
 export interface ToolEvent {
   type: 'tool_call' | 'tool_result'
   name: string
@@ -219,6 +225,7 @@ export type StreamEvent =
   | A2ARequestEvent
   | A2AStatusEvent
   | GuardrailsEvent
+  | GovernanceEvent
   | ToolEvent
   | { type: 'text_delta'; delta: string }
   | { type: 'text_replace'; text: string }
@@ -232,6 +239,7 @@ export type TraceStep =
   | { kind: 'request'; at: number; event: A2ARequestEvent }
   | { kind: 'state'; at: number; state: A2ATaskState; elapsedMs?: number; taskId?: string }
   | { kind: 'guardrails'; at: number; event: GuardrailsEvent }
+  | { kind: 'governance'; at: number; withheld: string[] }
   | {
       kind: 'tool'; at: number; name: string; server?: string; status: 'running' | 'completed' | 'error' | string; doneAt?: number
       arguments?: string; sandbox?: SandboxExecution; error?: string

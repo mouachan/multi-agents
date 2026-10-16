@@ -73,8 +73,9 @@ class Settings(BaseSettings):
 
     # ---- authentication (app/core/auth.py): OpenShift token + RBAC access profiles
     auth_enabled: bool = False
-    auth_profiles: str = "{}"         # JSON {id: {group, displayName, agents, admin}}
+    auth_profiles: str = "{}"         # JSON {id: {group, displayName, agents, admin, tokenQuota}}
     auth_namespace: str = "multi-agents"
+    auth_agent_tools: str = "{}"      # JSON {agent: [MCP tools]}: what the RBAC grants with each agent
 
     # ---- OpenShell sandbox page (app/api/sandbox.py); empty = not deployed
     sandbox_server_url: str = ""

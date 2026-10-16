@@ -3,6 +3,9 @@ RHOAI 3.5 Models-as-a-Service — external models published through the cluster 
 gateway (token rate limiting, metering, API keys bound to a subscription).
   ExternalProvider -> ExternalModel (inference.opendatahub.io) -> MaaSModelRef (maas.opendatahub.io)
   MaaSSubscription + MaaSAuthPolicy for the namespace ServiceAccounts group.
+With authentication, the access profiles get the models too, and each profile with a tokenQuota its
+own MaaSSubscription: the agents call the models as the user (models.maas.callAsUser), so the MaaS
+counts and limits each member of the profile (429 beyond the quota).
 External models are Technology Preview in RHOAI 3.5 and chat-only (no embeddings).
 */}}
 {{- if .Values.models.maas.enabled }}
@@ -77,7 +80,7 @@ spec:
   - name: {{ $m }}
     namespace: {{ $ns }}
     tokenRateLimits:
-    - limit: {{ $.Values.models.maas.tokenRateLimit.limit }}
+    - limit: {{ $.Values.models.maas.tokenRateLimit.limit | int64 }}
       window: {{ $.Values.models.maas.tokenRateLimit.window }}
 {{- end }}
 ---
@@ -128,7 +131,7 @@ spec:
   - name: {{ $m }}
     namespace: {{ $ns }}
     tokenRateLimits:
-    - limit: {{ $.Values.models.maas.userAccess.tokenRateLimit.limit }}
+    - limit: {{ $.Values.models.maas.userAccess.tokenRateLimit.limit | int64 }}
       window: {{ $.Values.models.maas.userAccess.tokenRateLimit.window }}
 {{- end }}
 ---
@@ -150,6 +153,34 @@ spec:
     {{- range $groups }}
     - name: {{ . }}
     {{- end }}
+{{- if $.Values.auth.enabled }}
+{{- range $id, $profile := $.Values.auth.profiles }}
+{{- with $profile.tokenQuota }}
+---
+# Token quota of each member of the "{{ $profile.displayName }}" profile (one counter per user)
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: {{ $.Values.models.maas.subscriptionName }}-{{ $id }}
+  namespace: {{ $.Values.models.maas.namespace }}
+  labels:
+    {{- include "multi-agents.labels" $ | nindent 4 }}
+spec:
+  priority: {{ .priority }}
+  owner:
+    groups:
+    - name: {{ $profile.group }}
+  modelRefs:
+{{- range $m := $.Values.models.maas.chatModels }}
+  - name: {{ $m }}
+    namespace: {{ $ns }}
+    tokenRateLimits:
+    - limit: {{ $profile.tokenQuota.limit | int64 }}
+      window: {{ $profile.tokenQuota.window }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

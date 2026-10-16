@@ -67,12 +67,13 @@ async def test_an_unknown_decision_goes_to_a_human(client, agent, fresh_data, do
     assert (await client.get(f"{API}/{domain.name}/{case['id']}")).json()["status"] == domain.review_status
 
 
-async def test_an_agent_failure_marks_the_case_failed(client, agent, fresh_data, domain):
+async def test_an_agent_failure_marks_the_case_failed_with_the_reason(client, agent, fresh_data, domain):
     case = await first_case(client, domain.name)
     agent.fail = True
     await client.post(f"{API}/{domain.name}/{case['id']}/process")
     await wait_for_jobs()
-    assert (await client.get(f"{API}/{domain.name}/{case['id']}")).json()["status"] == "failed"
+    failed = (await client.get(f"{API}/{domain.name}/{case['id']}")).json()
+    assert failed["status"] == "failed" and failed["metadata"]["processing_error"] == "agent unavailable"
 
 
 async def test_a_case_processed_twice_shows_the_latest_decision(client, agent, fresh_data, domain):

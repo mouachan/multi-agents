@@ -2,7 +2,9 @@
 
 A profile is an OpenShift group (AUTH_PROFILES); what the profile may use is OpenShift RBAC
 (helm/multi-agents/templates/auth/profiles-rbac.yaml). Giving a profile to a user = adding the user
-to the group, so the same rule applies to the UI, the agents and the MCP Gateway.
+to the group, so the same rule applies to the UI, the agents and the MCP Gateway. The page shows,
+for each profile, the MCP tools its group may call (asked to OpenShift, as the gateway does) and the
+MaaS token quota of its members (tokenQuota, a MaaSSubscription per profile).
 
 The backend's ServiceAccount may only read the users and update the profile groups
 (ClusterRole <namespace>-profile-manager, restricted to these groups by name). The change applies
@@ -15,7 +17,7 @@ from typing import Dict, List, Optional, Set
 
 import httpx
 
-from app.core.auth import User, forget_user, kubernetes, load_profiles
+from app.core.auth import User, agent_tools, forget_user, kubernetes, load_profiles
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +42,11 @@ async def _groups(profiles: Dict[str, Dict]) -> Dict[str, Optional[Dict]]:
     return {pid: await _get(f"{GROUPS_API}/{p['group']}") for pid, p in profiles.items()}
 
 
-def _profile_list(profiles: Dict[str, Dict], groups: Dict[str, Optional[Dict]]) -> List[Dict]:
+async def _profile_list(profiles: Dict[str, Dict], groups: Dict[str, Optional[Dict]]) -> List[Dict]:
     return [{"id": pid, "displayName": p.get("displayName", pid), "group": p["group"],
-             "agents": p.get("agents", []), "admin": bool(p.get("admin")), "exists": groups[pid] is not None}
+             "agents": p.get("agents", []), "admin": bool(p.get("admin")), "exists": groups[pid] is not None,
+             "tools": sorted(await kubernetes.callable_tools(None, [p["group"]], agent_tools(p.get("agents", [])))),
+             "tokenQuota": p.get("tokenQuota")}
             for pid, p in profiles.items()]
 
 
@@ -58,7 +62,7 @@ async def list_users() -> Dict:
     groups = await _groups(profiles)
     users = {u["metadata"]["name"]: u.get("fullName") for u in ((await _get(USERS_API)) or {}).get("items", [])}
     members = {name for g in groups.values() if g for name in (g.get("users") or [])}
-    return {"profiles": _profile_list(profiles, groups),
+    return {"profiles": await _profile_list(profiles, groups),
             "users": [_user_row(name, users.get(name), groups) for name in sorted(set(users) | members)]}
 
 

@@ -455,9 +455,11 @@ curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}
   ```
 
   The built-in **Usage** tab filters on `user!=""`: without `captureUser` it shows 0
-  everywhere. `user` is the identity behind the API key; for this application it is the
-  ServiceAccount that minted it (`system:serviceaccount:<namespace>:maas-key-minter`), so
-  *Active users* is 1. The setting applies to every MaaS caller of the cluster (human API
+  everywhere. `user` is the identity behind the call: with authentication the agents call the
+  models as the user (`models.maas.callAsUser`), so the tab shows each person, with the
+  subscription of their profile (`multi-agents-<profile>`); NeMo and the OCR remain under the
+  ServiceAccount that minted the platform key
+  (`system:serviceaccount:<namespace>:maas-key-minter`). The setting applies to every MaaS caller of the cluster (human API
   keys included): review it for GDPR on shared clusters. Only requests made after the
   change carry the label.
 

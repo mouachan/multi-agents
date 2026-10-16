@@ -23,7 +23,7 @@ from app.core.auth import current_username
 from app.core.config import settings
 
 # Events kept in the application trace (text deltas and heartbeats are not)
-TRACE_EVENTS = {"routing", "agent_resolved", "a2a", "guardrails", "tool_call", "tool_result", "error"}
+TRACE_EVENTS = {"routing", "agent_resolved", "a2a", "guardrails", "governance", "tool_call", "tool_result", "error"}
 TEXT_EVENTS = {"text_delta", "text_replace"}
 
 
@@ -105,6 +105,9 @@ class TurnTrace:
         elif etype == "guardrails":
             tracing.add_event(self._a2a or self._root, f"guardrails {event.get('stage')}: {event.get('status')}",
                               {"rail": event.get("rail")}, at_ns=self._ns(t))
+        elif etype == "governance":
+            tracing.add_event(self._a2a or self._root, "tools withheld by the user's profile",
+                              {"tools": ", ".join(event.get("withheld_tools") or [])}, at_ns=self._ns(t))
         elif etype == "error":
             self._error = str(event.get("message") or "error")
 

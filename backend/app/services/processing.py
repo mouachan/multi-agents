@@ -153,15 +153,18 @@ async def process_case(db: AsyncSession, spec: DomainSpec, case_id) -> None:
                      "processing_steps": processing_steps(result.get("tool_calls", [])),
                      "usage": result.get("usage") or {},
                      "response_id": result.get("response_id"),
-                     "trace": result.get("trace")}
+                     "trace": result.get("trace"),
+                     "processing_error": None}
         case.processed_at = datetime.now(timezone.utc)
         case.total_processing_time_ms = int((time.monotonic() - started) * 1000)
         await db.commit()
-    except Exception:
+    except Exception as e:
         logger.exception("Processing of %s %s failed", spec.entity, case_id)
         await db.rollback()
         case = await db.get(spec.model, case_id)
         case.status = "failed"
+        # shown on the case page, e.g. the agent's message when the MaaS quota of the profile is used up
+        case.meta = {**(case.meta or {}), "processing_error": str(e)[:500]}
         await db.commit()
         return
     logger.info("%s %s processed: %s", spec.label, case_number(spec, case), case.status)

@@ -127,8 +127,21 @@ oc logs deploy/claims-server -n <NAMESPACE> | grep -B2 -A20 "Tool .* failed"
   the patterns were used instead (names are then not masked).
 * Person names in French free text are not detected by Presidio's English model (known limitation).
 
-## A tool call is refused (MCP Gateway)
+## A tool is not allowed, or a tool call is refused (MCP Gateway)
 
-A tool the user's profile does not grant is refused by the gateway (`mcp-tools-rbac`, 403 when the
-router opens the session to the server); it reaches the client as a `500` of the broker. Check the
-user's groups (`oc get groups`) and `auth.agentTools`.
+The backend gives the agents only the tools the user may call, so the gateway should not refuse
+any. When the chat says the profile does not allow a tool, or a processing answers `403` with
+missing tools: check the user's groups (`oc get groups`), `auth.agentTools`, and the roles
+`agent-<domain>` (`oc get role agent-claims -o yaml`). Rights are cached one minute by the backend.
+A refusal by the gateway itself (`mcp-tools-rbac`, 403 when the router opens the session to the
+server) reaches the client as a `500` of the broker: the backend's list and the gateway's RBAC
+differ (e.g. a role changed less than a minute ago).
+
+## "The token quota of your profile is used up"
+
+The MaaS answered 429 for this user: the tokens of the last window exceed the quota of the user's
+profile (`auth.profiles.<id>.tokenQuota`, `oc get maassubscription -n models-as-a-service`). Wait for
+the window to pass, or raise the profile's limit. The counters are per person: the other members of
+the profile are not affected. Which subscription a user gets: `curl -sk
+https://maas.<cluster-domain>/maas-api/v1/subscriptions -H "Authorization: Bearer $(oc whoami -t)"`
+(the highest priority applies).

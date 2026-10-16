@@ -9,7 +9,7 @@
 
 plus the routes of a single domain, at the end of this file (claims: personal data found in the claim;
 postal: tracking timeline of the parcel). Access: the user's profile must give the domain's agent
-(dependency added in app/main.py).
+(dependency added in app/main.py), and every tool of the processing to process a case.
 """
 import logging
 from typing import Callable, Dict
@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import User, current_user, require_tools
 from app.core.database import get_db
 from app.domains import DomainSpec
 from app.models.claim import GuardrailsDetection
@@ -64,7 +65,8 @@ def domain_router(spec: DomainSpec) -> APIRouter:
         return case_to_api(spec, await load_case(db, spec, case_id))
 
     @router.post("/{case_id}/process")
-    async def process(case_id: UUID, db: AsyncSession = Depends(get_db)):
+    async def process(case_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+        require_tools(user, spec.processing_tools, f"to process a {spec.label.lower()}")
         case = await load_case(db, spec, case_id)
         name = job_name(spec, case.id)
         if is_running(name):

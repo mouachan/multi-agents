@@ -66,6 +66,10 @@ export default function CaseDetailPage({ domain }: { domain: Domain }) {
         {hero.extra}
       </EntityHero>
 
+      {c.status === 'failed' && c.metadata?.processing_error && (
+        <ErrorBanner>{t('case.processingFailed')} {c.metadata.processing_error}</ErrorBanner>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-5">
         <div className="space-y-5 xl:col-span-3">
           {showReview && <ReviewPanel ui={ui} caseId={c.id} onDecided={reload} />}

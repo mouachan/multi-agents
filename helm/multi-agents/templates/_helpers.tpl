@@ -155,6 +155,15 @@ https://{{ .Values.models.external.host }}/v1
 {{- end -}}
 {{- end -}}
 
+{{/* The agents call the chat models as the end user: OGX presents the user's OpenShift token to the
+     cluster MaaS, which applies the quota of the user's profile and reports the usage per person.
+     Only with authentication and the cluster MaaS (the token never goes to the external provider). */}}
+{{- define "multi-agents.maas.asUser" -}}
+{{- if and .Values.auth.enabled .Values.models.maas.enabled .Values.models.maas.callAsUser .Values.models.maas.userAccess.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{/* Secret holding the API key for chat models (key: api-key) */}}
 {{- define "multi-agents.maas.chatKeySecret" -}}
 {{- if .Values.models.maas.enabled -}}maas-api-key{{- else -}}maas-external-credentials{{- end -}}

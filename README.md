@@ -21,7 +21,8 @@ What the demo shows:
   identifiers, GLiNER for names in French and five other languages), masking in the MCP servers on the
   tool results.
 * **Governance**: OpenShift login, access profiles (OpenShift groups), every tool call checked for the
-  user by the **MCP Gateway**.
+  user by the **MCP Gateway**; the agents are only given the tools the profile allows and say so, and
+  call the models as the user, so the **MaaS** applies a token quota per profile.
 * **Observability**: one **MLflow** trace per chat turn or processing, agent prompts versioned in the
   MLflow Prompt Registry, metrics dashboard.
 
@@ -90,7 +91,8 @@ helm upgrade --install multi-agents helm/multi-agents -n multi-agents --create-n
   task, the guardrails verdicts and the tool calls.
 * **Sandbox**: the OpenShell policy in force and isolation scenarios (network and system writes
   denied).
-* **Admin**: demo reset, users and their access profiles.
+* **Admin**: demo reset, users and their access profiles (tools and MaaS quota of each profile),
+  evaluation of the agents' decisions on the precedents.
 
 The same through the API (on OpenShift add `-H "Authorization: Bearer $(oc whoami -t)"`):
 
