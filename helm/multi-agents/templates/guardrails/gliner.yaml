@@ -52,6 +52,8 @@ spec:
               value: {{ $g.model | quote }}
             - name: DEFAULT_LABELS
               value: {{ join "," $g.entities | quote }}
+            - name: OMP_NUM_THREADS          # PyTorch threads = the CPU limit
+              value: {{ $g.threads | quote }}
           ports:
             - containerPort: 8080
               name: http

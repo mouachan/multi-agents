@@ -606,9 +606,12 @@ guardrails:
     entities: [person]                     # GLiNER labels, masked as [PERSON]
     threshold: 0.5
     modelStorage: 3Gi
+    # CPU inference: PyTorch uses `threads` threads, the CPU limit must match (more threads than the
+    # quota throttles the pod: 5 s instead of ~1 s for a page of text)
+    threads: 4
     resources:
-      requests: {cpu: "1", memory: 3Gi}
-      limits: {cpu: "2", memory: 4Gi}
+      requests: {cpu: "2", memory: 3Gi}
+      limits: {cpu: "4", memory: 4Gi}
 
 # =============================================================================
 # MCP Gateway (Red Hat Connectivity Link 1.3 — Tech Preview)
