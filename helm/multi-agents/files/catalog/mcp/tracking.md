@@ -1,13 +1,13 @@
 # Parcel Tracking MCP Server
 
 **MCP Server Summary:**
-Parcel and mail tracking: full timeline of a parcel by tracking number, or every parcel of a
-customer by email with its latest status.
+Parcel and mail tracking: full timeline of a parcel by tracking number.
 
 ## Features
 - `get_tracking(numero_suivi)`: chronological events, delivered or not, last event, related complaint
-- `search_tracking(client_email)`: the customer's parcels and their latest status
 - Read-only
+- **Personal data masked** in every result (names, e-mails, phones, addresses; free text through NeMo
+  Guardrails): the model only reads placeholders such as `[PERSON]`
 
 ## Used by
 Postal Services Agent — tracking profile (Logistique profile).

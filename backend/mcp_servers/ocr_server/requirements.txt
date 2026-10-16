@@ -1,16 +1,3 @@
-# MCP OCR Server Dependencies
-uvicorn[standard]>=0.31.1
-starlette>=0.27
-pydantic>=2.11.0
-python-multipart>=0.0.9
+# PDF pages to images (pdf2image uses poppler-utils, installed in the Containerfile)
 Pillow>=9.5.0
 pdf2image==1.17.0
-
-# HTTP client (OGX chat completions / files API)
-httpx>=0.27.1,<1.0.0
-
-# Database (claim/tender number -> OGX file ID)
-psycopg2-binary>=2.9.0
-
-# MCP SDK — 1.x line (mcp.server.fastmcp API); Streamable HTTP at /mcp + legacy SSE
-mcp>=1.30.0,<2

@@ -4,13 +4,12 @@ from shared.executor import Profile
 from shared.server import run
 
 # System prompts live in the MLflow Prompt Registry (alias @production), seeded from the
-# Helm chart files (helm/multi-agents/files/cm.*-prompts) by the prompt-sync job.
+# Helm chart files (helm/multi-agents/files/prompts/agents) by the prompt-sync job.
 PROFILES = {
     "claims": Profile(
         prompt="claims-processing-agent",
         tools=[
             "list_claims", "get_claim", "get_claim_documents", "get_claim_statistics",
-            "save_claim_decision",
             "retrieve_user_info", "retrieve_similar_claims", "search_knowledge_base",
             "ocr_document",
             "compute_payout",  # coverage + payout, computed in the OpenShell sandbox

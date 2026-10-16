@@ -40,22 +40,4 @@ spec:
                 opendatahub.io/dashboard=true --overwrite
               echo "✓ Labeled {{ .Values.global.namespace }}"
 
-              {{- if and .Values.inference.enabled .Values.inference.namespace }}
-              # Label inference namespace (if different from main)
-              if [ "{{ .Values.inference.namespace }}" != "{{ .Values.global.namespace }}" ]; then
-                oc label namespace {{ .Values.inference.namespace }} \
-                  opendatahub.io/dashboard=true --overwrite
-                echo "✓ Labeled {{ .Values.inference.namespace }}"
-              fi
-              {{- end }}
-
-              {{- if and .Values.embedding.enabled .Values.embedding.namespace }}
-              # Label embedding namespace (if different from main)
-              if [ "{{ .Values.embedding.namespace }}" != "{{ .Values.global.namespace }}" ]; then
-                oc label namespace {{ .Values.embedding.namespace }} \
-                  opendatahub.io/dashboard=true --overwrite
-                echo "✓ Labeled {{ .Values.embedding.namespace }}"
-              fi
-              {{- end }}
-
               echo "=== ✓ All namespaces labeled successfully ==="

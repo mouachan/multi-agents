@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,18 +38,15 @@ class AgentSettings(BaseSettings):
     mlflow_workspace: str = ""
     prompt_alias: str = "production"
     prompt_cache_ttl: int = 60
-    # Colon-separated directories holding ConfigMap-mounted prompt files (fallback)
-    prompts_dirs: str = "/app/prompts"
+    # Prompt files of the Helm chart (helm/multi-agents/files/prompts/agents), mounted from a
+    # ConfigMap: used until the MLflow alias exists, and what prompt-sync versions in MLflow
+    prompts_dir: str = "/opt/app-root/prompts"
 
     # SPIFFE (ZTWIM): allowed caller SPIFFE ID paths, comma-separated (active when
     # SPIFFE_ENDPOINT_SOCKET is set by the SPIFFE CSI driver mount)
     spiffe_allowed_ids: str = ""
 
     log_level: str = "INFO"
-
-    @property
-    def prompt_dir_list(self) -> List[str]:
-        return [d for d in self.prompts_dirs.split(":") if d]
 
     model_config = SettingsConfigDict(
         env_file=".env",

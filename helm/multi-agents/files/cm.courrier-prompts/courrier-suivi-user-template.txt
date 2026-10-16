@@ -1,2 +1,0 @@
-
-Recherchez le suivi du colis ou courrier avec le numero de suivi fourni et presentez l'historique complet de l'acheminement avec le statut actuel et la date de livraison prevue.

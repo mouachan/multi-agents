@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  Box, Building2, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, LogOut, MessagesSquare, Moon, Package, Settings, ShieldCheck, Sun,
+  Box, ChevronsLeft, ChevronsRight, Cpu, LayoutDashboard, LogOut, MessagesSquare, Moon, Settings, Sun, UserCheck,
 } from 'lucide-react'
+import { DOMAINS } from '../../domains'
+import { reviewApi } from '../../services/api'
 import { SIGN_OUT_URL, useAuth, type Domain } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { cn } from '../../lib/cn'
@@ -10,15 +12,28 @@ import { usePlatform } from '../../theme/PlatformContext'
 import { useTheme } from '../../theme/ThemeContext'
 
 /** Menu entries; domain / admin entries are shown to the users who may use them */
-const NAV: { to: string; key: string; icon: typeof Box; end?: boolean; domain?: Domain; admin?: boolean }[] = [
+const NAV: { to: string; key: string; icon: typeof Box; end?: boolean; domain?: Domain; admin?: boolean; review?: boolean }[] = [
   { to: '/', key: 'nav.dashboard', icon: LayoutDashboard, end: true },
   { to: '/chat', key: 'nav.chat', icon: MessagesSquare },
-  { to: '/claims', key: 'nav.claims', icon: ShieldCheck, domain: 'claims' },
-  { to: '/tenders', key: 'nav.tenders', icon: Building2, domain: 'tenders' },
-  { to: '/postal', key: 'nav.postal', icon: Package, domain: 'postal' },
+  ...Object.values(DOMAINS).map((ui) => ({ to: ui.path, key: `nav.${ui.name}`, icon: ui.icon, domain: ui.name })),
+  { to: '/review', key: 'nav.review', icon: UserCheck, review: true },
   { to: '/sandbox', key: 'nav.sandbox', icon: Box },
   { to: '/admin', key: 'nav.admin', icon: Settings, admin: true },
 ]
+
+/** Number of cases waiting for a reviewer, refreshed every minute and on each page change */
+function useInboxCount(enabled: boolean): number {
+  const location = useLocation()
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    const load = () => reviewApi.inbox().then((items) => setCount(items.length)).catch(() => {})
+    load()
+    const timer = setInterval(load, 60000)
+    return () => clearInterval(timer)
+  }, [enabled, location.pathname])
+  return count
+}
 
 /** Signed-in user: name, access profiles, sign-out */
 function UserMenu() {
@@ -59,6 +74,7 @@ function Logo({ collapsed }: { collapsed: boolean }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, can } = useAuth()
+  const inboxCount = useInboxCount(user.domains.length > 0)
   const { t, locale, setLocale } = useTranslation()
   const { theme, toggleTheme } = useTheme()
   const { modelId } = usePlatform()
@@ -86,7 +102,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Logo collapsed={collapsed} />
         </div>
         <nav className="flex-1 space-y-0.5 p-2">
-          {NAV.filter((n) => (!n.domain || can(n.domain)) && (!n.admin || user.admin)).map(({ to, key, icon: Icon, end }) => (
+          {NAV.filter((n) => (!n.domain || can(n.domain)) && (!n.admin || user.admin) && (!n.review || user.domains.length > 0))
+            .map(({ to, key, icon: Icon, end, review }) => (
             <NavLink
               key={to}
               to={to}
@@ -98,7 +115,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             >
               <Icon className="h-[18px] w-[18px] shrink-0" />
-              {!collapsed && <span className="truncate">{t(key)}</span>}
+              {!collapsed && <span className="flex-1 truncate">{t(key)}</span>}
+              {review && inboxCount > 0 && (
+                <span className="rounded-full bg-violet-500 px-1.5 text-[10px] font-semibold text-white">{inboxCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>

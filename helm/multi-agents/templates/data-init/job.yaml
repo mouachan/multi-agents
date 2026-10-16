@@ -32,18 +32,6 @@ spec:
               value: {{ include "multi-agents.ogx.embeddingModel" . | quote }}
             - name: OCR_SERVER_URL
               value: "http://ocr-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-            - name: CLAIMS_SERVER_URL
-              value: "http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-            - name: TENDERS_SERVER_URL
-              value: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-            {{- if .Values.mcp.postal.enabled }}
-            - name: POSTAL_SERVER_URL
-              value: "http://postal-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-            {{- end }}
-            {{- if .Values.mcp.tracking.enabled }}
-            - name: TRACKING_SERVER_URL
-              value: "http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-            {{- end }}
             - name: DOCUMENTS_ARCHIVE_URL
               value: {{ .Values.dataInit.documentsArchiveUrl | quote }}
             - name: FORCE_REINIT

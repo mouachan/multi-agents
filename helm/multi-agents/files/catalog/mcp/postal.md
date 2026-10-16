@@ -5,9 +5,11 @@ Access to the postal complaints (réclamations): list, details with the customer
 tracking events, documents with OCR text, statistics, and the recording of the decision.
 
 ## Features
-- Complaint details with the tracking timeline of the parcel (`get_reclamation`, `analyze_reclamation`)
-- `save_reclamation_decision`: rembourser / reexpedier / rejeter / escalader, status update and
-  embedding of the case for future similarity searches
+- Complaint details with the latest tracking events of the parcel (`get_reclamation`)
+- Documents with their OCR text (`get_reclamation_documents`), statistics (`get_reclamation_statistics`)
+- Read-only: decisions are saved by the platform (agent processing, then human review)
+- **Personal data masked** in every result (names, e-mails, phones, addresses; free text through NeMo
+  Guardrails): the model only reads placeholders such as `[PERSON]`
 
 ## Used by
 Postal Services Agent (Logistique profile).

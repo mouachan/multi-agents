@@ -1,0 +1,16 @@
+{{- if .Values.agents.enabled }}
+---
+# System prompts of the agents (files/prompts/agents): one file per agent profile, plus the chat
+# rules and the language rule. The prompt-sync job versions them in the MLflow Prompt Registry;
+# the agents read them from MLflow (alias mlflow.prompts.alias), these files until the alias exists.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-prompts
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    component: a2a-agent
+data:
+{{ (.Files.Glob "files/prompts/agents/*").AsConfig | indent 2 }}
+{{- end }}

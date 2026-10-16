@@ -16,11 +16,11 @@ throw-away sandbox per call.
 OpenShell (NVIDIA, Developer Preview in RHOAI 3.5) enforces the policy in the
 kernel (Landlock, seccomp, network namespace + proxy); the gateway is reached over
 mTLS with the client bundle mounted in OPENSHELL_TLS_DIR.
-FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
+Besides /mcp it serves the backend's sandbox page: /policy (the policy in force) and /demo/{scenario}
+(fixed isolation scenarios).
 """
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -38,12 +38,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from shared.mcp_app import build_app, create_mcp
+from shared.server import create_mcp, serve
+from shared.tools import ToolError, tool
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 OPENSHELL_ENDPOINT = os.getenv("OPENSHELL_ENDPOINT", "openshell.openshell.svc:8080")
@@ -215,8 +212,8 @@ def _run_in_sandbox(code: str, timeout_s: int) -> Dict[str, Any]:
 # MCP Tools
 # =============================================================================
 
-@mcp.tool()
-async def run_python(code: str, timeout_s: int = 20) -> str:
+@tool(mcp, personal_data=False)
+async def run_python(code: str, timeout_s: int = 20) -> Dict[str, Any]:
     """
     Execute Python code in an isolated OpenShell sandbox and return its output.
 
@@ -235,20 +232,16 @@ async def run_python(code: str, timeout_s: int = 20) -> str:
         observed: network / filesystem), sandbox (name, image, policy, timings)
     """
     if not code or not code.strip():
-        return json.dumps({"success": False, "error": "code is required"})
+        raise ToolError("code is required")
     if not SANDBOX_IMAGE:
-        return json.dumps({"success": False, "error": "SANDBOX_IMAGE is not configured"})
+        raise ToolError("SANDBOX_IMAGE is not configured")
 
     timeout_s = max(1, min(int(timeout_s or 20), MAX_EXEC_TIMEOUT))
     logger.info(f"run_python: {len(code)} chars, timeout {timeout_s}s")
-    try:
-        result = await asyncio.to_thread(_run_in_sandbox, code, timeout_s)
-        if result["denials"]:
-            logger.warning(f"Sandbox policy denials: {result['denials']}")
-        return json.dumps(result, ensure_ascii=False)
-    except Exception as e:
-        logger.error(f"run_python failed: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": f"Sandbox execution failed: {e}"})
+    result = await asyncio.to_thread(_run_in_sandbox, code, timeout_s)
+    if result["denials"]:
+        logger.warning(f"Sandbox policy denials: {result['denials']}")
+    return result
 
 
 # =============================================================================
@@ -339,27 +332,12 @@ async def demo(request: Request) -> JSONResponse:
     return JSONResponse({"scenario": name, "expect": scenario["expect"], "code": scenario["code"], **result})
 
 
-# =============================================================================
-# Starlette App — /mcp (Streamable HTTP), /sse (legacy), /health, /policy, /demo/{scenario}
-# =============================================================================
-
-app = build_app(mcp, "sandbox-exec-server", health_check, extra_routes=[
-    Route("/policy", policy, methods=["GET"]),
-    Route("/demo/{scenario}", demo, methods=["POST"]),
-])
-
-
 if __name__ == "__main__":
-    import uvicorn
-
-    port = int(os.getenv("PORT", "8080"))
-    host = os.getenv("HOST", "0.0.0.0")
-
-    logger.info(f"Starting MCP Sandbox Exec Server on {host}:{port}")
     logger.info(f"OpenShell gateway: {OPENSHELL_ENDPOINT} (workspace {OPENSHELL_WORKSPACE})")
     logger.info(f"Sandbox image: {SANDBOX_IMAGE}, policy: {SANDBOX_POLICY_FILE}")
-    logger.info("Tools: run_python")
     if SANDBOX_REUSE and SANDBOX_IMAGE:
         threading.Thread(target=_warm.prewarm, name="sandbox-prewarm", daemon=True).start()
-
-    uvicorn.run(app, host=host, port=port)
+    serve(mcp, health=health_check, database=False, routes=[
+        Route("/policy", policy, methods=["GET"]),
+        Route("/demo/{scenario}", demo, methods=["POST"]),
+    ])

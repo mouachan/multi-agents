@@ -4,13 +4,12 @@ from shared.executor import Profile
 from shared.server import run
 
 # System prompts live in the MLflow Prompt Registry (alias @production), seeded from the
-# Helm chart files (helm/multi-agents/files/cm.*-prompts) by the prompt-sync job.
+# Helm chart files (helm/multi-agents/files/prompts/agents) by the prompt-sync job.
 PROFILES = {
     "tenders": Profile(
         prompt="ao-processing-agent",
         tools=[
             "list_tenders", "get_tender", "get_tender_documents", "get_tender_statistics",
-            "save_tender_decision",
             "retrieve_similar_references", "retrieve_historical_tenders", "retrieve_capabilities",
             "search_knowledge_base",
             "ocr_document",

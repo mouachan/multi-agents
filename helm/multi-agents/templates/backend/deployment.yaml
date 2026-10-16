@@ -19,6 +19,10 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        # restart on a change of the settings or the prompt files
+        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.backend-config.yaml") . | sha256sum | trunc 16 }}
+        checksum/prompts: {{ .Files.Glob "files/prompts/backend/*" | toString | sha256sum | trunc 16 }}
     spec:
       serviceAccountName: backend
       containers:
@@ -35,18 +39,6 @@ spec:
           env:
             {{- include "postgres.env" . | nindent 12 }}
             {{- include "multi-agents.spiffe.env" . | nindent 12 }}
-{{- if .Values.minio.enabled }}
-            - name: S3_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
-                  key: MINIO_ROOT_USER
-            - name: S3_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "multi-agents.fullname" . }}-minio-credentials
-                  key: MINIO_ROOT_PASSWORD
-{{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           livenessProbe:
@@ -65,15 +57,6 @@ spec:
             - mountPath: /app/prompts
               name: prompts
               readOnly: true
-            - mountPath: /app/prompts-ao
-              name: ao-prompts
-              readOnly: true
-            - mountPath: /app/prompts-orchestrator
-              name: orchestrator-prompts
-              readOnly: true
-            - mountPath: /app/prompts-courrier
-              name: courrier-prompts
-              readOnly: true
             - mountPath: /app/seed
               name: seed
               readOnly: true
@@ -81,16 +64,7 @@ spec:
       volumes:
         - name: prompts
           configMap:
-            name: claims-prompts
-        - name: ao-prompts
-          configMap:
-            name: ao-prompts
-        - name: orchestrator-prompts
-          configMap:
-            name: orchestrator-prompts
-        - name: courrier-prompts
-          configMap:
-            name: courrier-prompts
+            name: backend-prompts
         - name: seed
           # seed.sql and the precedent decisions, for the admin reset (same files as at install)
           configMap:

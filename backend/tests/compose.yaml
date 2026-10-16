@@ -1,0 +1,44 @@
+# Backend tests against a real PostgreSQL (pgvector) loaded with the same schema and seed as the
+# cluster database; the A2A agents are replaced by a stub (tests/conftest.py). From the repository root:
+#
+#   podman compose -f backend/tests/compose.yaml up --build --abort-on-container-exit --exit-code-from tests
+#   podman compose -f backend/tests/compose.yaml down -v
+name: backend-tests
+services:
+  db:
+    image: docker.io/pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: multi_agent_db
+    volumes:
+      - ../../database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro,Z
+      - ../../database/seed_data/001_seed_data.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro,Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d multi_agent_db"]
+      interval: 2s
+      retries: 60
+
+  tests:
+    build:
+      context: ..
+      dockerfile: tests/Containerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DATABASE: multi_agent_db
+      PROMPTS_DIR: /prompts
+      CHAT_CONFIG_FILE: /prompts/chat-config.yaml
+      SEED_DATA_FILE: /seed/001_seed_data.sql
+      PRECEDENTS_FILE: /seed/precedent_decisions.json
+      CLAIMS_AGENT_A2A_URL: http://claims-agent.test:8090
+      TENDERS_AGENT_A2A_URL: http://tenders-agent.test:8090
+      POSTAL_AGENT_A2A_URL: http://postal-agent.test:8090
+      ROUTER_ENABLED: "false"
+    volumes:
+      - ../../helm/multi-agents/files/prompts/backend:/prompts:ro,Z
+      - ../../database/seed_data:/seed:ro,Z

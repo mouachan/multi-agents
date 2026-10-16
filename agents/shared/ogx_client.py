@@ -8,43 +8,36 @@ Streams /v1/responses with MCP tools and normalizes the SSE events into:
 """
 import json
 import logging
+import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-TOOL_TO_SERVER = {
-    "ocr_document": "ocr-server",
-    "ocr_health_check": "ocr-server",
-    "list_supported_formats": "ocr-server",
-    "retrieve_user_info": "rag-server",
-    "retrieve_similar_claims": "rag-server",
-    "search_knowledge_base": "rag-server",
-    "retrieve_similar_references": "rag-server",
-    "retrieve_historical_tenders": "rag-server",
-    "retrieve_capabilities": "rag-server",
-    "search_courrier_knowledge": "rag-server",
-    "retrieve_similar_reclamations": "rag-server",
-    "list_claims": "claims-server",
-    "get_claim": "claims-server",
-    "get_claim_documents": "claims-server",
-    "get_claim_statistics": "claims-server",
-    "save_claim_decision": "claims-server",
-    "list_tenders": "tenders-server",
-    "get_tender": "tenders-server",
-    "get_tender_documents": "tenders-server",
-    "get_tender_statistics": "tenders-server",
-    "save_tender_decision": "tenders-server",
-    "list_reclamations": "postal-server",
-    "get_reclamation": "postal-server",
-    "get_reclamation_documents": "postal-server",
-    "get_reclamation_statistics": "postal-server",
-    "analyze_reclamation": "postal-server",
-    "save_reclamation_decision": "postal-server",
-    "get_tracking": "tracking-server",
-    "search_tracking": "tracking-server",
+# Without the MCP Gateway (local stack), each tool is called on its own MCP server
+SERVER_TOOLS = {
+    "ocr-server": ["ocr_document"],
+    "rag-server": ["retrieve_user_info", "retrieve_similar_claims", "search_knowledge_base",
+                   "retrieve_similar_references", "retrieve_historical_tenders", "retrieve_capabilities",
+                   "search_courrier_knowledge", "retrieve_similar_reclamations"],
+    "claims-server": ["list_claims", "get_claim", "get_claim_documents", "get_claim_statistics",
+                      "compute_payout"],
+    "tenders-server": ["list_tenders", "get_tender", "get_tender_documents", "get_tender_statistics"],
+    "postal-server": ["list_reclamations", "get_reclamation", "get_reclamation_documents",
+                      "get_reclamation_statistics"],
+    "tracking-server": ["get_tracking"],
+    "sandbox-server": ["run_python"],
 }
+TOOL_TO_SERVER = {tool: server for server, tools in SERVER_TOOLS.items() for tool in tools}
+
+# Tool calls written as text by the model instead of function calling: [get_claim(id="x")]
+# or [{"name": "get_claim", "arguments": {...}}]
+_TEXT_TOOL_CALL = re.compile(r'\[\w+\(.*?\)\]|\[\s*\{\s*"name"\s*:\s*"\w+"\s*,\s*"arguments"\s*:', re.DOTALL)
+
+
+def wrote_tool_calls_as_text(text: str) -> bool:
+    return bool(text) and bool(_TEXT_TOOL_CALL.search(text))
 
 
 class OGXClient:

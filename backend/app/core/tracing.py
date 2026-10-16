@@ -1,17 +1,9 @@
-"""
-OpenTelemetry-based tracing for the multi-agent orchestrator.
+"""MLflow tracing (OpenTelemetry): spans sent over OTLP/HTTP to the MLflow server of OpenShift AI.
 
-Sends traces via OTLP/HTTP to MLflow RHOAI endpoint (/v1/traces).
-Auth via pod ServiceAccount token, TLS via OpenShift service-ca.crt.
-
-Only active when MLFLOW_TRACKING_URI is configured.
-Reusable: any future separated agent just needs OTel SDK + env vars.
-
-Span hierarchy visible in MLflow "GenAI apps & agents":
-    {agent_id} | {message}       (root)
-    └── agent-{agent_id}         (agent)
-        ├── tool:{tool_name}     (tool per call)
-        └── llm-response         (LLM)
+Authentication with the pod's ServiceAccount token, TLS with the OpenShift service CA; active only
+when MLFLOW_TRACKING_URI is set. The backend opens the root span of each chat turn or processing
+(app/services/turn_trace.py); the agents' spans join the same trace (W3C traceparent in the A2A
+request), so one turn is one MLflow trace in experiment MLFLOW_EXPERIMENT_NAME.
 """
 import json
 import logging
@@ -35,7 +27,13 @@ SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 SERVICE_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
 
 
-def _build_auth_headers() -> Dict[str, str]:
+def mlflow_verify():
+    """TLS verification for the MLflow API: the OpenShift service CA in the cluster."""
+    return SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else False
+
+
+def mlflow_headers() -> Dict[str, str]:
+    """Authentication to the MLflow API: the pod's ServiceAccount token, and the RHOAI workspace."""
     headers: Dict[str, str] = {}
     if os.path.exists(SA_TOKEN_PATH):
         with open(SA_TOKEN_PATH) as f:
@@ -47,13 +45,13 @@ def _build_auth_headers() -> Dict[str, str]:
 
 def _resolve_experiment_id(retries: int = 5, delay: float = 3.0) -> str:
     """Resolve MLflow experiment ID from name via REST API, with retries."""
-    verify = SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else False
+    verify = mlflow_verify()
     url = (
         f"{settings.mlflow_tracking_uri.rstrip('/')}"
         f"/api/2.0/mlflow/experiments/get-by-name"
         f"?experiment_name={settings.mlflow_experiment_name}"
     )
-    headers = _build_auth_headers()
+    headers = mlflow_headers()
 
     for attempt in range(1, retries + 1):
         try:
@@ -119,7 +117,7 @@ def init_mlflow():
         uri = urlsplit(settings.mlflow_tracking_uri)
         endpoint = f"{uri.scheme}://{uri.netloc}/v1/traces"
 
-        otlp_headers = _build_auth_headers()
+        otlp_headers = mlflow_headers()
         otlp_headers["x-mlflow-experiment-id"] = experiment_id
 
         cert_file = SERVICE_CA_PATH if os.path.exists(SERVICE_CA_PATH) else None
@@ -164,162 +162,6 @@ def is_enabled() -> bool:
     return _enabled
 
 
-def log_agent_trace(
-    agent_id: str,
-    model: str,
-    input_text: str,
-    output_text: str,
-    tool_calls: Optional[List[Dict]] = None,
-    usage: Optional[dict] = None,
-    stream: bool = False,
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    response_id: Optional[str] = None,
-    metadata: Optional[Dict] = None,
-):
-    """Log an agentic call as an OTel trace exported to MLflow."""
-    if not _enabled:
-        return
-    try:
-        from opentelemetry.trace import StatusCode
-
-        tool_calls = tool_calls or []
-        model_short = model.split("/")[-1] if "/" in model else model
-        short_msg = input_text[:80].replace("\n", " ").strip()
-        trace_name = f"{agent_id} | {short_msg}"
-
-        meta = metadata or {}
-
-        # Root span — orchestrator level
-        with _tracer.start_as_current_span(
-            name=trace_name,
-            attributes={
-                "mlflow.traceName": trace_name,
-                "mlflow.spanType": "AGENT",
-                "session.id": session_id or "",
-                "user.id": user_id or "",
-                "response.id": response_id or "",
-                "stream": stream,
-            },
-        ) as root:
-            root.set_attribute(
-                "mlflow.spanInputs", json.dumps({"message": input_text[:2000]})
-            )
-
-            # Agent span
-            with _tracer.start_as_current_span(
-                name=f"agent-{agent_id}",
-                attributes={
-                    "mlflow.spanType": "AGENT",
-                    "agent.id": agent_id,
-                    "gen_ai.request.model": model_short,
-                    "response.id": response_id or "",
-                },
-            ) as agent_span:
-                agent_span.set_attribute(
-                    "mlflow.spanInputs",
-                    json.dumps({"agent_id": agent_id, "model": model_short}),
-                )
-
-                # Tool spans
-                for i, tc in enumerate(tool_calls):
-                    tool_name = tc.get("name") or f"tool-{i}"
-                    server = str(tc.get("server_label") or tc.get("server") or "")
-                    with _tracer.start_as_current_span(
-                        name=f"tool:{tool_name}",
-                        attributes={
-                            "mlflow.spanType": "TOOL",
-                            "tool.name": tool_name,
-                            "tool.server": server,
-                        },
-                    ) as tool_span:
-                        tool_span.set_attribute(
-                            "mlflow.spanInputs",
-                            json.dumps({"tool": tool_name, "server": server}),
-                        )
-                        tool_output = str(tc.get("output") or "")[:2000]
-                        tool_error = tc.get("error")
-                        result = {"status": tc.get("status", "unknown"), "output": tool_output}
-                        if tool_error:
-                            result["error"] = str(tool_error)
-                            tool_span.set_status(StatusCode.ERROR, str(tool_error))
-                        tool_span.set_attribute("mlflow.spanOutputs", json.dumps(result))
-
-                # LLM response span
-                with _tracer.start_as_current_span(
-                    name="llm-response",
-                    attributes={
-                        "mlflow.spanType": "CHAT_MODEL",
-                        "gen_ai.request.model": model_short,
-                        "gen_ai.response.model": model_short,
-                    },
-                ) as llm_span:
-                    llm_span.set_attribute(
-                        "mlflow.spanInputs",
-                        json.dumps({
-                            "messages": [{"role": "user", "content": input_text[:2000]}],
-                            "model": model_short,
-                        }),
-                    )
-                    llm_outputs: Dict = {
-                        "choices": [{"message": {"role": "assistant", "content": output_text[:2000]}}],
-                        "model": model_short,
-                    }
-                    if usage:
-                        input_tokens = usage.get("input_tokens", 0) or 0
-                        output_tokens = usage.get("output_tokens", 0) or 0
-                        total_tokens = input_tokens + output_tokens
-                        llm_outputs["usage"] = {
-                            "prompt_tokens": input_tokens,
-                            "completion_tokens": output_tokens,
-                            "total_tokens": total_tokens,
-                        }
-                        llm_span.set_attribute("llm.token_usage.input_tokens", input_tokens)
-                        llm_span.set_attribute("llm.token_usage.output_tokens", output_tokens)
-                        llm_span.set_attribute("llm.token_usage.total_tokens", total_tokens)
-                        llm_span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
-                        llm_span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
-                    llm_span.set_attribute("mlflow.spanOutputs", json.dumps(llm_outputs))
-
-                # Agent span outputs
-                agent_outputs: Dict = {
-                    "response": output_text[:2000],
-                    "tool_count": len(tool_calls),
-                    "tools_used": [tc.get("name", "") for tc in tool_calls],
-                }
-                if response_id:
-                    agent_outputs["response_id"] = response_id
-                if meta.get("decision"):
-                    agent_outputs["decision"] = meta["decision"]
-                agent_span.set_attribute("mlflow.spanOutputs", json.dumps(agent_outputs))
-
-            # Root span outputs
-            root_outputs: Dict = {
-                "agent": agent_id,
-                "model": model_short,
-                "response": output_text[:2000],
-                "tools_used": [tc.get("name", "") for tc in tool_calls],
-                "total_tokens": (usage.get("total_tokens", 0) or 0) if usage else 0,
-            }
-            if response_id:
-                root_outputs["response_id"] = response_id
-            if meta.get("decision"):
-                root_outputs["decision"] = meta["decision"]
-            if meta.get("recommendation"):
-                root_outputs["recommendation"] = meta["recommendation"]
-            root.set_attribute("mlflow.spanOutputs", json.dumps(root_outputs))
-
-        logger.info(f"OTel trace sent: agent={agent_id}, tools={len(tool_calls)}")
-    except Exception as e:
-        logger.warning(f"Tracing error: {e}", exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# Spans with an explicit parent, for the A2A path (see app/services/agents/turn_trace.py).
-# A chat turn runs in an async generator, where attaching a "current" context across yields
-# is not safe: spans are linked to their parent explicitly and ended explicitly. Every
-# helper is a no-op on None (tracing disabled).
-# ---------------------------------------------------------------------------
 def _attributes(values: Dict) -> Dict:
     """OTel attribute values are primitives: drop None, serialize the rest as JSON."""
     out = {}

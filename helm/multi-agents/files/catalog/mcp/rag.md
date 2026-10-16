@@ -11,7 +11,10 @@ business domain. Embeddings are computed through the OGX `/v1/embeddings` API.
 - **BTP:** similar project references, won/lost tender history, internal capabilities and certifications
 - **Postal:** postal knowledge base (rates, delays, customs, refunds), similar past complaints
 - Business filters on top of the vector search (claim type, region, budget, validity dates...)
-- `generate_document_embedding` indexes a processed document for the next similarity searches
+- A case number (CLM-..., AO-..., RECL-...) is accepted instead of a text: the search uses the case's
+  document, and leaves the case itself out of the results
+- **Personal data masked** in every result (names, e-mails, phones, addresses; free text through NeMo
+  Guardrails): the model only reads placeholders such as `[PERSON]`
 
 ## Used by
 Claims Processing Agent, Tenders Analysis Agent, Postal Services Agent.

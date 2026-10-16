@@ -1,0 +1,35 @@
+# MCP server tests against a real PostgreSQL (pgvector) loaded with the same schema and seed as the
+# cluster database; the embedding model is replaced by a stub (tests/conftest.py). From the
+# repository root:
+#
+#   podman compose -f backend/mcp_servers/tests/compose.yaml up --build --abort-on-container-exit --exit-code-from tests
+#   podman compose -f backend/mcp_servers/tests/compose.yaml down -v
+name: mcp-servers-tests
+services:
+  db:
+    image: docker.io/pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: multi_agent_db
+    volumes:
+      - ../../../database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro,Z
+      - ../../../database/seed_data/001_seed_data.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro,Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d multi_agent_db"]
+      interval: 2s
+      retries: 60
+
+  tests:
+    build:
+      context: ..
+      dockerfile: tests/Containerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DATABASE: multi_agent_db
+      OGX_ENDPOINT: http://ogx.test:8321

@@ -16,7 +16,7 @@ import { useChat } from '../hooks/useChat'
 import { useTranslation } from '../i18n/LanguageContext'
 import { agentVisual, toolServer } from '../lib/agents'
 import { cn } from '../lib/cn'
-import { orchestratorApi } from '../services/orchestratorService'
+import { chatApi } from '../services/api'
 import { usePlatform } from '../theme/PlatformContext'
 import type { ChatMessage, ChatSession, SuggestedAction } from '../types/chat'
 
@@ -74,7 +74,7 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const refreshSessions = useCallback(() => {
-    orchestratorApi.listSessions().then((d) => setSessions(d.sessions)).catch(() => {})
+    chatApi.listSessions().then(setSessions).catch(() => {})
   }, [])
 
   useEffect(() => { refreshSessions() }, [sessionId, refreshSessions])
@@ -178,7 +178,7 @@ export default function ChatPage() {
   }
 
   const deleteSession = async (id: string) => {
-    await orchestratorApi.deleteSession(id).catch(() => {})
+    await chatApi.deleteSession(id).catch(() => {})
     setSessions((prev) => prev.filter((s) => s.session_id !== id))
     if (id === sessionId) {
       localStorage.removeItem(LAST_SESSION_KEY)
@@ -187,7 +187,7 @@ export default function ChatPage() {
   }
 
   const deleteAll = async () => {
-    await orchestratorApi.deleteAllSessions().catch(() => {})
+    await chatApi.deleteAllSessions().catch(() => {})
     setSessions([])
     localStorage.removeItem(LAST_SESSION_KEY)
     await newChat()
@@ -231,9 +231,7 @@ export default function ChatPage() {
           ) : (
             <div className="flex-1 overflow-y-auto p-3">
               <p className="mb-3 text-xs text-ink-muted">{t('graph.help')}</p>
-              <AgentGraph
-                agents={agents}
-                activeAgentId={liveMsg?.trace?.agentId || currentAgentId}
+              <AgentGraph activeAgentId={liveMsg?.trace?.agentId || currentAgentId}
                 live={isSending}
                 routing={isSending && !liveMsg?.trace?.routing}
                 activeServers={activeServers}

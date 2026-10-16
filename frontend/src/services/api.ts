@@ -1,101 +1,102 @@
+/**
+ * The backend API (/api/v1), one object per area — mirrors backend/app/api/:
+ *   casesApi(domain)  the cases of a business domain        api/domains.py
+ *   reviewApi         human review                          api/review.py
+ *   chatApi           conversations with the agents         api/chat.py
+ *   adminApi          administration                        api/admin.py
+ *   sandboxApi        the OpenShell sandbox page            api/sandbox.py
+ */
 import { http } from './http'
-import type {
-  Claim,
-  ClaimDecision,
-  ClaimStatistics,
-  ClaimStatusResponse,
-  ProcessClaimRequest,
-  ProcessingStepLog,
-} from '../types'
-import type { Tender, TenderDecision, TenderStatistics, TenderStatusResponse } from '../types/tender'
-import type {
-  Reclamation,
-  ReclamationDecision,
-  ReclamationStatistics,
-  ReclamationStatusResponse,
-  TrackingEvent,
-} from '../types/reclamation'
+import type { Case, Decision, Domain, PersonalDataFinding, Statistics, TrackingEvent } from '../types/case'
+import type { InboxItem, JournalEntry, ReviewBrief } from '../types/review'
+import type { AgentInfo, ChatMessage, ChatSession, PromptResponse, StreamEvent } from '../types/chat'
 import type { SandboxDemoResult, SandboxInfo, SandboxScenario } from '../types/sandbox'
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
-/** The lists are small (tens of rows): load them in one page, filter/sort client-side. */
-const ALL = { page: 1, page_size: 100 }
+// ------------------------------------------------------------------------------------------ cases
 
-export interface PiiDetection {
-  id: string
-  detection_type: string
-  severity?: string
-  action_taken?: string
-  detected_at?: string
-  record_metadata?: Record<string, any>
-}
+export const casesApi = (domain: Domain) => ({
+  list: async (): Promise<Case[]> => (await http.get(`/${domain}/`)).data.items,
+  get: async (id: string): Promise<Case> => (await http.get(`/${domain}/${id}`)).data,
+  statistics: async (): Promise<Statistics> => (await http.get(`/${domain}/statistics`)).data,
+  /** starts the processing by the agent; the case page polls the case until it is done */
+  process: async (id: string) => (await http.post(`/${domain}/${id}/process`)).data,
+  /** the current decision, or null before the first processing */
+  decision: async (id: string): Promise<Decision | null> =>
+    http.get(`/${domain}/${id}/decision`).then((r) => r.data, (e) => (e?.response?.status === 404 ? null : Promise.reject(e))),
+  documentUrl: (id: string, lang: string) => `${API_BASE_URL}/${domain}/${id}/document?lang=${lang}`,
+  // routes of a single domain
+  tracking: async (id: string): Promise<TrackingEvent[]> => (await http.get(`/${domain}/${id}/tracking`)).data,
+  personalData: async (id: string): Promise<PersonalDataFinding[]> => (await http.get(`/${domain}/${id}/personal-data`)).data,
+})
 
-export const claimsApi = {
-  list: async (): Promise<Claim[]> => (await http.get('/claims/', { params: ALL })).data.claims ?? [],
-  get: async (id: string): Promise<Claim> => (await http.get(`/claims/${id}`)).data,
-  process: async (id: string, request: ProcessClaimRequest = { skip_ocr: false, enable_rag: true }) =>
-    (await http.post(`/claims/${id}/process`, request)).data,
-  status: async (id: string): Promise<ClaimStatusResponse> => (await http.get(`/claims/${id}/status`)).data,
-  logs: async (id: string): Promise<ProcessingStepLog[]> => (await http.get(`/claims/${id}/logs`)).data.logs ?? [],
-  decision: async (id: string): Promise<ClaimDecision> => (await http.get(`/claims/${id}/decision`)).data,
-  statistics: async (): Promise<ClaimStatistics> => (await http.get('/claims/statistics/overview')).data,
-  guardrails: async (id: string): Promise<PiiDetection[]> =>
-    (await http.get(`/claims/${id}/guardrails`)).data.detections ?? [],
-  documentUrl: (id: string, lang: string) => `${API_BASE_URL}/claims/documents/${id}/view?lang=${lang}`,
-}
-
-export const tendersApi = {
-  list: async (): Promise<Tender[]> => (await http.get('/tenders/', { params: ALL })).data.tenders ?? [],
-  get: async (id: string): Promise<Tender> => (await http.get(`/tenders/${id}`)).data,
-  process: async (id: string) => (await http.post(`/tenders/${id}/process`, {})).data,
-  status: async (id: string): Promise<TenderStatusResponse> => (await http.get(`/tenders/${id}/status`)).data,
-  logs: async (id: string): Promise<ProcessingStepLog[]> => (await http.get(`/tenders/${id}/logs`)).data.logs ?? [],
-  decision: async (id: string): Promise<TenderDecision> => (await http.get(`/tenders/${id}/decision`)).data,
-  statistics: async (): Promise<TenderStatistics> => (await http.get('/tenders/statistics/overview')).data,
-  documentUrl: (id: string, lang: string) => `${API_BASE_URL}/tenders/documents/${id}/view?lang=${lang}`,
-}
-
-export const postalApi = {
-  list: async (): Promise<Reclamation[]> => (await http.get('/postal/', { params: ALL })).data.items ?? [],
-  get: async (id: string): Promise<Reclamation> => (await http.get(`/postal/${id}`)).data,
-  process: async (id: string) => (await http.post(`/postal/${id}/process`, {})).data,
-  status: async (id: string): Promise<ReclamationStatusResponse> => (await http.get(`/postal/${id}/status`)).data,
-  logs: async (id: string): Promise<ProcessingStepLog[]> => (await http.get(`/postal/${id}/logs`)).data.logs ?? [],
-  decision: async (id: string): Promise<ReclamationDecision> => (await http.get(`/postal/${id}/decision`)).data,
-  statistics: async (): Promise<ReclamationStatistics> => (await http.get('/postal/statistics/overview')).data,
-  tracking: async (id: string): Promise<TrackingEvent[]> => (await http.get(`/postal/${id}/tracking`)).data,
-  documentUrl: (id: string, lang: string) => `${API_BASE_URL}/postal/${id}/document/view?lang=${lang}`,
-}
+// ----------------------------------------------------------------------------------------- review
 
 export const reviewApi = {
-  submitAction: async (
-    entityType: string,
-    entityId: string,
-    action: { action: string; comment: string; reviewerId: string; reviewerName: string },
-  ) => (await http.post(`/review/${entityType}/${entityId}/action`, action)).data,
-
-  askAgent: async (entityType: string, entityId: string, question: string, reviewerId: string, reviewerName: string) =>
-    (await http.post(`/review/${entityType}/${entityId}/ask-agent`, {
-      question, reviewer_id: reviewerId, reviewer_name: reviewerName,
-    })).data,
+  inbox: async (): Promise<InboxItem[]> => (await http.get('/review/inbox')).data,
+  brief: async (domain: Domain, id: string): Promise<ReviewBrief> => (await http.get(`/review/${domain}/${id}`)).data,
+  ask: async (domain: Domain, id: string, question: string, language: string): Promise<JournalEntry> =>
+    (await http.post(`/review/${domain}/${id}/questions`, { question, language })).data,
+  decide: async (domain: Domain, id: string, decision: string, justification: string): Promise<Decision> =>
+    (await http.post(`/review/${domain}/${id}/decision`, { decision, justification })).data,
 }
 
-export interface DatabaseStats {
-  users: number
-  contracts: number
-  claims_by_status: Record<string, number>
-  claims_total: number
-  knowledge_base: number
-  knowledge_base_embeddings: string
-  claim_documents_embeddings: string
+// ------------------------------------------------------------------------------------------- chat
+
+export const chatApi = {
+  agents: async (): Promise<AgentInfo[]> => (await http.get('/chat/agents')).data,
+  toolDisplay: async () => (await http.get('/chat/tool-display')).data,
+  createSession: async (agentId?: string, locale?: string): Promise<ChatSession> =>
+    (await http.post('/chat/sessions', { agent_id: agentId || null, locale: locale || 'fr' })).data,
+  listSessions: async (): Promise<ChatSession[]> => (await http.get('/chat/sessions')).data,
+  messages: async (sessionId: string): Promise<ChatMessage[]> => (await http.get(`/chat/sessions/${sessionId}/messages`)).data,
+  deleteSession: async (sessionId: string) => http.delete(`/chat/sessions/${sessionId}`),
+  deleteAllSessions: async () => http.delete('/chat/sessions'),
+  getPrompt: async (sessionId: string): Promise<PromptResponse> => (await http.get(`/chat/sessions/${sessionId}/prompt`)).data,
+  setPrompt: async (sessionId: string, prompt: string): Promise<PromptResponse> =>
+    (await http.put(`/chat/sessions/${sessionId}/prompt`, { prompt })).data,
+  resetPrompt: async (sessionId: string): Promise<PromptResponse> => (await http.delete(`/chat/sessions/${sessionId}/prompt`)).data,
+
+  /**
+   * Send a message; the answer streams as server-sent events, each handed to `onEvent`
+   * (contract: backend/app/services/chat/turn.py). Aborting `signal` stops the stream.
+   */
+  streamMessage: async (sessionId: string, message: string, onEvent: (event: StreamEvent) => void, signal: AbortSignal) => {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ message }),
+      signal,
+    })
+    if (response.status === 401) window.location.reload()   // session expired: back to the login
+    if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines.map((l) => l.trim()).filter((l) => l.startsWith('data:'))) {
+          try {
+            onEvent(JSON.parse(line.slice(5)) as StreamEvent)
+          } catch {
+            // a malformed line is skipped
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') throw err
+    }
+  },
 }
 
-export const sandboxApi = {
-  info: async (): Promise<SandboxInfo> => (await http.get('/sandbox/policy')).data,
-  demo: async (scenario: SandboxScenario): Promise<SandboxDemoResult> =>
-    (await http.post(`/sandbox/demo/${scenario}`)).data,
-}
+// ---------------------------------------------------------------------------------- administration
 
 /** Access profile = OpenShift group; its rights are OpenShift RBAC (agents and their MCP tools). */
 export interface AccessProfile {
@@ -113,10 +114,22 @@ export interface ManagedUser {
   profiles: string[]
 }
 
+export interface Overview {
+  domains: { domain: Domain; by_status: Record<string, number>; documents: number; documents_with_embedding: number }[]
+  references: Record<string, { rows: number; with_embedding: number }>
+}
+
 export const adminApi = {
-  databaseStats: async (): Promise<DatabaseStats> => (await http.get('/admin/database-stats')).data.data,
-  resetDatabase: async () => (await http.post('/admin/reset-database')).data,
+  overview: async (): Promise<Overview> => (await http.get('/admin/overview')).data,
+  reset: async () => (await http.post('/admin/reset')).data,
   users: async (): Promise<{ profiles: AccessProfile[]; users: ManagedUser[] }> => (await http.get('/admin/users')).data,
   setProfiles: async (username: string, profiles: string[]): Promise<ManagedUser> =>
     (await http.put(`/admin/users/${encodeURIComponent(username)}/profiles`, { profiles })).data,
+}
+
+// -------------------------------------------------------------------------------------------- sandbox
+
+export const sandboxApi = {
+  info: async (): Promise<SandboxInfo> => (await http.get('/sandbox/policy')).data,
+  demo: async (scenario: SandboxScenario): Promise<SandboxDemoResult> => (await http.post(`/sandbox/demo/${scenario}`)).data,
 }

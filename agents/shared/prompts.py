@@ -3,14 +3,13 @@
 Resolution order for a prompt name (e.g. "claims-processing-agent"):
   1. MLflow Prompt Registry  prompts:/<name>@<alias>   (cached PROMPT_CACHE_TTL seconds,
      so promoting a new version to the alias in the MLflow UI takes effect without restart)
-  2. ConfigMap-mounted file  <PROMPTS_DIRS>/<name>.txt
+  2. the chart's prompt file  <PROMPTS_DIR>/<name>.txt (ConfigMap)
   3. last value successfully loaded (if MLflow becomes unreachable)
 
 Prompts are seeded/versioned by the Helm `prompt-sync` job (shared/prompt_sync.py).
 """
 import asyncio
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -48,16 +47,15 @@ class PromptStore:
     def __init__(self, settings: AgentSettings):
         self.alias = settings.prompt_alias
         self.ttl = settings.prompt_cache_ttl
-        self.dirs = [Path(d) for d in settings.prompt_dir_list]
+        self.dir = Path(settings.prompts_dir)
         self.enabled = mlflow_auth.configure(settings)
         self._cache: Dict[str, tuple[float, PromptValue]] = {}
 
     def _from_file(self, name: str) -> Optional[PromptValue]:
-        for d in self.dirs:
-            path = d / f"{name}.txt"
-            if path.is_file():
-                return PromptValue(name, path.read_text(encoding="utf-8"), None, "file")
-        return None
+        path = self.dir / f"{name}.txt"
+        if not path.is_file():
+            return None
+        return PromptValue(name, path.read_text(encoding="utf-8"), None, "file")
 
     def _from_mlflow(self, name: str) -> Optional[PromptValue]:
         import mlflow
@@ -80,7 +78,7 @@ class PromptStore:
         if value is None:
             value = self._from_file(name) or (cached[1] if cached else PromptValue(name, ""))
         if not value.text:
-            logger.error("Prompt '%s' unavailable (MLflow and %s)", name, os.pathsep.join(map(str, self.dirs)))
+            logger.error("Prompt '%s' unavailable (MLflow and %s)", name, self.dir)
 
         self._cache[name] = (time.monotonic(), value)
         return value

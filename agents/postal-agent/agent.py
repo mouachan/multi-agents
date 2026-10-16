@@ -5,13 +5,13 @@ from shared.server import run
 
 # One agent, three profiles (selected by the caller via message metadata "profile").
 # System prompts live in the MLflow Prompt Registry (alias @production), seeded from the
-# Helm chart files (helm/multi-agents/files/cm.*-prompts) by the prompt-sync job.
+# Helm chart files (helm/multi-agents/files/prompts/agents) by the prompt-sync job.
 PROFILES = {
     "courrier_reclamation": Profile(
         prompt="courrier-reclamation-instructions",
         tools=[
             "list_reclamations", "get_reclamation", "get_reclamation_documents",
-            "get_reclamation_statistics", "save_reclamation_decision",
+            "get_reclamation_statistics",
             "get_tracking",
             "search_courrier_knowledge", "retrieve_similar_reclamations",
             "ocr_document",
@@ -25,7 +25,7 @@ PROFILES = {
     ),
     "courrier_suivi": Profile(
         prompt="courrier-suivi-instructions",
-        tools=["get_tracking", "search_tracking"],
+        tools=["get_tracking"],
         tags={"domain": "postal"},
     ),
 }

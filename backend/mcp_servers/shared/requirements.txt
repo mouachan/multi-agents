@@ -1,0 +1,7 @@
+# Common to every MCP server (each server's requirements.txt adds its own)
+mcp>=1.30.0,<2                 # MCP SDK 1.x (mcp.server.fastmcp), Streamable HTTP at /mcp
+uvicorn[standard]>=0.31.1
+starlette>=0.27
+httpx>=0.27.1,<1.0.0           # OGX (embeddings, files, vision), NeMo Guardrails
+sqlalchemy>=2.0.0              # the business database
+psycopg2-binary>=2.9.9

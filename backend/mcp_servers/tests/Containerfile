@@ -1,0 +1,8 @@
+# MCP server tests image (tests/compose.yaml builds it with backend/mcp_servers as context)
+FROM registry.access.redhat.com/ubi9/python-312:latest
+WORKDIR /opt/app-root/src
+COPY shared/requirements.txt shared/requirements.txt
+COPY ocr_server/requirements.txt ocr_server/requirements.txt
+RUN pip install --no-cache-dir -r shared/requirements.txt -r ocr_server/requirements.txt pytest pytest-asyncio
+COPY . .
+CMD ["pytest", "-q", "-p", "no:cacheprovider", "tests"]

@@ -1,474 +1,162 @@
+"""MCP server reading the document of a case (OCR) with a vision model served by OGX.
+
+ocr_document(<case number>) finds the case's PDF in the OGX Files API (data-init stored its file id in
+the case's document_path), turns each page into an image, has the vision model transcribe it, and
+keeps the text in the case's documents table: the other tools (payout, similarity searches) read it
+there. A document already read is not read again (the vision model takes ~10 s per page), unless
+refresh=true.
 """
-MCP OCR Server - Extract text from documents using a vision model served by OGX
-(default: llama-scout-17b via MaaS).
-FastMCP server exposing Streamable HTTP (/mcp) and legacy SSE (/sse).
-
-SIMPLE TOOL: Returns raw OCR text only.
-The calling agent handles all LLM analysis and structuring.
-
-Document retrieval: accepts claim/tender number, resolves the OGX file ID
-via a DB lookup (document_path stores file-xxx), then fetches content from
-the OGX Files API.
-
-OCR: converts PDF pages to images, sends them to the vision model via the OGX
-/v1/chat/completions API for text extraction. Zero local GPU/memory overhead.
-"""
-
 import asyncio
-import contextlib
 import base64
 import io
-import json
 import logging
 import os
-import time
-from pathlib import Path
-from typing import Tuple
+from typing import Any, Dict, List
 
 import httpx
-import psycopg2
-from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 from pdf2image import convert_from_bytes
 from PIL import Image
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
-from starlette.responses import JSONResponse
 
-# Configure logging
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from shared.cases import CaseTable, domain_of, find_case
+from shared.db import execute, fetch_one
+from shared.server import create_mcp, serve
+from shared.tools import ToolError, required, tool
+
 logger = logging.getLogger(__name__)
+mcp = create_mcp("ocr-server")
 
-# OGX / inference config
 OGX_ENDPOINT = os.getenv("OGX_ENDPOINT", "").rstrip("/")
 VISION_MODEL = os.getenv("OGX_VISION_MODEL", "llama-scout-17b")
 VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "2048"))
-
-# PostgreSQL configuration (for resolving claim/tender number → OGX file ID)
-PG_HOST = os.getenv("POSTGRES_HOST", "postgresql")
-PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-PG_DB = os.getenv("POSTGRES_DATABASE", "multi_agent_db")
-PG_USER = os.getenv("POSTGRES_USER", "multi_agent_user")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "")
-
-# Create FastMCP server
-# DNS-rebinding protection disabled explicitly: requests arrive through the
-# Service name or the MCP Gateway internal hostname (FastMCP would answer 421).
-mcp = FastMCP(
-    "ocr-server",
-    stateless_http=True,
-    json_response=True,
-    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
-)
-
-# Health check endpoint for Kubernetes probes
-async def health_check(request):
-    """Simple health check endpoint for liveness/readiness probes"""
-    return JSONResponse({
-        "status": "healthy",
-        "service": "ocr-server",
-        "vision_model": VISION_MODEL,
-    })
-
-
-# OPTIONS endpoint for MCP transport discovery
-async def sse_options(request):
-    """Handle OPTIONS requests for MCP endpoint discovery"""
-    return JSONResponse({
-        "methods": ["GET", "POST", "OPTIONS"],
-        "server_name": "ocr-server",
-        "transports": {"streamable_http": "/mcp", "sse": "/sse"},
-        "capabilities": {
-            "tools": True,
-            "streaming": True
-        }
-    })
-
-
-# The streamable HTTP session manager must run in the parent app lifespan
-# (lifespans of mounted sub-apps are not executed).
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    async with mcp.session_manager.run():
-        yield
-
-
-# /mcp (Streamable HTTP), /sse (legacy SSE), /health
-app = Starlette(
-    routes=[
-        Route("/health", health_check),
-        *mcp.streamable_http_app().routes,
-        Route("/sse", sse_options, methods=["OPTIONS"]),
-        Route("/", sse_options, methods=["OPTIONS"]),
-        Mount("/", app=mcp.sse_app()),
-    ],
-    lifespan=lifespan,
-)
-
-# Configuration
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 PDF_DPI = int(os.getenv("PDF_DPI", "200"))
-
-# Supported file extensions
-SUPPORTED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.webp'}
-SUPPORTED_PDF_EXTENSIONS = {'.pdf'}
-SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
-
-OCR_PROMPT = (
-    "Extract ALL text from this document image exactly as it appears. "
-    "Preserve the layout and structure. Return only the extracted text."
-)
-
-
-# The cluster MaaS gateway does not pass request bodies much above ~128 KB (larger vision
-# requests hang, then fail with HTTP 500; 92 KB hung, 48 KB passed in 6 s): page images are sent as grayscale JPEG, shrunk
-# until their base64 form fits (text stays readable: ~1000 chars per page at 850x1100).
+# The cluster MaaS gateway does not pass request bodies much above ~128 KB (larger vision requests
+# hang, then fail with HTTP 500): page images are sent as grayscale JPEG, shrunk until their base64
+# form fits (the text stays readable: ~1000 characters per page at 850x1100)
 MAX_IMAGE_B64_KB = int(os.getenv("OCR_MAX_IMAGE_B64_KB", "60"))
+VISION_TIMEOUT = 60   # seconds per page; the vision call sometimes hangs on the MaaS side
+OCR_PROMPT = ("Extract ALL text from this document image exactly as it appears. "
+              "Preserve the layout and structure. Return only the extracted text.")
+PAGE_BREAK = "\n\n--- Page Break ---\n\n"
 
 
-def _encode_image(image: Image.Image) -> str:
-    img = image.convert("L")
+@tool(mcp)
+async def ocr_document(document_id: str, refresh: bool = False) -> Dict[str, Any]:
+    """
+    Read the document of a claim, a tender or a postal complaint (OCR) and return its text.
+    The text is kept: reading the same document again returns it at once.
+
+    Args:
+        document_id: The case number (e.g. CLM-2024-0024, AO-2026-IDF-001, RECL-2026-0001)
+        refresh: true to read the document again even if it was already read
+    """
+    number = required(document_id, "document_id")
+    domain = domain_of(number)
+    if domain is None:
+        raise ToolError(f"{number} is not a claim, tender or complaint number")
+    case = await find_case(domain, number)
+    file_id = (await fetch_one(f"SELECT document_path FROM {domain.table} WHERE id = CAST(:id AS uuid)",
+                               id=case["id"]))["document_path"]
+    if not file_id:
+        raise ToolError(f"{domain.label} {number} has no document")
+
+    if not refresh:
+        known = await _stored_text(domain, case["id"], file_id)
+        if known:
+            return {"document_id": number, "raw_text": known["raw_ocr_text"], "confidence": known["ocr_confidence"],
+                    "pages": known["page_count"], "already_read": True}
+
+    pages = await _page_images(await _download(file_id))
+    texts = [await _transcribe(page) for page in pages]
+    text = PAGE_BREAK.join(f"[Page {i}]\n{page_text or '(No text detected)'}" for i, page_text in enumerate(texts, 1))
+    confidence = 0.95 if any(texts) else 0.0   # vision models give no confidence: a fixed value when text was read
+    await _store_text(domain, case["id"], file_id, text, confidence, len(pages))
+    logger.info("OCR of %s: %d pages, %d words", number, len(pages), len(text.split()))
+    return {"document_id": number, "raw_text": text, "confidence": confidence, "pages": len(pages),
+            "already_read": False}
+
+
+async def _download(file_id: str) -> bytes:
+    if not OGX_ENDPOINT:
+        raise ToolError("OGX_ENDPOINT is not configured")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(f"{OGX_ENDPOINT}/v1/files/{file_id}/content")
+        response.raise_for_status()
+    return response.content
+
+
+async def _page_images(content: bytes) -> List[Image.Image]:
+    """The pages of a PDF as images (or the image itself)."""
+    if content[:4] == b"%PDF":
+        return await asyncio.to_thread(convert_from_bytes, content, dpi=PDF_DPI, first_page=1, last_page=MAX_PDF_PAGES)
+    return [Image.open(io.BytesIO(content))]
+
+
+async def _transcribe(image: Image.Image) -> str:
+    """The text of one page, by the vision model (one retry: the MaaS sometimes hangs)."""
+    request = {
+        "model": VISION_MODEL,
+        "max_tokens": VISION_MAX_TOKENS,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": OCR_PROMPT},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_jpeg_base64(image)}"}},
+        ]}],
+    }
+    for attempt in (1, 2):
+        try:
+            async with httpx.AsyncClient(timeout=VISION_TIMEOUT) as client:
+                response = await client.post(f"{OGX_ENDPOINT}/v1/chat/completions", json=request)
+                response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+            if attempt == 2:
+                raise
+            logger.warning("Vision call failed (attempt %d): %s", attempt, e)
+    return ""
+
+
+def _jpeg_base64(image: Image.Image) -> str:
+    """The page as a grayscale JPEG in base64, small enough for the MaaS gateway."""
+    image = image.convert("L")
     quality = 85
     while True:
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        b64 = base64.b64encode(buf.getvalue()).decode()
-        if len(b64) <= MAX_IMAGE_B64_KB * 1024 or min(img.size) < 400:
-            return b64
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=quality, optimize=True)
+        encoded = base64.b64encode(buffer.getvalue()).decode()
+        if len(encoded) <= MAX_IMAGE_B64_KB * 1024 or min(image.size) < 400:
+            return encoded
         if quality > 60:
             quality -= 10
         else:
-            img = img.resize((int(img.width * 0.8), int(img.height * 0.8)))
+            image = image.resize((int(image.width * 0.8), int(image.height * 0.8)))
 
 
-async def extract_text_with_vision(image: Image.Image) -> Tuple[str, float]:
-    """Extract text from a PIL Image using the OGX vision model."""
-    b64 = _encode_image(image)
-
-    # The vision call sometimes hangs on the MaaS side: 60 s per attempt, one retry
-    resp = None
-    for attempt in (1, 2):
-        try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    f"{OGX_ENDPOINT}/v1/chat/completions",
-                    json={
-                        "model": VISION_MODEL,
-                        "messages": [{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": OCR_PROMPT},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                            ]
-                        }],
-                        "max_tokens": VISION_MAX_TOKENS,
-                    },
-                )
-                resp.raise_for_status()
-            break
-        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
-            logger.warning(f"Vision call failed (attempt {attempt}): {type(e).__name__} {e}")
-            if attempt == 2:
-                raise
-    result = resp.json()
-
-    text = result["choices"][0]["message"]["content"]
-    # Vision models don't return per-word confidence; use 0.95 as default
-    confidence = 0.95 if text.strip() else 0.0
-
-    word_count = len(text.split()) if text else 0
-    logger.info(f"Vision OCR extracted {word_count} words")
-    return text.strip(), confidence
+async def _stored_text(domain: CaseTable, case_id: str, file_id: str):
+    """The text already read from this file (metadata ocr_file_id of the case's document row)."""
+    return await fetch_one(f"""
+        SELECT raw_ocr_text, ocr_confidence, page_count FROM {domain.documents}
+        WHERE {domain.fk} = CAST(:id AS uuid) AND metadata->>'ocr_file_id' = :file
+          AND COALESCE(raw_ocr_text, '') <> ''
+        ORDER BY created_at DESC LIMIT 1""", id=case_id, file=file_id)
 
 
-# ---------------------------------------------------------------------------
-# Document retrieval: claim/tender number → DB lookup → OGX file ID
-# ---------------------------------------------------------------------------
-
-def _resolve_file_id(document_id: str) -> str:
-    """
-    Resolve a claim/tender number to its OGX file ID via DB lookup.
-
-    The upload script stores the OGX-generated file ID (file-xxx) in
-    the document_path column. This function looks it up.
-    """
-    conn = psycopg2.connect(
-        host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-        user=PG_USER, password=PG_PASS
-    )
-    try:
-        cur = conn.cursor()
-        # Try claims first
-        cur.execute(
-            "SELECT document_path FROM claims WHERE claim_number = %s",
-            (document_id,)
-        )
-        row = cur.fetchone()
-        if row and row[0]:
-            logger.info(f"Resolved {document_id} → {row[0]} (claim)")
-            return row[0]
-
-        # Try tenders
-        cur.execute(
-            "SELECT document_path FROM tenders WHERE tender_number = %s",
-            (document_id,)
-        )
-        row = cur.fetchone()
-        if row and row[0]:
-            logger.info(f"Resolved {document_id} → {row[0]} (tender)")
-            return row[0]
-
-        raise ValueError(f"No document found for {document_id} in claims or tenders")
-    finally:
-        conn.close()
-
-
-async def fetch_file_content(document_id: str) -> bytes:
-    """
-    Fetch file content from the OGX Files API.
-
-    Resolves claim/tender number → OGX file ID via DB, then fetches
-    the content from the Files API.
-    """
-    if not OGX_ENDPOINT:
-        raise ValueError("OGX_ENDPOINT not configured")
-
-    # Resolve claim/tender number to OGX file ID
-    file_id = await asyncio.to_thread(_resolve_file_id, document_id)
-
-    url = f"{OGX_ENDPOINT}/v1/files/{file_id}/content"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        logger.info(f"Fetched {len(resp.content)} bytes from OGX: {document_id} (file_id={file_id})")
-        return resp.content
-
-
-async def ocr_from_bytes(content: bytes, filename: str = "") -> Tuple[str, float]:
-    """Run OCR on raw file bytes (PDF or image) using vision model."""
-    ext = Path(filename).suffix.lower() if filename else ""
-
-    # Detect type from content magic bytes if no extension
-    if not ext:
-        if content[:4] == b'%PDF':
-            ext = '.pdf'
-        elif content[:2] == b'\xff\xd8':
-            ext = '.jpg'
-        elif content[:8] == b'\x89PNG\r\n\x1a\n':
-            ext = '.png'
-        else:
-            ext = '.pdf'  # default assumption
-
-    if ext in SUPPORTED_PDF_EXTENSIONS:
-        images = await asyncio.to_thread(
-            convert_from_bytes, content, dpi=PDF_DPI, first_page=1, last_page=MAX_PDF_PAGES
-        )
-        logger.info(f"PDF converted to {len(images)} pages")
-
-        all_text = []
-        all_confidences = []
-        for i, image in enumerate(images):
-            text, confidence = await extract_text_with_vision(image)
-            if text:
-                all_text.append(f"[Page {i + 1}]\n{text}")
-                all_confidences.append(confidence)
-            else:
-                all_text.append(f"[Page {i + 1}]\n(No text detected)")
-
-        combined = "\n\n--- Page Break ---\n\n".join(all_text)
-        avg_conf = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
-        return combined, avg_conf
-
-    elif ext in SUPPORTED_IMAGE_EXTENSIONS:
-        image = Image.open(io.BytesIO(content))
-        return await extract_text_with_vision(image)
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
-
-
-async def _save_ocr_result(document_id: str, raw_text: str, confidence: float):
-    """Persist OCR result in claim_documents or tender_documents."""
-    try:
-        conn = psycopg2.connect(
-            host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-            user=PG_USER, password=PG_PASS
-        )
-        conn.autocommit = True
-        cur = conn.cursor()
-
-        # Try claim first
-        cur.execute("SELECT id, document_path FROM claims WHERE claim_number = %s", (document_id,))
-        row = cur.fetchone()
-        if row:
-            claim_id = row[0]
-            file_path = row[1] or document_id
-            # Upsert into claim_documents
-            cur.execute("""
-                INSERT INTO claim_documents (claim_id, file_path, raw_ocr_text, ocr_confidence, created_at)
-                VALUES (%s, %s, %s, %s, NOW())
-                ON CONFLICT (claim_id) DO UPDATE SET
-                    raw_ocr_text = EXCLUDED.raw_ocr_text,
-                    ocr_confidence = EXCLUDED.ocr_confidence
-            """, (claim_id, file_path, raw_text, confidence))
-            logger.info(f"OCR result saved to claim_documents for {document_id}")
-            conn.close()
-            return
-
-        # Try tender
-        cur.execute("SELECT id FROM tenders WHERE tender_number = %s", (document_id,))
-        row = cur.fetchone()
-        if row:
-            tender_id = row[0]
-            # Delete existing then insert (no unique constraint on tender_id)
-            cur.execute("DELETE FROM tender_documents WHERE tender_id = %s", (tender_id,))
-            cur.execute("""
-                INSERT INTO tender_documents (tender_id, raw_ocr_text, ocr_confidence, created_at)
-                VALUES (%s, %s, %s, NOW())
-            """, (tender_id, raw_text, confidence))
-            logger.info(f"OCR result saved to tender_documents for {document_id}")
-
-        conn.close()
-    except Exception as e:
-        logger.warning(f"Failed to persist OCR result for {document_id}: {e}")
-
-
-# ---------------------------------------------------------------------------
-# MCP Tools
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def ocr_document(
-    document_id: str,
-    document_type: str = "AUTO"
-) -> str:
-    """
-    Extract text from a claim or tender document using OCR.
-
-    Retrieves the document from OGX Files by claim/tender number,
-    then extracts text using the vision model. Supports PDF and images.
-
-    Args:
-        document_id: The claim number (e.g. CLM-2024-0024) or tender number (e.g. AO-2026-0042).
-        document_type: Type hint (AUTO, MEDICAL, HOME, etc.) — informational only.
-
-    Returns:
-        JSON with raw_text, confidence score, and processing time.
-    """
-    start_time = time.time()
-    logger.info(f"OCR STARTED for document: {document_id} (type: {document_type})")
-
-    if not document_id or not document_id.strip():
-        return json.dumps({"success": False, "raw_text": None, "confidence": 0.0,
-                           "error": "document_id is required"})
-
-    document_id = document_id.strip()
-
-    try:
-        # Fetch content from OGX Files API
-        content = await fetch_file_content(document_id)
-        fetch_time = time.time() - start_time
-        logger.info(f"File fetched in {fetch_time:.2f}s ({len(content)} bytes)")
-
-        # OCR via vision model
-        raw_text, confidence = await ocr_from_bytes(content)
-
-        total_time = time.time() - start_time
-        word_count = len(raw_text.split()) if raw_text else 0
-        logger.info(f"OCR COMPLETED in {total_time:.2f}s (confidence: {confidence:.2f}, words: {word_count})")
-
-        # Persist OCR result in claim_documents / tender_documents
-        await _save_ocr_result(document_id, raw_text, confidence)
-
-        return json.dumps({
-            "success": True,
-            "document_id": document_id,
-            "raw_text": raw_text,
-            "confidence": round(confidence, 4),
-            "processing_time_seconds": round(total_time, 2),
-            "statistics": {
-                "word_count": word_count,
-                "character_count": len(raw_text) if raw_text else 0
-            }
-        })
-
-    except Exception as e:
-        total_time = time.time() - start_time
-        logger.error(f"OCR failed after {total_time:.2f}s: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "document_id": document_id,
-            "raw_text": None,
-            "confidence": 0.0,
-            "error": str(e),
-            "processing_time_seconds": round(total_time, 2)
-        })
-
-
-@mcp.tool()
-async def ocr_health_check() -> str:
-    """
-    Check OCR server health and readiness.
-
-    Returns:
-        JSON string with health status
-    """
-    health = {
-        "status": "healthy",
-        "checks": {},
-        "config": {
-            "vision_model": VISION_MODEL,
-            "max_pdf_pages": MAX_PDF_PAGES,
-            "pdf_dpi": PDF_DPI,
-        }
-    }
-
-    # Test vision model availability
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{OGX_ENDPOINT}/v1/health")
-            resp.raise_for_status()
-            health["checks"]["ogx"] = "ok"
-    except Exception as e:
-        health["checks"]["ogx"] = f"error: {str(e)}"
-        health["status"] = "degraded"
-
-    return json.dumps(health)
-
-
-@mcp.tool()
-async def list_supported_formats() -> str:
-    """
-    List all supported file formats for OCR.
-
-    Returns:
-        JSON string with supported formats
-    """
-    return json.dumps({
-        "image_formats": sorted(list(SUPPORTED_IMAGE_EXTENSIONS)),
-        "document_formats": sorted(list(SUPPORTED_PDF_EXTENSIONS)),
-        "all_formats": sorted(list(SUPPORTED_EXTENSIONS)),
-        "vision_model": VISION_MODEL,
-    })
+async def _store_text(domain: CaseTable, case_id: str, file_id: str, text: str, confidence: float, pages: int) -> None:
+    """The text goes in the case's latest document row (created if there is none). Its embedding is
+    cleared: the backend embeds the new text after the processing (backend/app/services/embeddings.py)."""
+    values = {"id": case_id, "file": file_id, "text": text, "confidence": confidence, "pages": pages}
+    updated = await execute(f"""
+        UPDATE {domain.documents} SET raw_ocr_text = :text, ocr_confidence = :confidence, page_count = :pages,
+               ocr_processed_at = NOW(), embedding = NULL,
+               metadata = COALESCE(metadata, '{{}}'::jsonb) || jsonb_build_object('ocr_file_id', CAST(:file AS text))
+        WHERE id = (SELECT id FROM {domain.documents} WHERE {domain.fk} = CAST(:id AS uuid)
+                    ORDER BY created_at DESC LIMIT 1)""", **values)
+    if not updated:
+        await execute(f"""
+            INSERT INTO {domain.documents} ({domain.fk}, file_path, mime_type, raw_ocr_text, ocr_confidence,
+                                            page_count, ocr_processed_at, metadata)
+            VALUES (CAST(:id AS uuid), :file, 'application/pdf', :text, :confidence, :pages, NOW(),
+                    jsonb_build_object('ocr_file_id', CAST(:file AS text)))""", **values)
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    port = int(os.getenv("PORT", "8080"))
-    host = os.getenv("HOST", "0.0.0.0")
-
-    logger.info(f"Starting MCP OCR Server (Vision: {VISION_MODEL}) on {host}:{port}")
-    logger.info(f"OGX endpoint: {OGX_ENDPOINT}")
-    logger.info(f"Max PDF Pages: {MAX_PDF_PAGES}")
-    logger.info(f"PDF DPI: {PDF_DPI}")
-
-    logger.info(f"MCP endpoints: http://{host}:{port}/mcp (streamable HTTP), /sse (legacy)")
-    logger.info("Tools:")
-    logger.info("  - ocr_document: Extract raw text from documents by claim/tender number")
-    logger.info("  - ocr_health_check: Check server health")
-    logger.info("  - list_supported_formats: List supported file formats")
-
-    uvicorn.run(app, host=host, port=port)
+    serve(mcp)

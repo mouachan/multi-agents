@@ -21,39 +21,3 @@ metadata:
     # ArgoCD GitOps
     "argocd.argoproj.io/sync-wave": "-100"
 {{- end }}
-{{- if .Values.inference.enabled }}
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ include "inference.namespace" . }}
-  labels:
-    {{- include "multi-agents.labels" . | nindent 4 }}
-    opendatahub.io/dashboard: "true"
-  annotations:
-    # Helm hooks
-    # pre-install only, never deleted by Helm: a pre-upgrade hook with
-    # before-hook-creation would delete the namespace (and the release) on upgrade
-    "helm.sh/hook": pre-install
-    "helm.sh/hook-weight": "-100"
-    # ArgoCD GitOps
-    "argocd.argoproj.io/sync-wave": "-100"
-{{- end }}
-{{- if .Values.embedding.enabled }}
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ include "embedding.namespace" . }}
-  labels:
-    {{- include "multi-agents.labels" . | nindent 4 }}
-    opendatahub.io/dashboard: "true"
-  annotations:
-    # Helm hooks
-    # pre-install only, never deleted by Helm: a pre-upgrade hook with
-    # before-hook-creation would delete the namespace (and the release) on upgrade
-    "helm.sh/hook": pre-install
-    "helm.sh/hook-weight": "-100"
-    # ArgoCD GitOps
-    "argocd.argoproj.io/sync-wave": "-100"
-{{- end }}

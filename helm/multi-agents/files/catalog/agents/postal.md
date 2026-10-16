@@ -1,12 +1,13 @@
 # Postal Services Agent
 
 ## What this agent does
-One agent, three profiles, chosen by the orchestrator from the request:
+One agent, three profiles, chosen by the chat router from the request:
 
 - **Complaints (réclamations):** reads the complaint and its document, the parcel's tracking timeline
   and similar past complaints, then decides **rembourser** (refund), **reexpedier** (re-ship),
-  **rejeter** (reject) or **escalader** (escalate), with its confidence and reasoning.
-- **Parcel tracking:** timeline of a parcel by tracking number, or the parcels of a customer by email
+  **rejeter** (reject) or **escalader** (escalate), with its confidence and reasoning. A complaint
+  it escalates goes to a reviewer, with a brief explaining why.
+- **Parcel tracking:** timeline of a parcel by tracking number
   (asks for the number when none is given).
 - **Postal information:** rates, delivery times, packaging, customs and refund rules from the postal
   knowledge base.

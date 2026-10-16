@@ -34,11 +34,12 @@ export function formatDuration(ms: number | null | undefined): string {
   return rest ? `${m} min ${rest} s` : `${m} min`
 }
 
-export function formatMoney(amount: number | null | undefined, locale: Locale, digits = 0): string {
-  if (amount == null || Number.isNaN(amount)) return '—'
+export function formatMoney(amount: number | string | null | undefined, locale: Locale, digits = 0, currency = 'EUR'): string {
+  const value = typeof amount === 'string' ? Number(amount) : amount
+  if (value == null || Number.isNaN(value)) return '—'
   return new Intl.NumberFormat(intlLocale(locale), {
-    style: 'currency', currency: 'EUR', maximumFractionDigits: digits,
-  }).format(amount)
+    style: 'currency', currency, maximumFractionDigits: digits,
+  }).format(value)
 }
 
 export function formatNumber(value: number | null | undefined, locale: Locale): string {

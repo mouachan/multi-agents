@@ -1,6 +1,0 @@
-Extract text from this document: {document_path}
-
-Step 1: Call the ocr_document tool to extract the text.
-Step 2: After you receive the OCR results, summarize what was extracted and the confidence score.
-
-Provide a brief summary of the extracted content.

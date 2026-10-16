@@ -1,0 +1,17 @@
+{{- if .Values.backend.enabled }}
+---
+# Prompt files of the backend (files/prompts/backend): the processing request of each domain, and
+# the chat settings (welcome messages, suggested actions, tool names shown in the UI)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4" # after OGXServer
+  name: backend-prompts
+  namespace: {{ include "multi-agents.namespace" . }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+    app: backend
+data:
+{{ (.Files.Glob "files/prompts/backend/*").AsConfig | indent 2 }}
+{{- end }}

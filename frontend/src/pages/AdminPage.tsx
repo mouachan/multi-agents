@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { BookOpen, Database, FileStack, RotateCcw, Settings, TriangleAlert, Users } from 'lucide-react'
+import { Database, RotateCcw, Settings, TriangleAlert } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { UserProfiles } from '../components/admin/UserProfiles'
 import { Button } from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
 import { ErrorBanner } from '../components/ui/Feedback'
-import { KpiCard } from '../components/ui/KpiCard'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { PageHeader } from '../components/ui/PageHeader'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -13,10 +12,11 @@ import { useResource } from '../hooks/useResource'
 import { useTranslation } from '../i18n/LanguageContext'
 import { adminApi } from '../services/api'
 
+/** Administration: what the database holds, the demo reset, and the users' access profiles. */
 export default function AdminPage() {
   const { t } = useTranslation()
   const { user } = useAuth()
-  const { data: stats, loading, error, reload } = useResource(() => adminApi.databaseStats(), [])
+  const { data: overview, error, reload } = useResource(() => adminApi.overview(), [])
   const [confirming, setConfirming] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
@@ -26,15 +26,12 @@ export default function AdminPage() {
     setResetting(true)
     setResult(null)
     try {
-      const res = await adminApi.resetDatabase()
-      const d = res.data || {}
-      const loaded = d.loaded ?? {}
-      const kept = d.restored ?? {}
+      const { loaded, restored } = await adminApi.reset()
       setResult({
         ok: true,
-        text: `${t('adm.resetDone')} — claims ${loaded.claims ?? '?'}, tenders ${loaded.tenders ?? '?'}, complaints ${loaded.reclamations ?? '?'} · `
-          + `${t('adm.resetRestored')}: ${kept.documents ?? 0} documents (OCR + embeddings), ${kept.reference_embeddings ?? 0} reference embeddings, `
-          + `${kept.precedent_decisions ?? 0} precedents, ${kept.document_links ?? 0} PDF links`,
+        text: `${t('adm.resetDone')} — ${Object.entries(loaded).map(([table, n]) => `${table} ${n}`).join(', ')} · `
+          + `${t('adm.resetRestored')}: ${restored.documents} documents, ${restored.reference_embeddings} embeddings, `
+          + `${restored.precedent_decisions} precedents, ${restored.document_links} PDF`,
       })
       await reload()
     } catch (err: any) {
@@ -44,30 +41,32 @@ export default function AdminPage() {
     }
   }
 
-  const v = (n: number | string | undefined) => (loading ? <span className="skeleton inline-block h-6 w-10 align-middle" /> : n ?? '—')
-
   return (
     <>
       <PageHeader icon={<Settings className="h-5 w-5 text-ink-muted" />} title={t('admin.title')} subtitle={t('admin.subtitle')} />
       {error && <div className="mb-4"><ErrorBanner onRetry={reload} retryLabel={t('ui.retry')}>{error}</ErrorBanner></div>}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label={t('adm.users')} value={v(stats?.users)} icon={<Users className="h-5 w-5" />} accent="bg-brand-500/10 text-brand-600 dark:text-brand-300" />
-        <KpiCard label={t('adm.contracts')} value={v(stats?.contracts)} icon={<FileStack className="h-5 w-5" />} accent="bg-sky-500/10 text-sky-600" />
-        <KpiCard label={t('adm.claims')} value={v(stats?.claims_total)} icon={<Database className="h-5 w-5" />} accent="bg-emerald-500/10 text-emerald-600" />
-        <KpiCard label={t('adm.knowledgeBase')} value={v(stats?.knowledge_base)} hint={stats ? `embeddings ${stats.knowledge_base_embeddings}` : undefined} icon={<BookOpen className="h-5 w-5" />} accent="bg-amber-500/10 text-amber-600" />
-      </div>
-
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader icon={<Database className="h-4 w-4" />} title={t('adm.claimsByStatus')} />
-          <div className="flex flex-wrap gap-2 p-5">
-            {stats && Object.entries(stats.claims_by_status).map(([s, n]) => (
-              <span key={s} className="inline-flex items-center gap-2 rounded-xl bg-surface-muted px-3 py-2">
-                <StatusBadge status={s} /> <span className="text-sm font-semibold tabular-nums text-ink">{n}</span>
-              </span>
+          <CardHeader icon={<Database className="h-4 w-4" />} title={t('adm.overview')} />
+          <div className="space-y-4 p-5">
+            {overview?.domains.map((d) => (
+              <div key={d.domain}>
+                <p className="label mb-1.5">{t(`nav.${d.domain}`)} · {t('adm.embeddings')} {d.documents_with_embedding}/{d.documents}</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(d.by_status).map(([status, n]) => (
+                    <span key={status} className="inline-flex items-center gap-2 rounded-xl bg-surface-muted px-2.5 py-1.5">
+                      <StatusBadge status={status} /> <span className="text-sm font-semibold tabular-nums text-ink">{n}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
             ))}
-            {stats && <p className="w-full pt-2 text-xs text-ink-subtle">claim documents embeddings: {stats.claim_documents_embeddings}</p>}
+            {overview && (
+              <p className="text-xs text-ink-subtle">
+                {t('adm.references')}: {Object.entries(overview.references).map(([table, r]) => `${table} ${r.with_embedding}/${r.rows}`).join(' · ')}
+              </p>
+            )}
           </div>
         </Card>
 

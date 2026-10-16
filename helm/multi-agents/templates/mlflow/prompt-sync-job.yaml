@@ -1,6 +1,6 @@
 {{- if and .Values.mlflow.enabled .Values.agents.enabled }}
 {{- /*
-Versions the chart prompt files (files/cm.*-prompts/*.txt) in the MLflow Prompt
+Versions the agents' prompt files (files/prompts/agents/*.txt) in the MLflow Prompt
 Registry: a new version when the text changed, alias mlflow.prompts.alias moved to it
 when promoteOnSync is true (or when the alias does not exist yet).
 Runs the agents' shared library (shared/prompt_sync.py) from the claims-agent image.
@@ -47,19 +47,13 @@ spec:
           value: {{ .Values.mlflow.prompts.promoteOnSync | quote }}
         - name: HELM_RELEASE_REVISION
           value: {{ .Release.Revision | quote }}
-        - name: PROMPTS_DIRS
-          value: "/opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator"
+        - name: PROMPTS_DIR
+          value: /opt/app-root/prompts
         volumeMounts:
-        - {name: claims-prompts, mountPath: /opt/app-root/prompts/claims}
-        - {name: ao-prompts, mountPath: /opt/app-root/prompts/ao}
-        - {name: courrier-prompts, mountPath: /opt/app-root/prompts/courrier}
-        - {name: orchestrator-prompts, mountPath: /opt/app-root/prompts/orchestrator}
+        - {name: prompts, mountPath: /opt/app-root/prompts}
         resources:
           requests: {cpu: 100m, memory: 256Mi}
           limits: {cpu: 500m, memory: 512Mi}
       volumes:
-      - {name: claims-prompts, configMap: {name: claims-prompts}}
-      - {name: ao-prompts, configMap: {name: ao-prompts}}
-      - {name: courrier-prompts, configMap: {name: courrier-prompts}}
-      - {name: orchestrator-prompts, configMap: {name: orchestrator-prompts}}
+      - {name: prompts, configMap: {name: agent-prompts}}
 {{- end }}

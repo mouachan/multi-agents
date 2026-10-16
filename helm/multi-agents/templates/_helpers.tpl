@@ -61,26 +61,6 @@ Get namespace
 {{- define "multi-agents.namespace" -}}
 {{- .Values.global.namespace }}
 {{- end }}
-{{- define "inference.namespace" -}}
-{{- if ne .Values.inference.namespace "" -}}
-{{- .Values.inference.namespace }}
-{{- else -}}
-{{- .Values.global.namespace }}
-{{- end -}}
-{{- end -}}
-{{- define "embedding.namespace" -}}
-{{- if ne .Values.embedding.namespace "" -}}
-{{- .Values.embedding.namespace }}
-{{- else -}}
-{{- .Values.global.namespace }}
-{{- end -}}
-{{- end -}}
-{{- define "gptoss.namespace" -}}
-{{- .Values.gptoss.namespace | default .Values.global.namespace }}
-{{- end -}}
-{{- define "gptoss.endpoint" -}}
-https://{{ .Values.gptoss.name }}-{{ .Values.gptoss.namespace }}.{{ .Values.global.clusterDomain }}/v1
-{{- end -}}
 
 {{/*
 Get image registry

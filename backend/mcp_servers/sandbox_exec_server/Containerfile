@@ -1,12 +1,15 @@
-# MCP Sandbox Exec Server - run_python in OpenShell sandboxes
+# MCP server sandbox-exec-server. Build from backend/mcp_servers (the context holds shared/):
+#   podman build --platform linux/amd64 -f sandbox_exec_server/Containerfile -t <registry>/sandbox-exec-server:<tag> .
 FROM registry.access.redhat.com/ubi9/python-312:latest
-USER 0
-WORKDIR /app
-COPY sandbox_exec_server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY shared/__init__.py shared/mcp_app.py ./shared/
+
+WORKDIR /opt/app-root/src
+COPY shared/requirements.txt shared-requirements.txt
+RUN pip install --no-cache-dir -r shared-requirements.txt
+COPY sandbox_exec_server/requirements.txt sandbox_exec_server-requirements.txt
+RUN pip install --no-cache-dir -r sandbox_exec_server-requirements.txt
+
+COPY shared/ shared/
 COPY sandbox_exec_server/server.py .
-RUN chmod -R 755 /app
-USER 1001
+
 EXPOSE 8080
 CMD ["python", "server.py"]

@@ -9,10 +9,12 @@ For a claim, the agent:
 3. computes the **payout** with `compute_payout`: coverage check and amount (claimed amount minus the
    franchise, capped by the coverage) computed by Python code run in the **OpenShell sandbox**;
 4. decides **approve**, **deny** (no active contract covering the claim type) or **manual_review**,
-   with its confidence and reasoning, and saves the decision (indexed for future similarity searches).
+   with its confidence and reasoning.
 
-Decisions in manual review go to a human reviewer, who can question the agent before deciding
-(human in the loop).
+Its decision is saved by the platform, not by the agent. When it hands the case over to a person, it
+writes a brief for the reviewer (why it did not decide, what to check, what it leans to); the reviewer
+can question the agent before deciding (human in the loop). Personal data is masked before the model
+sees it.
 
 ## Example requests
 - *Process claim CLM-2024-0011*

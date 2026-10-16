@@ -3,18 +3,17 @@ import { CheckCircle2, Loader2, ListChecks, XCircle } from 'lucide-react'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { cn } from '../../lib/cn'
 import { formatDuration } from '../../lib/format'
-import type { ProcessingStepLog } from '../../types'
+import type { ProcessingStep } from '../../types/case'
 import { Card, CardHeader } from '../ui/Card'
-import { EmptyState, ProgressBar } from '../ui/Feedback'
+import { EmptyState } from '../ui/Feedback'
 
 const label = (name: string) => name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
-/** Processing steps of an agent run, with live progress while it runs. */
-export function StepsTimeline({ steps, processing, progress, renderOutput, title }: {
-  steps: ProcessingStepLog[]
+/** The tool calls of the agent's last processing, in order (a spinner while it runs). */
+export function StepsTimeline({ steps, processing, renderOutput, title }: {
+  steps: ProcessingStep[]
   processing: boolean
-  progress?: number
-  renderOutput?: (step: ProcessingStepLog) => ReactNode
+  renderOutput?: (step: ProcessingStep) => ReactNode
   title?: ReactNode
 }) {
   const { t } = useTranslation()
@@ -24,9 +23,7 @@ export function StepsTimeline({ steps, processing, progress, renderOutput, title
       <CardHeader
         icon={<ListChecks className="h-4 w-4" />}
         title={title ?? t('processingSteps.title')}
-        actions={processing && progress != null ? <span className="font-mono text-xs text-sky-600">{Math.round(progress)}%</span> : undefined}
       />
-      {processing && progress != null && <ProgressBar value={progress} className="rounded-none" tone="bg-sky-500" />}
       <div className="p-5">
         {steps.length === 0 ? (
           <EmptyState icon={<Loader2 className="h-5 w-5 animate-spin" />} title={t('ui.processingRunning')} className="py-6" />
@@ -50,12 +47,10 @@ export function StepsTimeline({ steps, processing, progress, renderOutput, title
                   <div className="min-w-0 flex-1 pt-1">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <p className="text-sm font-semibold text-ink">{label(step.step_name)}</p>
-                      <span className="text-[11px] text-ink-subtle">
-                        {step.agent_name}{step.duration_ms != null && ` · ${formatDuration(step.duration_ms)}`}
-                      </span>
+                      {step.duration_ms != null && <span className="text-[11px] text-ink-subtle">{formatDuration(step.duration_ms)}</span>}
                     </div>
                     {step.error_message && <p className="mt-1 text-xs text-red-600">{step.error_message}</p>}
-                    {step.output_data && renderOutput && <div className="legacy">{renderOutput(step)}</div>}
+                    {step.output_data && renderOutput && renderOutput(step)}
                   </div>
                 </li>
               )

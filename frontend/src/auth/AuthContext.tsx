@@ -3,9 +3,9 @@ import { ShieldOff } from 'lucide-react'
 import { EmptyState, ErrorBanner, PageLoader } from '../components/ui/Feedback'
 import { useTranslation } from '../i18n/LanguageContext'
 import { http } from '../services/http'
+import type { Domain } from '../types/case'
 
-/** Business domain = one A2A agent (claims-agent, tenders-agent, postal-agent). */
-export type Domain = 'claims' | 'tenders' | 'postal'
+export type { Domain }
 
 /**
  * The signed-in user, from GET /auth/me. The backend validates the OpenShift token forwarded

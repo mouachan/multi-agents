@@ -19,50 +19,6 @@ global:
     HTTP_PROXY: ""
     NO_PROXY: .svc,.local,127.0.0.1
 
-inference:
-  enabled: false
-  # deploy in same-namespace by default
-  namespace: ""
-  model:
-    pvc:
-      size: 100Gi
-      storageClass: ""
-    source: oci
-    address: registry.redhat.io/rhelai1/modelcar-llama-3-3-70b-instruct-quantized-w8a8:1.5
-    name: llama-3-3-70b-instruct-quantized-w8a8
-  resources:
-    limits:
-      cpu: "8"
-      memory: 16Gi
-      nvidia.com/gpu: "4"
-    requests:
-      cpu: "8"
-      memory: 16Gi
-      nvidia.com/gpu: "4"
-  placement: {}
-
-embedding:
-  enabled: false
-  # deploy in same-namespace by default
-  namespace: ""
-  model:
-    pvc:
-      size: 10Gi
-      storageClass: ""
-    source: huggingface
-    address: google/embeddinggemma-300m
-    name: embeddinggemma-300m
-  resources:
-    limits:
-      cpu: "2"
-      memory: 8Gi
-      nvidia.com/gpu: "1"
-    requests:
-      cpu: "1"
-      memory: 8Gi
-      nvidia.com/gpu: "1"
-  placement: {}
-
 # =============================================================================
 # PostgreSQL Database
 # =============================================================================
@@ -395,12 +351,6 @@ backend:
     tls:
       enabled: true  # Enable TLS edge termination
 
-  pvc:
-    accessMode: ReadWriteOnce
-    initPvc: false
-    size: 5Gi
-    storageClass: ""
-
   # Environment variables
   env:
     APP_NAME: "Claims Processing Demo"
@@ -451,19 +401,6 @@ frontend:
     limits:
       cpu: 500m
       memory: 512Mi
-
-hfcli:
-  image:
-    repository: hfcli
-    tag: v3.5
-  resources:
-    requests:
-      cpu: "1"
-      memory: 4Gi
-    limits:
-      cpu: "1200m"
-      memory: 4Gi
-  token: hf_<your-token>
 
 # =============================================================================
 # Secrets
@@ -575,13 +512,13 @@ auth:
       users: []
   # MCP tools of each agent (granted with the agent, verb "call")
   agentTools:
-    claims: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout, save_claim_decision,
+    claims: [list_claims, get_claim, get_claim_documents, get_claim_statistics, compute_payout,
              ocr_document, retrieve_user_info, retrieve_similar_claims, search_knowledge_base, run_python]
-    tenders: [list_tenders, get_tender, get_tender_documents, get_tender_statistics, save_tender_decision,
+    tenders: [list_tenders, get_tender, get_tender_documents, get_tender_statistics,
               ocr_document, retrieve_similar_references, retrieve_historical_tenders, retrieve_capabilities,
               search_knowledge_base]
     postal: [list_reclamations, get_reclamation, get_reclamation_documents, get_reclamation_statistics,
-             save_reclamation_decision, get_tracking, search_tracking, search_courrier_knowledge,
+             get_tracking, search_courrier_knowledge,
              retrieve_similar_reclamations, ocr_document]
   oauthProxy:
     image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
@@ -637,35 +574,6 @@ mlflow:
     promoteOnSync: true
 
 # =============================================================================
-# Data Science Pipelines (RHOAI DSPA)
-# =============================================================================
-dataSciencePipelines:
-  enabled: false  # Disabled by default - requires RHOAI with DSP operator
-
-  dspVersion: v2
-
-  apiServer:
-    enableSamplePipeline: false
-    enableOauth: true
-    cacheEnabled: true
-    pipelineStore: kubernetes
-
-  database:
-    mariaDB:
-      pipelineDBName: mlpipeline
-      username: mlpipeline
-      pvcSize: 10Gi
-
-  objectStorage:
-    useInternalMinio: true
-    bucket: pipelines
-    region: us-east-1
-    scheme: http
-    s3CredentialsSecret:
-      accessKey: AWS_ACCESS_KEY_ID
-      secretKey: AWS_SECRET_ACCESS_KEY
-
-# =============================================================================
 # Guardrails (NeMo Guardrails via TrustyAI Operator)
 # =============================================================================
 guardrails:
@@ -685,46 +593,6 @@ guardrails:
     inputEntities: [EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
     outputEntities: [EMAIL_ADDRESS, PHONE_NUMBER, IBAN_CODE, CREDIT_CARD, FR_NIR, FR_IBAN, FR_PHONE, FR_PLATE]
     scoreThreshold: 0.4
-
-# =============================================================================
-# GPT-OSS 120B (llm-d / LLMInferenceService)
-# =============================================================================
-gptoss:
-  enabled: false
-  namespace: gpt-oss-120b
-  name: gpt-oss-120b
-
-  model:
-    source: huggingface
-    address: RedHatAI/gpt-oss-120b
-    name: gpt-oss-120b
-    pvc:
-      size: 100Gi
-      storageClass: ""
-
-  replicas: 1
-
-  parallelism:
-    tensor: 4
-
-  vllm:
-    maxModelLen: "16384"
-    gpuMemoryUtilization: "0.95"
-    kvCacheDtype: fp8
-    toolCallParser: hermes
-
-  resources:
-    limits:
-      cpu: "32"
-      memory: 128Gi
-    requests:
-      cpu: "8"
-      memory: 32Gi
-
-  router:
-    route: {}
-    gateway: {}
-    scheduler: {}
 
 # =============================================================================
 # MCP Gateway (Red Hat Connectivity Link 1.3 — Tech Preview)
@@ -939,10 +807,10 @@ rhoaiCatalog:
         - {server: ocr, tools: [ocr_document]}
     - id: 7416e9b2-2ab2-4753-ab20-237ffabff78e
       displayName: Parcel Tracking Agent
-      description: Parcel tracking by tracking number, or the parcels of a customer by email.
+      description: Parcel tracking by tracking number.
       prompt: courrier-suivi-instructions
       mcpServers:
-        - {server: tracking, tools: [get_tracking, search_tracking]}
+        - {server: tracking, tools: [get_tracking]}
     - id: 41a792a3-730e-4f34-97a8-5847848960a9
       displayName: Postal Information Agent
       description: Postal rates, delivery times, packaging and customs, from the postal knowledge base.

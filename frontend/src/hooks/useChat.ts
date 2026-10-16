@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { orchestratorApi } from '../services/orchestratorService'
+import { chatApi } from '../services/api'
 import { useTranslation } from '../i18n/LanguageContext'
 import type { ChatMessage, StreamEvent, TraceStep, TurnTrace } from '../types/chat'
 
@@ -162,8 +162,8 @@ export function useChat(sessionId?: string): UseChatReturn {
     setIsLoading(true)
     setError(null)
     try {
-      const result = await orchestratorApi.getMessages(sessionId)
-      setMessages(result.messages.map(replaySavedTrace))
+      const saved = await chatApi.messages(sessionId)
+      setMessages(saved.map(replaySavedTrace))
       setSessionNotFound(false)
       setLoadedSessionId(sessionId)
     } catch (err: any) {
@@ -187,7 +187,7 @@ export function useChat(sessionId?: string): UseChatReturn {
   const createSession = useCallback(async (agentId?: string): Promise<string | null> => {
     setError(null)
     try {
-      const session = await orchestratorApi.createSession(agentId, locale)
+      const session = await chatApi.createSession(agentId, locale)
       return session.session_id
     } catch (err: any) {
       setError(err.message || 'Failed to create session')
@@ -225,7 +225,7 @@ export function useChat(sessionId?: string): UseChatReturn {
       }))
 
     try {
-      await orchestratorApi.streamMessage(sessionId, text, (event) => update((m) => applyEvent(m, event)), controller.signal)
+      await chatApi.streamMessage(sessionId, text, (event) => update((m) => applyEvent(m, event)), controller.signal)
     } catch (err: any) {
       update((m) => ({ ...m, streaming: false, error: err.message || 'Stream failed' }))
       setError(err.message || 'Stream failed')
@@ -243,7 +243,7 @@ export function useChat(sessionId?: string): UseChatReturn {
     if (!sessionId) return
     setIsPromptLoading(true)
     try {
-      const result = await orchestratorApi.getSessionPrompt(sessionId)
+      const result = await chatApi.getPrompt(sessionId)
       setPrompt(result.prompt)
       setIsPromptCustom(result.is_custom)
     } catch (err: any) {
@@ -256,7 +256,7 @@ export function useChat(sessionId?: string): UseChatReturn {
   const savePrompt = useCallback(async (value: string) => {
     if (!sessionId) return false
     try {
-      const result = await orchestratorApi.setSessionPrompt(sessionId, value)
+      const result = await chatApi.setPrompt(sessionId, value)
       setPrompt(result.prompt)
       setIsPromptCustom(result.is_custom)
       return true
@@ -269,7 +269,7 @@ export function useChat(sessionId?: string): UseChatReturn {
   const resetPrompt = useCallback(async () => {
     if (!sessionId) return false
     try {
-      const result = await orchestratorApi.resetSessionPrompt(sessionId)
+      const result = await chatApi.resetPrompt(sessionId)
       setPrompt(result.prompt)
       setIsPromptCustom(result.is_custom)
       return true

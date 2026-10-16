@@ -12,7 +12,7 @@ from fastapi import FastAPI
 
 from . import spiffe_auth, tracing
 from .config import AgentSettings
-from .executor import BaseA2AExecutor, Profile
+from .executor import DomainAgentExecutor, Profile
 
 AGENT_VERSION = "3.5.0"
 
@@ -42,7 +42,7 @@ def create_app(name: str, description: str, profiles: Dict[str, Profile],
         default_output_modes=["text/plain"],
     )
 
-    executor = BaseA2AExecutor(settings, profiles)
+    executor = DomainAgentExecutor(settings, profiles)
     handler = DefaultRequestHandler(
         agent_executor=executor,
         task_store=InMemoryTaskStore(),

@@ -1,1 +1,0 @@
-{{/* PVC claim-documents removed — documents are now stored in S3/MinIO via LlamaStack Files API */}}

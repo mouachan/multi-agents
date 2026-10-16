@@ -1,12 +1,14 @@
 {{- if .Values.backend.enabled }}
+{{- $ns := include "multi-agents.namespace" . }}
 ---
+# Backend settings (backend/app/core/config.py): one entry per setting, same name in upper case
 apiVersion: v1
 kind: ConfigMap
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4" # after OGXServer
   name: backend-config
-  namespace: {{ include "multi-agents.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "multi-agents.labels" . | nindent 4 }}
     app: backend
@@ -15,92 +17,50 @@ data:
   APP_VERSION: {{ quote .Chart.AppVersion }}
   ENVIRONMENT: {{ .Values.backend.env.ENVIRONMENT | quote }}
   DEBUG: {{ .Values.backend.env.DEBUG | quote }}
+  LOG_LEVEL: {{ .Values.backend.env.LOG_LEVEL | quote }}
 
-  API_V1_PREFIX: "/api/v1"
-  API_HOST: "0.0.0.0"
-  API_PORT: "8000"
-
-  DATABASE_POOL_SIZE: "10"
-  DATABASE_MAX_OVERFLOW: "20"
-
+  # OGX: case documents (Files API), embeddings of the processed cases, chat routing tie-break
   OGX_ENDPOINT: {{ quote (include "multi-agents.ogx.endpoint" .) }}
   OGX_DEFAULT_MODEL: {{ include "multi-agents.ogx.chatModel" .Values.models.reasoning | quote }}
-  OGX_STREAMING_MODEL: {{ include "multi-agents.ogx.chatModel" .Values.models.reasoning | quote }}
   OGX_EMBEDDING_MODEL: {{ include "multi-agents.ogx.embeddingModel" . | quote }}
-  OGX_EMBEDDING_DIMENSION: {{ .Values.models.embeddingDimension | quote }}
-  OGX_TIMEOUT: "300"
-  OGX_MAX_RETRIES: "3"
-  OGX_MAX_TOKENS: {{ .Values.agents.maxTokens | quote }}
 
-  OCR_SERVER_URL: "http://ocr-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-  RAG_SERVER_URL: "http://rag-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-  CLAIMS_SERVER_URL: "http://claims-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-  TENDERS_SERVER_URL: "http://tenders-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-{{- if .Values.mcp.postal.enabled }}
-  POSTAL_SERVER_URL: "http://postal-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-{{- end }}
-{{- if .Values.mcp.tracking.enabled }}
-  TRACKING_SERVER_URL: "http://tracking-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-{{- end }}
-  # Authentication: OpenShift token + RBAC access profiles (templates/auth)
-  AUTH_ENABLED: {{ .Values.auth.enabled | quote }}
-  AUTH_NAMESPACE: {{ include "multi-agents.namespace" . | quote }}
-  AUTH_PROFILES: {{ .Values.auth.profiles | toJson | quote }}
-  SEED_DATA_FILE: /app/seed/seed.sql
-  PRECEDENTS_FILE: /app/seed/precedent_decisions.json
-{{- if .Values.mcp.sandbox.enabled }}
-  SANDBOX_SERVER_URL: "http://sandbox-server.{{ include "multi-agents.namespace" . }}.svc.cluster.local:8080"
-{{- end }}
-{{- if .Values.guardrails.enabled }}
-  GUARDRAILS_SERVER_URL: {{ include "multi-agents.guardrails.endpoint" . | quote }}
-  GUARDRAILS_CONFIG_ID: {{ .Values.guardrails.configId | quote }}
-  GUARDRAILS_MODEL_NAME: {{ .Values.models.guardrails | quote }}
-  ENABLE_PII_DETECTION: "true"
-{{- end }}
-
-  CORS_ORIGINS: '["*"]'
-  CORS_ALLOW_CREDENTIALS: "true"
-
-  ALGORITHM: "HS256"
-  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-
-  DOCUMENTS_STORAGE_PATH: "/claim_documents"
-  MAX_UPLOAD_SIZE_MB: "10"
-{{- if .Values.minio.enabled }}
-  S3_ENDPOINT_URL: "http://{{ include "multi-agents.fullname" . }}-minio.{{ include "multi-agents.namespace" . }}.svc.cluster.local:{{ .Values.minio.service.apiPort }}"
-  S3_REGION: "us-east-1"
-  S3_BUCKET_CLAIMS: {{ .Values.minio.documentBuckets.claims | quote }}
-  S3_BUCKET_TENDERS: {{ .Values.minio.documentBuckets.tenders | quote }}
-{{- end }}
-
-  MAX_PROCESSING_TIME_SECONDS: "300"
-  DEFAULT_WORKFLOW_TYPE: "standard"
-  ENABLE_ASYNC_PROCESSING: "true"
-
-  LOG_LEVEL: {{ .Values.backend.env.LOG_LEVEL | quote }}
-  LOG_FORMAT: "json"
-
-  ENABLE_METRICS: "true"
-  METRICS_PORT: "9090"
-
-  PROMPTS_DIR: "/app/prompts"
-  AO_PROMPTS_DIR: "/app/prompts-ao"
-  ORCHESTRATOR_PROMPTS_DIR: "/app/prompts-orchestrator"
-  COURRIER_PROMPTS_DIR: "/app/prompts-courrier"
-
-  # Tool to Agent Mapping (for processing steps display)
-  # Format: tool_name:agent_name,tool_name:agent_name,...
-  TOOL_AGENT_MAPPING: "ocr_extract_claim_info:ocr-agent,ocr_document:ocr-agent,retrieve_user_info:rag-agent,retrieve_similar_claims:rag-agent,search_knowledge_base:rag-agent,retrieve_similar_references:rag-agent,retrieve_historical_tenders:rag-agent,retrieve_capabilities:rag-agent,get_reclamation:courrier-reclamation,list_reclamations:courrier-reclamation,get_reclamation_documents:courrier-reclamation,save_reclamation_decision:courrier-reclamation,get_tracking:courrier-suivi,search_courrier_knowledge:courrier-info,retrieve_similar_reclamations:courrier-reclamation"
-
+  # A2A agents, one per domain (app/agents.py)
+  AGENT_TIMEOUT: "300"
 {{- if .Values.agents.enabled }}
 {{- range $name := list "claims" "tenders" "postal" }}
 {{- if (index $.Values.agents $name).enabled }}
-  {{ upper $name }}_AGENT_A2A_URL: "http://{{ $name }}-agent.{{ include "multi-agents.namespace" $ }}.svc.cluster.local:8090"
+  {{ upper $name }}_AGENT_A2A_URL: "http://{{ $name }}-agent.{{ $ns }}.svc.cluster.local:8090"
 {{- end }}
 {{- end }}
 {{- end }}
 
+  # Prompt files of the backend (files/prompts/backend, ConfigMap backend-prompts)
+  PROMPTS_DIR: /app/prompts
+  CHAT_CONFIG_FILE: /app/prompts/chat-config.yaml
+
+  # Authentication: OpenShift token + RBAC access profiles (templates/auth)
+  AUTH_ENABLED: {{ .Values.auth.enabled | quote }}
+  AUTH_NAMESPACE: {{ $ns | quote }}
+  AUTH_PROFILES: {{ .Values.auth.profiles | toJson | quote }}
+
+  # Demo reset (admin page): the database seed and the precedent decisions of the installation
+  SEED_DATA_FILE: /app/seed/seed.sql
+  PRECEDENTS_FILE: /app/seed/precedent_decisions.json
+{{- if .Values.mcp.sandbox.enabled }}
+
+  # OpenShell sandbox page
+  SANDBOX_SERVER_URL: "http://sandbox-server.{{ $ns }}.svc.cluster.local:8080"
+{{- end }}
+{{- if .Values.guardrails.enabled }}
+
+  # NeMo Guardrails: chat answers and the personal data report of the claims
+  GUARDRAILS_SERVER_URL: {{ include "multi-agents.guardrails.endpoint" . | quote }}
+  GUARDRAILS_CONFIG_ID: {{ .Values.guardrails.configId | quote }}
+  GUARDRAILS_MODEL_NAME: {{ .Values.models.guardrails | quote }}
+{{- end }}
 {{- if .Values.mlflow.enabled }}
+
+  # MLflow: one trace per chat turn or processing
   MLFLOW_TRACKING_URI: {{ .Values.mlflow.trackingUri | quote }}
   MLFLOW_EXPERIMENT_NAME: {{ .Values.mlflow.experimentName | quote }}
   MLFLOW_UI_URL: {{ .Values.mlflow.uiUrl | default (printf "https://rh-ai.%s/mlflow" (include "multi-agents.clusterDomain" .)) | quote }}

@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react'
+import { chatApi } from '../services/api'
 import type { ToolDisplayConfig } from '../types/chat'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
-
+const EMPTY: ToolDisplayConfig = { tools: {}, servers: {}, categories: {} }
 let cachedConfig: ToolDisplayConfig | null = null
 let fetchPromise: Promise<ToolDisplayConfig> | null = null
 
+/** Labels and colors of the MCP tools (files/prompts/backend/chat-config.yaml), loaded once. */
 async function fetchToolDisplayConfig(): Promise<ToolDisplayConfig> {
-  const res = await fetch(`${API_BASE_URL}/config/tool-display`)
-  if (!res.ok) {
-    return { tools: {}, servers: {}, categories: {} }
-  }
-  return res.json()
+  return chatApi.toolDisplay().catch(() => EMPTY)
 }
 
 export function useToolDisplay() {
   const [config, setConfig] = useState<ToolDisplayConfig>(
-    cachedConfig || { tools: {}, servers: {}, categories: {} }
+    cachedConfig || EMPTY
   )
 
   useEffect(() => {

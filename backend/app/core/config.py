@@ -1,39 +1,25 @@
+"""Backend settings, read from environment variables (Helm: templates/backend/configmap.backend-config.yaml).
+
+Locally (podman compose), the values come from the environment of the compose file and from .env.
 """
-Configuration settings for the Multi-Agent AI Platform backend application.
-Loads settings from environment variables and provides typed configuration.
+from typing import Dict, List
 
-FIXES APPLIED:
-- Removed default secret_key (must be set via env var)
-- Added warning for wildcard CORS
-- Added validator for production settings
-"""
-
-import logging
-import warnings
-from typing import List, Optional
-
-from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
-    # Application
+    # ---- application
     app_name: str = "Multi-Agent AI Platform"
-    app_version: str = "2.1.0"
+    app_version: str = "3.5.0"
     debug: bool = False
     environment: str = "production"
-
-    # API
     api_v1_prefix: str = "/api/v1"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    log_level: str = "INFO"
 
-    # Database
-    postgres_host: str = "postgresql-service"
+    # ---- database (PostgreSQL + pgvector)
+    postgres_host: str = "postgresql"
     postgres_port: int = 5432
     postgres_database: str = "multi_agent_db"
     postgres_user: str
@@ -41,154 +27,67 @@ class Settings(BaseSettings):
     database_pool_size: int = 10
     database_max_overflow: int = 20
     database_pool_pre_ping: bool = True
-    database_pool_recycle: int = 3600  # 1 hour
-
-    @property
-    def database_url(self) -> str:
-        """Construct PostgreSQL database URL (explicit psycopg2: SQLAlchemy 2.1 defaults to psycopg 3)."""
-        return (
-            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
-        )
+    database_pool_recycle: int = 3600
 
     @property
     def async_database_url(self) -> str:
-        """Construct async PostgreSQL database URL."""
-        return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
-        )
+        return (f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}")
 
-    # OGX — all URLs configured via env vars (no hardcoded cluster addresses)
-    ogx_endpoint: str  # OGX_ENDPOINT (required)
-    ogx_api_key: Optional[str] = None
-    ogx_default_model: str  # OGX_DEFAULT_MODEL (required)
-    ogx_streaming_model: str = ""  # OGX_STREAMING_MODEL (optional, defaults to default_model)
+    # ---- A2A agents (one per domain, app/agents.py); empty = not deployed
+    claims_agent_a2a_url: str = ""
+    tenders_agent_a2a_url: str = ""
+    postal_agent_a2a_url: str = ""
+    agent_timeout: int = 300          # seconds, for one agent task
+
+    def agent_urls(self) -> Dict[str, str]:
+        """A2A URL of the agent of each domain."""
+        urls = {"claims": self.claims_agent_a2a_url, "tenders": self.tenders_agent_a2a_url,
+                "postal": self.postal_agent_a2a_url}
+        return {domain: url for domain, url in urls.items() if url}
+
+    # ---- OGX (embeddings, document files, routing model)
+    ogx_endpoint: str = ""
+    ogx_default_model: str = ""       # model of the router's tie-break between two close agents
     ogx_embedding_model: str = "nomic-embed-text-v1-5"
-    ogx_embedding_dimension: int = 768
-    ogx_timeout: int = 300
-    ogx_max_retries: int = 3
-    ogx_max_tokens: int = 4096
 
-    # MCP Servers — configured via env vars
-    ocr_server_url: str  # OCR_SERVER_URL (required)
-    rag_server_url: str  # RAG_SERVER_URL (required)
-    claims_server_url: str  # CLAIMS_SERVER_URL (required)
-    tenders_server_url: str  # TENDERS_SERVER_URL (required)
-    postal_server_url: str = ""  # POSTAL_SERVER_URL
-    tracking_server_url: str = ""  # TRACKING_SERVER_URL
-    sandbox_server_url: str = ""  # SANDBOX_SERVER_URL (OpenShell sandbox page; empty = not deployed)
-    # Semantic routing over the A2A agent cards (keyword routing when disabled or on error)
-    router_enabled: bool = True  # ROUTER_ENABLED
-    router_min_score: float = 0.62  # ROUTER_MIN_SCORE
-    router_margin: float = 0.04  # ROUTER_MARGIN
+    # ---- chat routing (app/services/chat/routing.py)
+    router_enabled: bool = True
+    router_min_score: float = 0.62
+    router_margin: float = 0.04
+    chat_config_file: str = "/app/prompts/chat-config.yaml"   # welcome messages, suggested actions...
 
-    guardrails_server_url: str = ""  # GUARDRAILS_SERVER_URL (optional, NeMo Service on port 80)
-    guardrails_config_id: str = "multi-agents"  # GUARDRAILS_CONFIG_ID (NeMo config served by the CR)
-    guardrails_model_name: str = "llama-scout-17b"  # GUARDRAILS_MODEL_NAME
+    # ---- prompt files (app/core/prompts.py)
+    prompts_dir: str = "/app/prompts"
 
-    # MLflow tracing (RHOAI)
-    mlflow_tracking_uri: str = ""  # MLFLOW_TRACKING_URI
-    mlflow_experiment_name: str = "multi-agent-orchestrator"  # MLFLOW_EXPERIMENT_NAME
-    mlflow_rhoai_workspace: str = ""  # MLFLOW_RHOAI_WORKSPACE (namespace as workspace)
-    mlflow_ui_url: str = ""  # MLFLOW_UI_URL, e.g. https://rh-ai.<apps-domain>/mlflow (trace links in the UI)
+    # ---- NeMo Guardrails (app/services/guardrails.py)
+    guardrails_server_url: str = ""
+    guardrails_config_id: str = "multi-agents"
+    guardrails_model_name: str = "llama-scout-17b"
 
-    # Guardrails (NeMo Guardrails)
-    enable_pii_detection: bool = True
-    pii_redaction_mode: str = "dual"  # "dual" = store original + redacted, "redact_only" = only redacted
+    # ---- MLflow tracing (app/core/tracing.py) and prompts
+    mlflow_tracking_uri: str = ""
+    mlflow_experiment_name: str = "multi-agent-orchestrator"
+    mlflow_rhoai_workspace: str = ""
+    mlflow_ui_url: str = ""           # base URL of the MLflow UI, for the trace links of the chat
 
-    # Authentication (app/core/auth.py): OpenShift OAuth token + RBAC access profiles
-    auth_enabled: bool = False  # AUTH_ENABLED
-    auth_profiles: str = "{}"  # AUTH_PROFILES: JSON {id: {group, displayName, agents, admin}}
-    auth_namespace: str = "multi-agents"  # AUTH_NAMESPACE: namespace of the RBAC Roles
+    # ---- authentication (app/core/auth.py): OpenShift token + RBAC access profiles
+    auth_enabled: bool = False
+    auth_profiles: str = "{}"         # JSON {id: {group, displayName, agents, admin}}
+    auth_namespace: str = "multi-agents"
 
-    # CORS - default to restrictive, override in production via env vars
-    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
-    cors_allow_credentials: bool = True
-    cors_allow_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    cors_allow_headers: List[str] = ["*"]
+    # ---- OpenShell sandbox page (app/api/sandbox.py); empty = not deployed
+    sandbox_server_url: str = ""
 
-    # Security - NO DEFAULT for secret_key, must be set via env var
-    #secret_key: str  # Required, no default
-    #algorithm: str = "HS256"
-    #access_token_expire_minutes: int = 30
+    # ---- demo reset (app/services/demo_reset.py): the database seed and the installation precedents
+    seed_data_file: str = "/app/seed/seed.sql"
+    precedents_file: str = "/app/seed/precedent_decisions.json"
 
-    # File Storage — S3/MinIO (preferred) with local filesystem fallback
-    documents_storage_path: str = "/mnt/documents"
-    max_upload_size_mb: int = 10
-    s3_endpoint_url: str = ""  # S3_ENDPOINT_URL — e.g. http://minio:9000 (empty = local filesystem)
-    s3_access_key_id: str = ""  # S3_ACCESS_KEY_ID
-    s3_secret_access_key: str = ""  # S3_SECRET_ACCESS_KEY
-    s3_region: str = "us-east-1"  # S3_REGION
-    s3_bucket_claims: str = "claims"  # S3_BUCKET_CLAIMS
-    s3_bucket_tenders: str = "tenders"  # S3_BUCKET_TENDERS
+    # ---- CORS: JSON list of the web origins allowed to call the API directly. The UI calls it through
+    # its own nginx (same origin), so only the local development servers need it
+    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
-    @property
-    def s3_enabled(self) -> bool:
-        """S3 is enabled when endpoint URL and credentials are configured."""
-        return bool(self.s3_endpoint_url and self.s3_access_key_id)
-
-    # Processing
-    max_processing_time_seconds: int = 300
-    default_workflow_type: str = "standard"
-    enable_async_processing: bool = True
-
-    # Admin & Database Reset
-    # Configure this to point to your GitHub repository branch
-    # Example: https://raw.githubusercontent.com/your-org/multi-agents/main/database/seed_data/001_sample_data.sql
-    # Admin reset: the seed of the database init and the decisions of the installation
-    # precedents (mounted from the init-postgres ConfigMap, or ./database/seed_data locally)
-    seed_data_file: str = "/app/seed/seed.sql"  # SEED_DATA_FILE
-    precedents_file: str = "/app/seed/precedent_decisions.json"  # PRECEDENTS_FILE
-
-    # Logging
-    log_level: str = "INFO"
-    log_format: str = "json"
-
-    # Monitoring
-    enable_metrics: bool = True
-    metrics_port: int = 9090
-
-    # Rate Limiting
-    rate_limit_enabled: bool = True
-    rate_limit_requests_per_minute: int = 100
-
-    @field_validator('cors_origins', mode='before')
-    @classmethod
-    def validate_cors_origins(cls, v):
-        """Parse CORS origins from comma-separated string if needed."""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(',')]
-        return v
-
-    @model_validator(mode='after')
-    def validate_production_settings(self):
-        """Warn about insecure settings in production."""
-        if self.environment == "production":
-            # Check for wildcard CORS
-            if "*" in self.cors_origins:
-                warnings.warn(
-                    "SECURITY WARNING: Wildcard CORS origin ('*') is enabled in production. "
-                    "This is insecure. Set CORS_ORIGINS to specific allowed domains.",
-                    UserWarning
-                )
-            
-            # Check for debug mode
-            if self.debug:
-                warnings.warn(
-                    "SECURITY WARNING: Debug mode is enabled in production.",
-                    UserWarning
-                )
-        
-        return self
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
 
-# Global settings instance
 settings = Settings()

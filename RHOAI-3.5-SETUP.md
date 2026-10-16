@@ -269,12 +269,22 @@ How it is used — no mesh, no TLS plumbing:
 
 ## 6. Build & push images (Mac, Podman, linux/amd64)
 
+Every image builds from its Containerfile, on the Mac, for the cluster's architecture:
+
 ```bash
 podman login quay.io
-QUAY_REPO=quay.io/<your-org>/multi-agents IMAGE_TAG=v3.5 ./scripts/build-all.sh --push
+R=quay.io/<your-org>/multi-agents; T=<tag>
+podman build --platform linux/amd64 -t $R/backend:$T backend/
+podman build --platform linux/amd64 -t $R/frontend:$T frontend/              # npm build inside the image
+podman build --platform linux/amd64 -t $R/data-init:$T data-init/
+for a in claims tenders postal; do                                           # one Containerfile, three agents
+  podman build --platform linux/amd64 -f agents/Containerfile --build-arg AGENT=$a-agent -t $R/$a-agent:$T .
+done
+for s in ocr rag claims tenders postal tracking sandbox_exec; do             # MCP servers (context holds shared/)
+  podman build --platform linux/amd64 -f backend/mcp_servers/${s}_server/Containerfile -t $R/${s//_/-}-server:$T backend/mcp_servers
+done
+podman push ...    # each image, then set its tag in values.yaml (or --set), and remove the local images
 ```
-
-Agents share one Containerfile: `podman build -f agents/Containerfile --build-arg AGENT=claims-agent .`
 
 ---
 
@@ -457,7 +467,7 @@ curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}
 * **Agents**: one agent profile per A2A agent profile (`rhoaiCatalog.agentProfiles`,
   ConfigMaps `agent-profile-<id>` labelled `opendatahub.io/agent-profile=true`): reasoning
   model through the users' subscription, prompt from the MLflow Prompt Registry, MCP servers
-  with the same tools except `save_*` (the playground stays read-only).
+  with the same tools (all read-only: decisions are saved by the backend, never by a tool).
 
 ```bash
 oc get maassubscription,maasauthpolicy -n models-as-a-service
@@ -484,8 +494,9 @@ trace panel and on the claim page.
 
 ```bash
 B=https://backend-<namespace>.<apps-domain>/api/v1; H="Authorization: Bearer $(oc whoami -t)"   # BTP or admin profile
-curl -H "$H" -X POST $B/tenders/<id>/process -H 'Content-Type: application/json' -d '{}'   # returns at once
-curl -H "$H" $B/tenders/<id>/status | jq '.status, [.processing_steps[].step_name]'          # poll
+curl -H "$H" -X POST $B/tenders/<id>/process                                    # returns at once
+curl -H "$H" $B/tenders/<id> | jq '.status, [.processing_steps[].step_name]'     # poll
+curl -H "$H" $B/tenders/<id>/decision | jq '.decision, .agent, .review'          # the agent's decision and brief
 ```
 
 Every tool step should be `completed`, and the RAG steps should return precedents:
@@ -497,8 +508,9 @@ precedents on every upgrade; the backend embeds each processed document.
 
 ## 9. Prompt versioning with MLflow
 
-* Source of truth: `helm/multi-agents/files/cm.*-prompts/*.txt` (one prompt per file,
-  prompt name = file name without `.txt`).
+* Source of truth: `helm/multi-agents/files/prompts/agents/*.txt` (one prompt per file,
+  prompt name = file name without `.txt`). The backend's own prompt files (processing request
+  of each domain, chat settings) are in `files/prompts/backend/` and are not versioned in MLflow.
 * `helm upgrade` → Job `prompt-sync` registers a **new version** for every changed file
   and moves the alias `production` (`mlflow.prompts.promoteOnSync`).
 * Agents load `prompts:/<name>@production` with a 60 s cache: promoting another version

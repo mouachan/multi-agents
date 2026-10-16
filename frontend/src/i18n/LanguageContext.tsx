@@ -4,7 +4,8 @@ import { translations, type Locale } from './translations'
 interface LanguageContextType {
   locale: Locale
   setLocale: (locale: Locale) => void
-  t: (key: string) => string
+  /** translation of `key` ("section.key"); `fallback` (else the key itself) when there is none */
+  t: (key: string, fallback?: string) => string
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
@@ -40,15 +41,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLocaleState(newLocale)
   }
 
-  const t = (key: string): string => {
-    const value = getNestedValue(translations[locale], key)
-    if (value !== undefined) return value
-    // Fallback to other locale
-    const fallback = getNestedValue(translations[locale === 'fr' ? 'en' : 'fr'], key)
-    if (fallback !== undefined) return fallback
-    // Return key as last resort
-    return key
-  }
+  const t = (key: string, fallback?: string): string =>
+    getNestedValue(translations[locale], key)
+    ?? getNestedValue(translations[locale === 'fr' ? 'en' : 'fr'], key)
+    ?? fallback
+    ?? key
 
   return (
     <LanguageContext.Provider value={{ locale, setLocale, t }}>

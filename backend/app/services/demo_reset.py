@@ -23,32 +23,29 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.services.claim_service import CLAIM_STATUS_BY_RECOMMENDATION
-from app.services.reclamation_service import RECLAMATION_STATUS_BY_RECOMMENDATION
-from app.services.tender_service import TENDER_STATUS_BY_RECOMMENDATION
+from app.domains import DomainSpec, all_domains
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class Domain:
-    entities: str        # business table, e.g. claims
+    """The tables of a domain, as the reset's SQL uses them (from its DomainSpec)."""
+    entities: str        # the cases, e.g. claims
     number: str          # business key column, e.g. claim_number
     fk: str              # foreign key of the child tables, e.g. claim_id
     documents: str       # OCR documents (text + embedding)
     decisions: str       # agent decisions
     precedents_key: str  # section of precedent_decisions.json
-    status_by_recommendation: Dict[str, str]  # entity status after a decision (the service's rule)
+    spec: DomainSpec
+
+    @classmethod
+    def of(cls, spec: DomainSpec) -> "Domain":
+        return cls(spec.model.__tablename__, spec.number_field, spec.fk, spec.document_model.__tablename__,
+                   spec.decision_model.__tablename__, spec.precedents_key, spec)
 
 
-DOMAINS = [
-    Domain("claims", "claim_number", "claim_id", "claim_documents", "claim_decisions", "claims",
-           CLAIM_STATUS_BY_RECOMMENDATION),
-    Domain("tenders", "tender_number", "tender_id", "tender_documents", "tender_decisions", "tenders",
-           TENDER_STATUS_BY_RECOMMENDATION),
-    Domain("reclamations", "reclamation_number", "reclamation_id", "reclamation_documents",
-           "reclamation_decisions", "reclamations", RECLAMATION_STATUS_BY_RECOMMENDATION),
-]
+DOMAINS = [Domain.of(spec) for spec in all_domains()]
 
 # Reference data searched by the RAG tools: business key of each row
 REFERENCE_KEYS = {
@@ -74,8 +71,7 @@ BUSINESS_TABLES = [
 def _precedent_numbers() -> Dict[str, List[str]]:
     """Business numbers of the precedents processed at installation, per domain."""
     data = json.loads(Path(settings.precedents_file).read_text(encoding="utf-8"))
-    keys = {"claims": "claim_number", "tenders": "tender_number", "reclamations": "reclamation_number"}
-    return {section: [d[key] for d in data.get(section, [])] for section, key in keys.items()}
+    return {d.precedents_key: [p[d.number] for p in data.get(d.precedents_key, [])] for d in DOMAINS}
 
 
 async def _rows(db: AsyncSession, sql: str, **params) -> List[Any]:
@@ -170,7 +166,7 @@ async def _restore(db: AsyncSession, snap: Dict[str, Any]) -> Dict[str, int]:
             # been processed again during the demo). json_populate_record casts the text to
             # the column type (enum or varchar).
             recommendation = json.loads(row_json).get("initial_decision")
-            status = d.status_by_recommendation.get(recommendation, "manual_review")
+            status = d.spec.status_after(recommendation)
             await db.execute(text(f"""
                 UPDATE {d.entities} e SET status = r.status
                 FROM json_populate_record(NULL::{d.entities}, CAST(:row AS json)) r

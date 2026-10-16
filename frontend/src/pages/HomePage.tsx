@@ -1,20 +1,22 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, Building2, CheckCircle2, Clock, Fingerprint, FlaskConical, Network, Package, Server, ShieldCheck, Sparkles, UserCheck,
+  ArrowRight, CheckCircle2, Clock, Fingerprint, FlaskConical, Network, Server, ShieldCheck, Sparkles, UserCheck,
 } from 'lucide-react'
 import { AgentAvatar } from '../components/chat/AgentAvatar'
 import { Card } from '../components/ui/Card'
+import { DOMAINS } from '../domains'
 import { useResource } from '../hooks/useResource'
 import { useTranslation } from '../i18n/LanguageContext'
 import { cn } from '../lib/cn'
 import { useAuth } from '../auth/AuthContext'
-import { claimsApi, postalApi, tendersApi } from '../services/api'
+import { casesApi } from '../services/api'
+import type { Domain } from '../types/case'
 
 interface DomainStats { total: number; pending: number; review: number; completed: number }
 
-function DomainCard({ to, agentId, icon, accent, title, description, stats, loading }: {
-  to: string; agentId: string; icon: ReactNode; accent: string; title: string; description: string; stats?: DomainStats; loading: boolean
+function DomainCard({ to, agentId, icon, accent, title, description, stats, loading, reviewStatus }: {
+  to: string; agentId: string; icon: ReactNode; accent: string; title: string; description: string; stats?: DomainStats; loading: boolean; reviewStatus: string
 }) {
   const { t } = useTranslation()
   const cell = (label: string, value: number | undefined, Icon: typeof Clock) => (
@@ -35,7 +37,7 @@ function DomainCard({ to, agentId, icon, accent, title, description, stats, load
       <p className="mt-1 text-sm text-ink-muted">{description}</p>
       <div className="mt-4 grid grid-cols-3 gap-2">
         {cell(t('status.pending'), stats?.pending, Clock)}
-        {cell(t('status.manual_review'), stats?.review, UserCheck)}
+        {cell(t(`status.${reviewStatus}`), stats?.review, UserCheck)}
         {cell(t('status.completed'), stats?.completed, CheckCircle2)}
       </div>
       <Link to={to} className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
@@ -59,20 +61,14 @@ export default function HomePage() {
   const navigate = useNavigate()
   const [prompt, setPrompt] = useState('')
   const { can } = useAuth()
-  // Statistics of the domains the user may use only (the others answer 403)
+  const domains = Object.values(DOMAINS).filter((ui) => can(ui.name))
+  // Statistics of the domains the user may use
   const { data, loading } = useResource(async () => {
-    const ifAllowed = <T,>(allowed: boolean, load: () => Promise<T>) =>
-      allowed ? load() : Promise.reject(new Error('no access'))
-    const [c, tn, p] = await Promise.allSettled([
-      ifAllowed(can('claims'), claimsApi.statistics),
-      ifAllowed(can('tenders'), tendersApi.statistics),
-      ifAllowed(can('postal'), postalApi.statistics),
-    ])
-    return {
-      claims: c.status === 'fulfilled' ? { total: c.value.total_claims, pending: c.value.pending_claims, review: c.value.manual_review_claims, completed: c.value.completed_claims } : undefined,
-      tenders: tn.status === 'fulfilled' ? { total: tn.value.total_tenders, pending: tn.value.pending_tenders, review: tn.value.manual_review_tenders, completed: tn.value.completed_tenders } : undefined,
-      postal: p.status === 'fulfilled' ? { total: p.value.total, pending: p.value.by_status?.pending ?? 0, review: (p.value.by_status?.manual_review ?? 0) + (p.value.by_status?.escalated ?? 0), completed: p.value.by_status?.completed ?? 0 } : undefined,
-    }
+    const stats = await Promise.all(domains.map((ui) => casesApi(ui.name).statistics().catch(() => null)))
+    return Object.fromEntries(domains.map((ui, i) => {
+      const s = stats[i]?.by_status ?? {}
+      return [ui.name, stats[i] && { total: stats[i]!.total, pending: s.pending ?? 0, review: s[ui.reviewStatus] ?? 0, completed: s.completed ?? 0 }]
+    })) as Partial<Record<Domain, DomainStats>>
   }, [])
 
   const start = (e: FormEvent) => {
@@ -106,12 +102,10 @@ export default function HomePage() {
 
       {/* Domains */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {can('claims') && <DomainCard to="/claims" agentId="claims" icon={<ShieldCheck className="h-5 w-5" />} accent="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-          title={t('nav.claims')} description={t('dash.claimsDesc')} stats={data?.claims} loading={loading} />}
-        {can('tenders') && <DomainCard to="/tenders" agentId="tenders" icon={<Building2 className="h-5 w-5" />} accent="bg-amber-500/10 text-amber-600 dark:text-amber-400"
-          title={t('nav.tenders')} description={t('dash.tendersDesc')} stats={data?.tenders} loading={loading} />}
-        {can('postal') && <DomainCard to="/postal" agentId="courrier_reclamation" icon={<Package className="h-5 w-5" />} accent="bg-rose-500/10 text-rose-600 dark:text-rose-400"
-          title={t('nav.postal')} description={t('dash.postalDesc')} stats={data?.postal} loading={loading} />}
+        {domains.map((ui) => (
+          <DomainCard key={ui.name} to={ui.path} agentId={ui.agentId} icon={<ui.icon className="h-5 w-5" />} accent={ui.iconClass}
+            title={t(`nav.${ui.name}`)} description={t(`dash.${ui.name}Desc`)} stats={data?.[ui.name]} loading={loading} reviewStatus={ui.reviewStatus} />
+        ))}
       </div>
 
       {/* Platform */}

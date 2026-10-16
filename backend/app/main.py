@@ -1,421 +1,84 @@
-"""
-Main FastAPI application for Multi-Agent AI Platform.
+"""Backend of the multi-agent platform: business APIs, human review, chat, administration.
 
-Features:
-- Agent Registry for dynamic agent management
-- Orchestrator for chat-based interactions
-- Claims and Tenders specialized agents
-"""
+    app/domains/     the business domains (claims, tenders, postal): what differs between them
+    app/agents.py    the agent profiles of the chat, and their A2A agents
+    app/api/         the HTTP API (one module per area, listed in ROUTERS below)
+    app/services/    the logic: processing by the agents, decisions, review, chat, demo reset...
+    app/models/      the database tables (SQLAlchemy)
+    app/core/        settings, database, authentication, MLflow tracing, prompt files
 
+Every API route needs an authenticated user (OpenShift token, app/core/auth.py); a domain's routes
+need access to its agent, the administration the admin profile.
+"""
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import text
 
+from app.api import admin, auth, chat, review, sandbox
+from app.api.domains import domain_router
+from app.core import tracing
+from app.core.auth import current_user, require_admin, require_domain
 from app.core.config import settings
-from app.core.database import async_engine, check_database_connection, dispose_engine, Base
+from app.core.database import async_engine, dispose_engine
+from app.domains import all_domains
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=getattr(logging, settings.log_level.upper()),
+                    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def register_agents():
-    """Register all agents in the registry at startup."""
-    from app.services.agents.registry import AgentRegistry, AgentDefinition
-    from app.services.claim_service import ClaimService, CLAIM_TOOLS
-    from app.services.tender_service import TenderService, TENDER_TOOLS
-    from app.services.reclamation_service import ReclamationService, RECLAMATION_TOOLS
-    from app.models.claim import Claim, ClaimDocument
-    from app.models.tender import Tender, TenderDocument
-    from app.prompts.prompts import (
-        CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
-        USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
-    )
-    from app.prompts.ao_prompts import (
-        AO_PROCESSING_AGENT_INSTRUCTIONS,
-        AO_USER_MESSAGE_TEMPLATE,
-    )
-    from app.prompts.courrier_prompts import (
-        COURRIER_RECLAMATION_INSTRUCTIONS,
-        COURRIER_RECLAMATION_USER_TEMPLATE,
-        COURRIER_INFO_INSTRUCTIONS,
-        COURRIER_INFO_USER_TEMPLATE,
-        COURRIER_SUIVI_INSTRUCTIONS,
-        COURRIER_SUIVI_USER_TEMPLATE,
-    )
-
-    # Decoupled A2A agents — enabled only when their URL is set (Helm: agents.enabled);
-    # otherwise the backend falls back to the in-process Responses API path.
-    import os
-    claims_a2a = os.environ.get("CLAIMS_AGENT_A2A_URL") or None
-    tenders_a2a = os.environ.get("TENDERS_AGENT_A2A_URL") or None
-    postal_a2a = os.environ.get("POSTAL_AGENT_A2A_URL") or None
-
-    AgentRegistry.register(AgentDefinition(
-        id="claims",
-        name="Insurance Claims Processing",
-        name_fr="Traitement des Sinistres",
-        description="Automated insurance claims analysis with OCR, RAG, and decision-making",
-        description_fr="Analyse automatisee des sinistres assurance avec OCR, RAG et prise de decision",
-        entity_type="claim",
-        service_class=ClaimService,
-        a2a_url=claims_a2a,
-        instructions=CLAIMS_PROCESSING_AGENT_INSTRUCTIONS,
-        user_message_template=USER_MESSAGE_FULL_WORKFLOW_TEMPLATE,
-        tools=CLAIM_TOOLS,
-        color="emerald",
-        icon="document",
-        api_prefix="/api/v1/claims",
-        decision_values=["approve", "deny", "manual_review"],
-        routing_keywords=[
-            "claim", "claims", "clm-", "sinistre", "sinistres",
-            "assurance", "dommage", "remboursement",
-            "indemnisation", "police d'assurance", "contrat d'assurance",
-        ],
-        metadata={
-            "hitl_model": Claim,
-            "hitl_document_model": ClaimDocument,
-            "hitl_fk_field": "claim_id",
-        },
-    ))
-
-    AgentRegistry.register(AgentDefinition(
-        id="tenders",
-        name="Tender Analysis",
-        name_fr="Analyse d'Appels d'Offres",
-        description="Automated analysis of construction tenders with references, history and capabilities",
-        description_fr="Analyse automatisee des appels d'offres BTP avec references, historique et capacites",
-        entity_type="tender",
-        service_class=TenderService,
-        a2a_url=tenders_a2a,
-        instructions=AO_PROCESSING_AGENT_INSTRUCTIONS,
-        user_message_template=AO_USER_MESSAGE_TEMPLATE,
-        tools=TENDER_TOOLS,
-        color="amber",
-        icon="building",
-        api_prefix="/api/v1/tenders",
-        decision_values=["go", "no_go", "a_approfondir"],
-        routing_keywords=[
-            "appel d'offres", "appels d'offres", "appel d offres",
-            "ao", "tender", "tenders",
-            "marche public", "marches publics", "soumission",
-            "btp", "construction", "go/no-go", "go no go",
-            "offre", "offres",
-        ],
-        metadata={
-            "hitl_model": Tender,
-            "hitl_document_model": TenderDocument,
-            "hitl_fk_field": "tender_id",
-        },
-    ))
-
-    # Courrier & Colis — 3 sub-agents with per-agent model override
-    AgentRegistry.register(AgentDefinition(
-        id="courrier_reclamation",
-        name="Postal Complaints Processing",
-        name_fr="Reclamations Courrier & Colis",
-        description="Automated postal complaints analysis with OCR, tracking, RAG, and decision-making",
-        description_fr="Analyse automatisee des reclamations postales avec OCR, suivi, RAG et prise de decision",
-        entity_type="reclamation",
-        service_class=ReclamationService,
-        a2a_url=postal_a2a,
-        instructions=COURRIER_RECLAMATION_INSTRUCTIONS,
-        user_message_template=COURRIER_RECLAMATION_USER_TEMPLATE,
-        tools=RECLAMATION_TOOLS,
-        color="yellow",
-        icon="package",
-        api_prefix="/api/v1/postal",
-        frontend_path="/postal",
-        decision_values=["rembourser", "reexpedier", "rejeter", "escalader"],
-        routing_keywords=[
-            "reclamation", "reclamations", "recl-",
-            "la poste", "poste", "courrier", "colis",
-            "colis endommage", "colis perdu", "colis abime",
-            "non livre", "pas recu", "mauvaise adresse",
-            "vol point relais", "retard livraison",
-            "lettre", "recommande",
-        ],
-    ))
-
-    # Courrier info uses a cheaper model (RAG Q&A only)
-    COURRIER_INFO_TOOLS = [
-        "search_courrier_knowledge",
-    ]
-    AgentRegistry.register(AgentDefinition(
-        id="courrier_info",
-        name="Postal Information",
-        name_fr="Informations Postales",
-        description="Q&A about postal services: rates, delays, packaging, customs, refunds",
-        description_fr="Questions/reponses sur les services postaux : tarifs, delais, emballage, douane, remboursements",
-        entity_type="reclamation",
-        service_class=None,
-        a2a_url=postal_a2a,
-        instructions=COURRIER_INFO_INSTRUCTIONS,
-        user_message_template=COURRIER_INFO_USER_TEMPLATE,
-        tools=COURRIER_INFO_TOOLS,
-        color="blue",
-        icon="info",
-        frontend_path="/postal",
-        routing_keywords=[
-            "tarif", "tarifs", "colissimo", "chronopost",
-            "affranchissement", "emballage", "douane",
-            "delai livraison", "delais", "conditions transport",
-            "quel est le prix", "combien coute",
-        ],
-    ))
-
-    # Courrier tracking uses a cheaper model (simple tool call)
-    COURRIER_SUIVI_TOOLS = [
-        "get_tracking",
-        "search_tracking",
-    ]
-    AgentRegistry.register(AgentDefinition(
-        id="courrier_suivi",
-        name="Parcel Tracking",
-        name_fr="Suivi de Colis",
-        description="Track parcels and view delivery status with timeline",
-        description_fr="Suivre les colis et consulter le statut de livraison avec timeline",
-        entity_type="reclamation",
-        service_class=None,
-        a2a_url=postal_a2a,
-        instructions=COURRIER_SUIVI_INSTRUCTIONS,
-        user_message_template=COURRIER_SUIVI_USER_TEMPLATE,
-        tools=COURRIER_SUIVI_TOOLS,
-        color="green",
-        icon="truck",
-        frontend_path="/postal",
-        routing_keywords=[
-            "suivi", "suivre", "tracking", "numero suivi",
-            "ou est mon colis", "ou en est", "livraison",
-            "statut colis", "tr1", "tr2", "tr3",
-        ],
-    ))
-
-    logger.info(f"Registered {len(AgentRegistry.list_agents())} agents")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
-    # Startup
-    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
-    logger.info(f"Environment: {settings.environment}")
-    logger.info(f"OGX endpoint: {settings.ogx_endpoint}")
-    logger.info(f"Database: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_database}")
-
-    # Register agents
-    register_agents()
-
-    # Initialize MLflow tracing
-    from app.core.tracing import init_mlflow, shutdown_tracing
-    init_mlflow()
-
-    # Check database connection
-    if not await check_database_connection():
-        logger.error("Failed to connect to database on startup")
-    else:
-        logger.info("Database connection verified")
-
+    logger.info("Starting %s %s (database %s:%s/%s)", settings.app_name, settings.app_version,
+                settings.postgres_host, settings.postgres_port, settings.postgres_database)
+    tracing.init_mlflow()
     yield
-
-    # Shutdown
-    logger.info("Shutting down application")
-    shutdown_tracing()
+    tracing.shutdown_tracing()
     await dispose_engine()
-    logger.info("Application shutdown complete")
 
 
-# Create FastAPI application
-app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="Multi-Agent AI Platform with OGX, MCP Servers & OpenShift AI",
-    lifespan=lifespan,
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=settings.cors_allow_methods,
-    allow_headers=settings.cors_allow_headers,
-)
-
-
-# =============================================================================
-# Health Check Endpoints
-# =============================================================================
-
-@app.get("/")
-async def root():
-    """Root endpoint - API information."""
-    return {
-        "name": settings.app_name,
-        "version": settings.app_version,
-        "environment": settings.environment,
-        "status": "healthy",
-    }
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan,
+              docs_url="/docs" if settings.debug else None, redoc_url=None)
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/health/live")
 async def liveness():
-    """Liveness probe for Kubernetes."""
     return {"status": "alive"}
 
 
 @app.get("/health/ready")
 async def readiness():
-    """Readiness probe for Kubernetes."""
     try:
         async with async_engine.connect() as conn:
-            await conn.execute(select(1))
-        return {"status": "ready", "database": "connected"}
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ready"}
     except Exception as e:
-        logger.error(f"Readiness check failed: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready", "error": str(e)},
-        )
+        logger.error("Readiness check failed: %s", e)
+        return JSONResponse(status_code=503, content={"status": "not_ready", "error": str(e)})
 
 
-@app.get(f"{settings.api_v1_prefix}/agents")
-async def list_agents():
-    """List available AI agents (dynamic via AgentRegistry)."""
-    from app.services.agents.registry import AgentRegistry
-    return AgentRegistry.to_api_list()
-
-
-# Default tool display configuration (used when ConfigMap not mounted)
-_DEFAULT_TOOL_DISPLAY = {
-    "tools": {
-        "ocr_document": {"label": {"fr": "OCR Document", "en": "OCR Document"}, "short": "OCR", "category": "extraction"},
-        "ocr_extract_claim_info": {"label": {"fr": "OCR Extraction", "en": "OCR Extract"}, "short": "OCR", "category": "extraction"},
-        "retrieve_user_info": {"label": {"fr": "Infos Utilisateur", "en": "User Info"}, "short": "USR", "category": "rag"},
-        "retrieve_similar_claims": {"label": {"fr": "Sinistres Similaires", "en": "Similar Claims"}, "short": "SIM", "category": "rag"},
-        "search_knowledge_base": {"label": {"fr": "Base de Connaissances", "en": "Knowledge Base"}, "short": "RAG", "category": "rag"},
-        "retrieve_similar_references": {"label": {"fr": "References Similaires", "en": "Similar References"}, "short": "REF", "category": "rag"},
-        "retrieve_historical_tenders": {"label": {"fr": "Historique AO", "en": "Historical Tenders"}, "short": "HIS", "category": "rag"},
-        "retrieve_capabilities": {"label": {"fr": "Capacites", "en": "Capabilities"}, "short": "CAP", "category": "rag"},
-        "list_claims": {"label": {"fr": "Liste Sinistres", "en": "List Claims"}, "short": "LST", "category": "crud"},
-        "get_claim": {"label": {"fr": "Detail Sinistre", "en": "Get Claim"}, "short": "GET", "category": "crud"},
-        "get_claim_documents": {"label": {"fr": "Documents Sinistre", "en": "Claim Documents"}, "short": "DOC", "category": "crud"},
-        "get_claim_statistics": {"label": {"fr": "Statistiques Sinistres", "en": "Claim Statistics"}, "short": "STA", "category": "crud"},
-        "analyze_claim": {"label": {"fr": "Analyser Sinistre", "en": "Analyze Claim"}, "short": "ANL", "category": "crud"},
-        "list_tenders": {"label": {"fr": "Liste AO", "en": "List Tenders"}, "short": "LST", "category": "crud"},
-        "get_tender": {"label": {"fr": "Detail AO", "en": "Get Tender"}, "short": "GET", "category": "crud"},
-        "get_tender_documents": {"label": {"fr": "Documents AO", "en": "Tender Documents"}, "short": "DOC", "category": "crud"},
-        "get_tender_statistics": {"label": {"fr": "Statistiques AO", "en": "Tender Statistics"}, "short": "STA", "category": "crud"},
-        "analyze_tender": {"label": {"fr": "Analyser AO", "en": "Analyze Tender"}, "short": "ANL", "category": "crud"},
-        "save_claim_decision": {"label": {"fr": "Sauvegarder Decision", "en": "Save Decision"}, "short": "SAV", "category": "crud"},
-        "save_tender_decision": {"label": {"fr": "Sauvegarder Decision AO", "en": "Save Tender Decision"}, "short": "SAV", "category": "crud"},
-        "generate_document_embedding": {"label": {"fr": "Generer Embedding", "en": "Generate Embedding"}, "short": "EMB", "category": "rag"},
-        # Postal server tools
-        "list_reclamations": {"label": {"fr": "Liste Reclamations", "en": "List Complaints"}, "short": "LST", "category": "crud"},
-        "get_reclamation": {"label": {"fr": "Detail Reclamation", "en": "Get Complaint"}, "short": "GET", "category": "crud"},
-        "get_reclamation_documents": {"label": {"fr": "Documents Reclamation", "en": "Complaint Documents"}, "short": "DOC", "category": "crud"},
-        "get_reclamation_statistics": {"label": {"fr": "Statistiques Reclamations", "en": "Complaint Statistics"}, "short": "STA", "category": "crud"},
-        "analyze_reclamation": {"label": {"fr": "Analyser Reclamation", "en": "Analyze Complaint"}, "short": "ANL", "category": "crud"},
-        "save_reclamation_decision": {"label": {"fr": "Sauvegarder Decision", "en": "Save Decision"}, "short": "SAV", "category": "crud"},
-        # Tracking server tools
-        "get_tracking": {"label": {"fr": "Suivi Colis", "en": "Track Parcel"}, "short": "TRK", "category": "crud"},
-        "search_tracking": {"label": {"fr": "Recherche Suivi", "en": "Search Tracking"}, "short": "SRC", "category": "crud"},
-        # RAG courrier tools
-        "search_courrier_knowledge": {"label": {"fr": "Base Connaissances Courrier", "en": "Postal Knowledge Base"}, "short": "RAG", "category": "rag"},
-        "retrieve_similar_reclamations": {"label": {"fr": "Reclamations Similaires", "en": "Similar Complaints"}, "short": "SIM", "category": "rag"},
-    },
-    "servers": {
-        "ocr-server": {"label": "OCR", "color": "blue"},
-        "rag-server": {"label": "RAG", "color": "purple"},
-        "claims-server": {"label": "Claims", "color": "emerald"},
-        "tenders-server": {"label": "Tenders", "color": "amber"},
-        "postal-server": {"label": "Postal", "color": "yellow"},
-        "tracking-server": {"label": "Tracking", "color": "green"},
-    },
-    "categories": {
-        "extraction": {"label": {"fr": "OCR", "en": "OCR"}, "icon": "scan"},
-        "rag": {"label": {"fr": "RAG", "en": "RAG"}, "icon": "search"},
-        "crud": {"label": {"fr": "Database", "en": "Database"}, "icon": "database"},
-    },
-}
-
-
-@app.get(f"{settings.api_v1_prefix}/config/tool-display")
-async def get_tool_display_config():
-    """Return tool display configuration (labels, abbreviations, categories, servers)."""
-    from app.prompts.orchestrator_prompts import ORCHESTRATOR_CONFIG
-
-    config = ORCHESTRATOR_CONFIG.get("tool_display", {})
-    # Merge: config overrides defaults per top-level key
-    merged = {}
-    for key in ("tools", "servers", "categories"):
-        default_section = _DEFAULT_TOOL_DISPLAY.get(key, {})
-        config_section = config.get(key, {})
-        merged[key] = {**default_section, **config_section}
-    return merged
-
-
-# =============================================================================
-# Import and Include API Routers
-# =============================================================================
-
-from fastapi import Depends
-
-from app.api import claims, documents, hitl, admin, tenders, orchestrator, a2a, postal, sandbox, auth
-from app.core.auth import current_user, require_admin, require_domain
-
-# Every API route needs an authenticated user (OpenShift token); the business routes of a
-# domain need access to its agent, the administration the admin profile (app/core/auth.py)
 authenticated = [Depends(current_user)]
 ROUTERS = [
-    (auth.router, "/auth", "auth", authenticated),
-    (claims.router, "/claims", "claims", [Depends(require_domain("claims"))]),
-    (tenders.router, "/tenders", "tenders", [Depends(require_domain("tenders"))]),
-    (postal.router, "/postal", "postal", [Depends(require_domain("postal"))]),
-    (documents.router, "/documents", "documents", [Depends(require_domain("claims"))]),  # claim PDFs
-    (hitl.router, "/review", "review", authenticated),
-    (admin.router, "", "admin", [Depends(require_admin)]),
-    (orchestrator.router, "/orchestrator", "orchestrator", authenticated),
-    (a2a.router, "/a2a", "a2a", authenticated),
-    (sandbox.router, "/sandbox", "sandbox", authenticated),
+    # (router, URL prefix under /api/v1, access)
+    (auth.router, "/auth", authenticated),
+    *[(domain_router(spec), f"/{spec.name}", [Depends(require_domain(spec.name))]) for spec in all_domains()],
+    (review.router, "/review", authenticated),
+    (chat.router, "/chat", authenticated),
+    (sandbox.router, "/sandbox", authenticated),
+    (admin.router, "/admin", [Depends(require_admin)]),
 ]
-for router, prefix, tag, dependencies in ROUTERS:
-    app.include_router(router, prefix=f"{settings.api_v1_prefix}{prefix}", tags=[tag], dependencies=dependencies)
+for router, prefix, dependencies in ROUTERS:
+    app.include_router(router, prefix=f"{settings.api_v1_prefix}{prefix}", dependencies=dependencies,
+                       tags=[prefix.strip("/")])
 
-# =============================================================================
-# Exception Handlers
-# =============================================================================
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler for unhandled errors."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "detail": str(exc) if settings.debug else None}
-    )
-
-
-# =============================================================================
-# Main Entry Point
-# =============================================================================
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower(),
-    )
+async def unexpected_error(request, exc):
+    logger.error("Unexpected error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})

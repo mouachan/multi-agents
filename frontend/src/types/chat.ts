@@ -88,26 +88,27 @@ export interface ChatResponse {
 export interface PromptResponse {
   prompt: string
   is_custom: boolean
-  agent_id?: string
+  agent_id?: string | null
+  /** the MLflow prompt the agent profile runs (when not overridden) */
+  name?: string
+  version?: string | null
 }
 
+/** An agent profile the user may talk to (backend/app/agents.py) */
 export interface AgentInfo {
   id: string
+  domain: string
   name: string
   name_fr?: string
   description: string
   description_fr?: string
-  entity_type: string
-  path: string
-  api_prefix: string
   color: string
   icon: string
-  tools: string[]
-  decision_values: string[]
+  path: string
 }
 
 // ---------------------------------------------------------------------------
-// SSE stream contract — POST /api/v1/orchestrator/chat/stream
+// SSE stream contract — POST /api/v1/chat/sessions/<id>/messages (backend/app/services/chat/turn.py)
 // ---------------------------------------------------------------------------
 
 export type RoutingMethod = 'semantic' | 'llm' | 'sticky' | 'keywords'

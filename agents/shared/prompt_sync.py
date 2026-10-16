@@ -3,7 +3,7 @@
 Run by the Helm `prompt-sync` job (post-install/post-upgrade):
     python -m shared.prompt_sync
 
-For every <name>.txt found in PROMPTS_DIRS:
+For every <name>.txt in PROMPTS_DIR (helm/multi-agents/files/prompts/agents):
   - registers a new prompt version when the text differs from the latest version
   - points PROMPT_ALIAS (default "production") to it when PROMPT_PROMOTE=true,
     or when the alias does not exist yet
@@ -57,9 +57,9 @@ def main() -> int:
     release = os.getenv("HELM_RELEASE_REVISION", "")
     client = MlflowClient()
 
-    files = sorted({p for d in settings.prompt_dir_list for p in Path(d).glob("*.txt")}, key=lambda p: p.name)
+    files = sorted(Path(settings.prompts_dir).glob("*.txt"))
     if not files:
-        logger.error("No prompt files found in %s", settings.prompts_dirs)
+        logger.error("No prompt files found in %s", settings.prompts_dir)
         return 1
 
     for attempt in range(30):

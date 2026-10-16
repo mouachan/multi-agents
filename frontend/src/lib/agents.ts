@@ -66,20 +66,24 @@ export function agentVisual(agentId?: string | null): AgentVisual {
 
 export const KNOWN_AGENT_IDS = Object.keys(VISUALS).filter((id) => id !== 'orchestrator')
 
-/** MCP servers shown in the topology (keys match the tool-display config). */
-export const MCP_SERVERS = ['ocr-server', 'rag-server', 'claims-server', 'tenders-server', 'postal-server', 'tracking-server'] as const
+/** The tools of each MCP server (same list as agents/shared/ogx_client.py) */
+const SERVER_TOOLS: Record<string, string[]> = {
+  'ocr-server': ['ocr_document'],
+  'rag-server': ['retrieve_user_info', 'retrieve_similar_claims', 'search_knowledge_base', 'retrieve_similar_references',
+    'retrieve_historical_tenders', 'retrieve_capabilities', 'search_courrier_knowledge', 'retrieve_similar_reclamations'],
+  'claims-server': ['list_claims', 'get_claim', 'get_claim_documents', 'get_claim_statistics', 'compute_payout'],
+  'tenders-server': ['list_tenders', 'get_tender', 'get_tender_documents', 'get_tender_statistics'],
+  'postal-server': ['list_reclamations', 'get_reclamation', 'get_reclamation_documents', 'get_reclamation_statistics'],
+  'tracking-server': ['get_tracking'],
+  'sandbox-server': ['run_python'],
+}
 
-/**
- * MCP server owning a tool. Behind the MCP Gateway every event says "mcp-gateway",
- * so the server is derived from the tool name (same mapping as agents/shared/ogx_client.py).
- */
+/** MCP servers shown in the topology (keys match the tool-display config). */
+export const MCP_SERVERS = Object.keys(SERVER_TOOLS)
+
+/** MCP server owning a tool. Behind the MCP Gateway every event says "mcp-gateway": the server
+ *  comes from the tool name. */
 export function toolServer(tool: string, serverLabel?: string): string {
   if (serverLabel && serverLabel !== 'mcp-gateway') return serverLabel
-  if (tool.startsWith('ocr_') || tool === 'list_supported_formats') return 'ocr-server'
-  if (tool.startsWith('retrieve_') || tool.includes('knowledge') || tool === 'generate_document_embedding') return 'rag-server'
-  if (tool.includes('tracking')) return 'tracking-server'
-  if (tool.includes('reclamation')) return 'postal-server'
-  if (tool.includes('tender')) return 'tenders-server'
-  if (tool.includes('claim')) return 'claims-server'
-  return serverLabel || 'mcp-gateway'
+  return Object.keys(SERVER_TOOLS).find((server) => SERVER_TOOLS[server].includes(tool)) ?? serverLabel ?? 'mcp-gateway'
 }

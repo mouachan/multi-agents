@@ -3,10 +3,8 @@ import { useTranslation } from '../../i18n/LanguageContext'
 import { useToolDisplay } from '../../hooks/useToolDisplay'
 import { agentVisual, MCP_SERVERS } from '../../lib/agents'
 import { cn } from '../../lib/cn'
-import type { AgentInfo } from '../../types/chat'
 
 interface AgentGraphProps {
-  agents: AgentInfo[]
   activeAgentId?: string | null
   /** an agent is currently answering (pulse) */
   live?: boolean
@@ -18,8 +16,8 @@ interface AgentGraphProps {
 
 const POSTAL_PROFILES = ['courrier_reclamation', 'courrier_info', 'courrier_suivi']
 
-function AgentNode({ agentId, active, live, label, tools, onClick }: {
-  agentId: string; active: boolean; live: boolean; label: string; tools?: number; onClick: () => void
+function AgentNode({ agentId, active, live, label, onClick }: {
+  agentId: string; active: boolean; live: boolean; label: string; onClick: () => void
 }) {
   const v = agentVisual(agentId)
   const Icon = v.icon
@@ -38,17 +36,15 @@ function AgentNode({ agentId, active, live, label, tools, onClick }: {
       </span>
       <span className="min-w-0">
         <span className="block text-[11px] font-semibold leading-tight text-ink">{label}</span>
-        {tools != null && <span className="block text-[10px] text-ink-subtle">{tools} MCP</span>}
       </span>
     </button>
   )
 }
 
 /** Live topology: orchestrator -> A2A agents (postal = 3 profiles of one agent) -> MCP servers. */
-export function AgentGraph({ agents, activeAgentId, live, routing, activeServers, usedServers, onAgentClick }: AgentGraphProps) {
+export function AgentGraph({ activeAgentId, live, routing, activeServers, usedServers, onAgentClick }: AgentGraphProps) {
   const { t } = useTranslation()
   const { getServerInfo } = useToolDisplay()
-  const tools = (id: string) => agents.find((a) => a.id === id)?.tools.length
   const name = (id: string) => t(`agentNames.${id}`)
 
   return (
@@ -67,8 +63,8 @@ export function AgentGraph({ agents, activeAgentId, live, routing, activeServers
 
       {/* A2A agents */}
       <div className="grid grid-cols-2 gap-1.5">
-        <AgentNode agentId="claims" label={name('claims')} tools={tools('claims')} active={activeAgentId === 'claims'} live={!!live} onClick={() => onAgentClick('claims')} />
-        <AgentNode agentId="tenders" label={name('tenders')} tools={tools('tenders')} active={activeAgentId === 'tenders'} live={!!live} onClick={() => onAgentClick('tenders')} />
+        <AgentNode agentId="claims" label={name('claims')} active={activeAgentId === 'claims'} live={!!live} onClick={() => onAgentClick('claims')} />
+        <AgentNode agentId="tenders" label={name('tenders')} active={activeAgentId === 'tenders'} live={!!live} onClick={() => onAgentClick('tenders')} />
       </div>
       <div className={cn(
         'rounded-xl border border-dashed p-1.5 transition-colors',

@@ -3,8 +3,8 @@ Agent profiles of the OpenShift AI Gen AI studio (AI asset endpoints > Agents, p
 ConfigMaps agent-profile-<id> labelled opendatahub.io/agent-profile=true, holding a
 genai.redhat.com/v1alpha1 AgentProfile. Each one mirrors an A2A agent profile: the reasoning
 model through the users' MaaS subscription, the prompt of the MLflow Prompt Registry
-(latest version) and the MCP servers with the same tools, except the save_* tools (the
-playground stays read-only).
+(latest version) and the MCP servers with the same tools (all read-only: the decisions are
+saved by the backend, never by a tool).
 */}}
 {{- if and .Values.rhoaiCatalog.enabled .Values.rhoaiCatalog.agentProfiles }}
 {{- $ns := include "multi-agents.namespace" . }}

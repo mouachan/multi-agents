@@ -2,7 +2,7 @@ import { MapPin, Truck } from 'lucide-react'
 import { useTranslation } from '../../i18n/LanguageContext'
 import { cn } from '../../lib/cn'
 import { formatDateTime } from '../../lib/format'
-import type { TrackingEvent } from '../../types/reclamation'
+import type { TrackingEvent } from '../../types/case'
 import { Badge } from '../ui/Badge'
 import { Card, CardHeader } from '../ui/Card'
 

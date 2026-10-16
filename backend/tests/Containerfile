@@ -1,0 +1,9 @@
+# Backend tests image (tests/compose.yaml builds it with the backend folder as context)
+FROM registry.access.redhat.com/ubi9/python-312:latest
+WORKDIR /opt/app-root/src
+COPY requirements.txt requirements-test.txt ./
+RUN pip install --no-cache-dir -r requirements-test.txt
+COPY pytest.ini ./
+COPY app ./app
+COPY tests ./tests
+CMD ["pytest", "-q"]

@@ -1,8 +1,8 @@
 {{- /*
 Decoupled A2A domain agents (a2a-sdk, JSON-RPC binding on :8090).
 One Deployment + Service + ServiceAccount per agent. Prompts are loaded from the
-MLflow Prompt Registry (alias .Values.mlflow.prompts.alias) with the prompt
-ConfigMaps mounted as fallback.
+MLflow Prompt Registry (alias .Values.mlflow.prompts.alias), with the agent-prompts
+ConfigMap mounted as fallback.
 */}}
 {{- if .Values.agents.enabled }}
 {{- $ns := include "multi-agents.namespace" . }}
@@ -64,7 +64,7 @@ spec:
         component: a2a-agent
         agent-domain: {{ $name }}
       annotations:
-        checksum/prompts: {{ $.Files.Glob "files/cm.*-prompts/*" | toString | sha256sum | trunc 16 }}
+        checksum/prompts: {{ $.Files.Glob "files/prompts/agents/*" | toString | sha256sum | trunc 16 }}
     spec:
       serviceAccountName: {{ $app }}
       containers:
@@ -114,19 +114,13 @@ spec:
         - name: SPIFFE_ALLOWED_IDS
           value: {{ printf "/ns/%s/sa/backend" $ns | quote }}
         {{- end }}
-        - name: PROMPTS_DIRS
-          value: "/opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator"
+        - name: PROMPTS_DIR
+          value: /opt/app-root/prompts
         - name: LOG_LEVEL
           value: {{ $agent.logLevel | default "INFO" | quote }}
         volumeMounts:
-        - name: claims-prompts
-          mountPath: /opt/app-root/prompts/claims
-        - name: ao-prompts
-          mountPath: /opt/app-root/prompts/ao
-        - name: courrier-prompts
-          mountPath: /opt/app-root/prompts/courrier
-        - name: orchestrator-prompts
-          mountPath: /opt/app-root/prompts/orchestrator
+        - name: prompts
+          mountPath: /opt/app-root/prompts
         {{- include "multi-agents.spiffe.volumeMount" $ | nindent 8 }}
         resources:
           {{- toYaml $agent.resources | nindent 10 }}
@@ -149,18 +143,9 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 3
       volumes:
-      - name: claims-prompts
+      - name: prompts
         configMap:
-          name: claims-prompts
-      - name: ao-prompts
-        configMap:
-          name: ao-prompts
-      - name: courrier-prompts
-        configMap:
-          name: courrier-prompts
-      - name: orchestrator-prompts
-        configMap:
-          name: orchestrator-prompts
+          name: agent-prompts
       {{- include "multi-agents.spiffe.volume" $ | nindent 6 }}
 {{- end }}
 {{- end }}

@@ -41,14 +41,12 @@ x-agent-env: &agent-env
   MLFLOW_TRACKING_URI: http://mlflow:5000
   PROMPT_ALIAS: production
   PROMPT_CACHE_TTL: 60
-  PROMPTS_DIRS: /opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator
+  PROMPTS_DIR: /opt/app-root/prompts
   LOG_LEVEL: INFO
 
+# Same prompt files as the Helm chart
 x-prompt-volumes: &prompt-volumes
-  - ./helm/multi-agents/files/cm.claims-prompts:/opt/app-root/prompts/claims:ro
-  - ./helm/multi-agents/files/cm.ao-prompts:/opt/app-root/prompts/ao:ro
-  - ./helm/multi-agents/files/cm.courrier-prompts:/opt/app-root/prompts/courrier:ro
-  - ./helm/multi-agents/files/cm.orchestrator-prompts:/opt/app-root/prompts/orchestrator:ro
+  - ./helm/multi-agents/files/prompts/agents:/opt/app-root/prompts:ro,Z
 
 services:
   # PostgreSQL with pgvector (application database + OGX database "ogx", created by the ogx service)
@@ -113,35 +111,24 @@ services:
     networks:
       - multi-agents-network
 
-  # Backend FastAPI (orchestrator + A2A client)
+  # Backend FastAPI: business API, chat, human review; the agents do the work (A2A)
   backend:
     build:
       context: ./backend
       dockerfile: Containerfile
     container_name: multi-agents-backend
     environment:
-      <<: [*postgres-env, *ogx-env]
+      <<: *postgres-env
       DEBUG: "true"
       ENVIRONMENT: development
-      OGX_STREAMING_MODEL: maas/${MAAS_REASONING_MODEL:-llama-scout-17b}
-      OGX_MAX_TOKENS: 4096
-      OCR_SERVER_URL: http://ocr-server:8080
-      RAG_SERVER_URL: http://rag-server:8080
-      CLAIMS_SERVER_URL: http://claims-server:8080
-      TENDERS_SERVER_URL: http://tenders-server:8080
-      POSTAL_SERVER_URL: http://postal-server:8080
-      TRACKING_SERVER_URL: http://tracking-server:8080
+      OGX_ENDPOINT: http://ogx:8321
+      OGX_DEFAULT_MODEL: maas/${MAAS_REASONING_MODEL:-llama-scout-17b}
+      OGX_EMBEDDING_MODEL: maas/${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
       CLAIMS_AGENT_A2A_URL: http://claims-agent:8090
       TENDERS_AGENT_A2A_URL: http://tenders-agent:8090
       POSTAL_AGENT_A2A_URL: http://postal-agent:8090
       # NeMo Guardrails is cluster-only: empty URL = checks skipped
       GUARDRAILS_SERVER_URL: ""
-      S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
-      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
-      S3_BUCKET_CLAIMS: claims
-      S3_BUCKET_TENDERS: tenders
-      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
     ports:
@@ -151,13 +138,12 @@ services:
         condition: service_healthy
       ogx:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       mlflow:
         condition: service_healthy
     volumes:
       - ./backend/app:/opt/app-root/src/app
       - ./documents:/documents
+      - ./helm/multi-agents/files/prompts/backend:/app/prompts:ro,Z
       # admin reset: seed and precedent decisions (same files as the database init)
       - ./database/seed_data/001_seed_data.sql:/app/seed/seed.sql:ro
       - ./database/seed_data/precedent_decisions.json:/app/seed/precedent_decisions.json:ro
@@ -177,7 +163,7 @@ services:
       <<: *agent-env
       AGENT_ID: claims
       AGENT_PUBLIC_URL: http://claims-agent:8090
-      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-claims-agent
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
     ports:
       - "8091:8090"
     volumes: *prompt-volumes
@@ -198,7 +184,7 @@ services:
       <<: *agent-env
       AGENT_ID: tenders
       AGENT_PUBLIC_URL: http://tenders-agent:8090
-      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-tenders-agent
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
     ports:
       - "8092:8090"
     volumes: *prompt-volumes
@@ -219,7 +205,7 @@ services:
       <<: *agent-env
       AGENT_ID: postal
       AGENT_PUBLIC_URL: http://postal-agent:8090
-      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator-postal-agent
+      MLFLOW_EXPERIMENT_NAME: multi-agent-orchestrator
     ports:
       - "8093:8090"
     volumes: *prompt-volumes
@@ -246,7 +232,7 @@ services:
       PROMPT_ALIAS: production
       PROMPT_PROMOTE: "true"
       HELM_RELEASE_REVISION: local
-      PROMPTS_DIRS: /opt/app-root/prompts/claims:/opt/app-root/prompts/ao:/opt/app-root/prompts/courrier:/opt/app-root/prompts/orchestrator
+      PROMPTS_DIR: /opt/app-root/prompts
     volumes: *prompt-volumes
     depends_on:
       mlflow:
@@ -257,8 +243,8 @@ services:
   # MCP servers (streamable HTTP on /mcp, port 8080)
   ocr-server:
     build:
-      context: ./backend/mcp_servers/ocr_server
-      dockerfile: Containerfile
+      context: ./backend/mcp_servers
+      dockerfile: ocr_server/Containerfile
     container_name: multi-agents-ocr-server
     environment:
       <<: *mcp-env
@@ -370,7 +356,7 @@ services:
   # Data initialization: local PDFs (./documents) → OGX Files API, then 10+10 via MCP tools
   data-init:
     build:
-      context: ./backend/scripts
+      context: ./data-init
       dockerfile: Containerfile
     container_name: multi-agents-data-init
     depends_on:
@@ -380,24 +366,12 @@ services:
         condition: service_healthy
       ocr-server:
         condition: service_started
-      claims-server:
-        condition: service_started
-      tenders-server:
-        condition: service_started
-      postal-server:
-        condition: service_started
-      tracking-server:
-        condition: service_started
     environment:
       <<: *postgres-env
       OGX_ENDPOINT: http://ogx:8321
       EMBEDDING_MODEL: maas/${MAAS_EMBEDDING_MODEL:-nomic-embed-text-v1-5}
       FORCE_REINIT: ${FORCE_REINIT:-false}
       OCR_SERVER_URL: http://ocr-server:8080
-      CLAIMS_SERVER_URL: http://claims-server:8080
-      TENDERS_SERVER_URL: http://tenders-server:8080
-      POSTAL_SERVER_URL: http://postal-server:8080
-      TRACKING_SERVER_URL: http://tracking-server:8080
     volumes:
       - ./documents:/documents:ro
       - ./database/seed_data/precedent_decisions.json:/seed/precedent_decisions.json:ro

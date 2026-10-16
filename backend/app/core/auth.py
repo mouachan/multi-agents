@@ -30,7 +30,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-DOMAINS = ("claims", "tenders", "postal")  # one A2A agent each: <domain>-agent
+DOMAINS = ("claims", "tenders", "postal")  # app/domains; one A2A agent each: <domain>-agent
 SA_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
 K8S_API = "https://kubernetes.default.svc"
 CACHE_TTL = 60  # seconds
@@ -172,18 +172,3 @@ async def require_admin(user: User = Depends(current_user)) -> User:
     if not user.admin:
         raise HTTPException(status_code=403, detail="Administrator profile required")
     return user
-
-
-def check_agent(user: User, agent_def) -> None:
-    """403 when the user's profile may not use this agent (AgentDefinition of the registry)."""
-    domain = agent_domain(agent_def.a2a_url)
-    if domain and domain not in user.domains:
-        raise HTTPException(status_code=403, detail=f"Your profile has no access to the {domain} agent")
-
-
-def agent_domain(a2a_url: Optional[str]) -> Optional[str]:
-    """Domain of an A2A agent from its URL (http://<domain>-agent.<ns>.svc...)."""
-    if not a2a_url:
-        return None
-    host = a2a_url.split("://", 1)[-1].split(".", 1)[0].split(":", 1)[0]
-    return host[:-len("-agent")] if host.endswith("-agent") else None

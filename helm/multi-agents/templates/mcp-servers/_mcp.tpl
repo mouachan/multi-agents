@@ -26,12 +26,8 @@ Usage: include "multi-agents.mcp.env" (dict "root" $ "name" "claims" "cfg" .Valu
 {{- include "postgres.env" $root }}
 - name: OGX_ENDPOINT
   value: {{ include "multi-agents.mcp.ogxEndpoint" $root | quote }}
-- name: OGX_DEFAULT_MODEL
-  value: {{ include "multi-agents.ogx.chatModel" $root.Values.models.reasoning | quote }}
 - name: OGX_EMBEDDING_MODEL
   value: {{ include "multi-agents.ogx.embeddingModel" $root | quote }}
-- name: OGX_EMBEDDING_DIMENSION
-  value: {{ $root.Values.models.embeddingDimension | quote }}
 - name: OGX_TIMEOUT
   value: {{ $root.Values.mcp.ogx.timeout | quote }}
 {{- if eq .name "ocr" }}
@@ -43,12 +39,19 @@ Usage: include "multi-agents.mcp.env" (dict "root" $ "name" "claims" "cfg" .Valu
 - name: SANDBOX_MCP_URL
   value: {{ include "multi-agents.mcp.serverUrl" (dict "root" $root "name" "sandbox") | quote }}
 {{- end }}
+{{- if $root.Values.guardrails.enabled }}
+# personal data in the tool results is masked by the NeMo output rails (shared/personal_data.py)
+- name: GUARDRAILS_ENDPOINT
+  value: {{ include "multi-agents.guardrails.endpoint" $root | quote }}
+- name: GUARDRAILS_CONFIG_ID
+  value: {{ $root.Values.guardrails.configId | quote }}
+- name: GUARDRAILS_MODEL
+  value: {{ $root.Values.models.guardrails | quote }}
+{{- end }}
 {{- range $k, $v := .cfg.env }}
 - name: {{ $k }}
   value: {{ $v | quote }}
 {{- end }}
-- name: HOST
-  value: "0.0.0.0"
 - name: PORT
   value: "8080"
 - name: PYTHONUNBUFFERED

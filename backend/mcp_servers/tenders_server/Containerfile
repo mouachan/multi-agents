@@ -1,23 +1,13 @@
-# MCP Tenders Server - CRUD operations on tenders (Appels d'Offres)
-FROM registry.access.redhat.com/ubi9/python-311:latest
+# MCP server tenders-server. Build from backend/mcp_servers (the context holds shared/):
+#   podman build --platform linux/amd64 -f tenders_server/Containerfile -t <registry>/tenders-server:<tag> .
+FROM registry.access.redhat.com/ubi9/python-312:latest
 
-USER 0
+WORKDIR /opt/app-root/src
+COPY shared/requirements.txt shared-requirements.txt
+RUN pip install --no-cache-dir -r shared-requirements.txt
 
-WORKDIR /app
-
-# Copy requirements
-COPY tenders_server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy shared utilities and server code
-COPY shared/ ./shared/
+COPY shared/ shared/
 COPY tenders_server/server.py .
 
-RUN chmod -R 755 /app
-
-USER 1001
-
 EXPOSE 8080
-
-# Start MCP server with FastMCP SDK
 CMD ["python", "server.py"]
