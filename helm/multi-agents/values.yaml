@@ -159,7 +159,7 @@ mcp:
     replicas: 1
     image:
       repository: ocr-server
-      tag: v3.5.20
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -187,7 +187,7 @@ mcp:
     replicas: 1
     image:
       repository: rag-server
-      tag: v3.5.21
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -208,7 +208,7 @@ mcp:
     replicas: 1
     image:
       repository: claims-server
-      tag: v3.5.22
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -229,7 +229,7 @@ mcp:
     replicas: 1
     image:
       repository: tenders-server
-      tag: v3.5.22
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -250,7 +250,7 @@ mcp:
     replicas: 1
     image:
       repository: postal-server
-      tag: v3.5.22
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -271,7 +271,7 @@ mcp:
     replicas: 1
     image:
       repository: tracking-server
-      tag: v3.5.20
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -295,7 +295,7 @@ mcp:
     replicas: 1
     image:
       repository: sandbox-exec-server
-      tag: v3.5.20
+      tag: v3.5.23
     service:
       type: ClusterIP
       port: 8080
@@ -337,7 +337,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v3.5.22
+    tag: v3.5.23
 
   # Service
   service:
@@ -379,7 +379,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v3.5.20
+    tag: v3.5.23
 
   # Service
   service:
@@ -701,7 +701,7 @@ agents:
     replicas: 1
     image:
       repository: claims-agent
-      tag: v3.5.20
+      tag: v3.5.23
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -717,7 +717,7 @@ agents:
     replicas: 1
     image:
       repository: tenders-agent
-      tag: v3.5.20
+      tag: v3.5.23
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -733,7 +733,7 @@ agents:
     replicas: 1
     image:
       repository: postal-agent
-      tag: v3.5.20
+      tag: v3.5.23
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
