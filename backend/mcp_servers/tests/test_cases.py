@@ -70,6 +70,19 @@ async def test_payout_figures_are_returned_without_the_sandbox(servers, auto_cla
     assert payout["success"] is False and "sandbox" in payout["error"]
     assert payout["claim_number"] == number and payout["covered"] is True
     assert payout["contract"]["type"] == "Auto Insurance" and payout["contract"]["coverage_amount"] > 0
-    assert payout["claimed_amount"] == 6200.0 and payout["currency"] == "USD"
-    assert payout["claimed_source"] == "Estimated Repair Cost (claim document)"
+    assert payout["claimed_amount"] == 6200.0 and payout["currency"] == "EUR"
+    assert payout["claimed_source"] == "Montant réclamé (claim document)"
     assert "payout = min(max(claimed - deductible, 0), ceiling)" in payout["code"]
+
+
+@pytest.mark.parametrize("line, expected", [
+    ("Montant réclamé : 12 600,00 €", (12600.0, "EUR")),        # French claim form
+    ("Amount Claimed: €12,600.00", (12600.0, "EUR")),           # its English translation
+    ("Montant reclame: 140 000,00 EUR", (140000.0, "EUR")),     # OCR without accents
+    ("Amount Claimed: $1,650.50", (1650.5, "USD")),
+    ("Montant réclamé : 720 €", (720.0, "EUR")),
+    ("Montant réclamé : 6 400.00 €", (6400.0, "EUR")),
+])
+def test_the_amount_claimed_is_read_in_both_languages(servers, line, expected):
+    amount, currency, _ = servers["claims"]._claimed_amount(f"MONTANT\n{line}\nPIÈCES JOINTES")
+    assert (amount, currency) == expected

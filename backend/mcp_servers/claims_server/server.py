@@ -66,9 +66,11 @@ SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "")
 # The contract type that covers each claim type
 COVERING_CONTRACT = {"Auto": "Auto Insurance", "Home": "Home Insurance",
                      "Medical": "Health Insurance", "Life": "Life Insurance"}
-# Labels of the claimed amount in the claim documents, the most specific first
-AMOUNT_LABELS = ("Amount Claimed", "Estimated Repair Cost", "Capital Assur[eé]", "Total Charges")
-AMOUNT = r"\s*:?\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)"
+# The line of the claim form that holds the amount claimed (French form; its English translation)
+AMOUNT_LABELS = ("Montant r[ée]clam[ée]", "Amount Claimed")
+# "12 600,00 €" (French) or "€12,600.00" (English): digits with spaces, dots or commas, and a currency
+AMOUNT = re.compile(r"(€|\$|EUR|USD)?\s*([0-9][0-9 \u00a0\u202f.,]*[0-9])\s*(€|\$|EUR|USD)?")
+CURRENCIES = {"€": "EUR", "EUR": "EUR", "$": "USD", "USD": "USD"}
 FORMULA = "payout = min(max(claimed - franchise, 0), ceiling); 0 without an active contract of the claim type"
 
 
@@ -110,7 +112,7 @@ async def _payout_figures(reference: str) -> Dict[str, Any]:
     if document is None:
         raise ToolError(f"No OCR text for claim {claim['number']}: call ocr_document first")
     text = document["raw_ocr_text"]
-    claimed, source = _claimed_amount(text)
+    claimed, currency, source = _claimed_amount(text)
     contract_type = COVERING_CONTRACT.get(claim["claim_type"])
     contract = await fetch_one("""
         SELECT contract_number, contract_type, coverage_amount, key_terms->>'franchise' AS franchise
@@ -133,21 +135,30 @@ async def _payout_figures(reference: str) -> Dict[str, Any]:
         "contract": {"number": contract["contract_number"], "type": contract["contract_type"],
                      "coverage_amount": ceiling, "franchise": franchise} if covered else None,
         "claimed_amount": claimed,
-        # the claim documents state amounts in dollars; the contracts share that currency
-        "currency": "USD" if re.search(r"\$\s*[0-9]", text) else None,
+        "currency": currency,       # of the claim form; the contracts' amounts share it
         "claimed_source": f"{source} (claim document)" if source else "not found in the claim document",
         "formula": FORMULA,
         "code": code,
     }
 
 
-def _claimed_amount(document_text: str) -> Tuple[Optional[float], Optional[str]]:
-    """The amount claimed in the document text, and the label it was read from."""
+def _claimed_amount(document_text: str) -> Tuple[Optional[float], Optional[str], Optional[str]]:
+    """(amount, currency, label) of the "amount claimed" line of the claim form, Nones when not found."""
     for label in AMOUNT_LABELS:
-        match = re.search(label + AMOUNT, document_text, re.IGNORECASE)
-        if match:
-            return float(match.group(1).replace(",", "")), match.group(0).split(":")[0].strip()
-    return None, None
+        line = re.search(rf"({label})\s*:?\s*(.+)", document_text, re.IGNORECASE)
+        amount = AMOUNT.search(line.group(2)) if line else None
+        if amount:
+            currency = CURRENCIES.get(amount.group(1) or amount.group(3) or "")
+            return _number(amount.group(2)), currency, line.group(1)
+    return None, None, None
+
+
+def _number(text: str) -> float:
+    """"12 600,00" or "12,600.00" -> 12600.0 (the last separator followed by 1-2 digits is the decimal one)."""
+    digits = re.sub(r"[\s\u00a0\u202f]", "", text)
+    decimal = re.search(r"[.,](\d{1,2})$", digits)
+    whole = digits[:decimal.start()] if decimal else digits
+    return float(re.sub(r"[.,]", "", whole) + ("." + decimal.group(1) if decimal else ""))
 
 
 async def _run_in_sandbox(code: str) -> Dict[str, Any]:

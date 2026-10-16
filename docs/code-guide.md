@@ -35,7 +35,7 @@ guardrails/
   gliner-server/    finds people's names for NeMo Guardrails (GLiNER), with its tests
 data-init/          the job that prepares the data at installation
 database/           schema, seed, precedent decisions
-documents/          the sample PDFs (and generators/, the scripts that made them)
+documents/          the sample PDFs, French with their English translation (_en), and generators/
 ```
 
 ## Conventions

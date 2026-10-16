@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Generate realistic tender (Appel d'Offres) PDF documents for the multi-agents platform.
-Outputs to documents/tenders/ with filenames matching the seed data.
+Tender notices (documents/tenders): for each seeded tender, the French notice (<file>.pdf, the
+document the agent reads) and its English translation (<file>_en.pdf, tender_translations.py).
 
-Each PDF is a DCE (Dossier de Consultation des Entreprises) formatted
-as a French public procurement document.
+From the repository root:
+    podman run --rm -v ./:/src:Z -w /src registry.access.redhat.com/ubi9/python-312 \
+      bash -c "pip install -q reportlab && python documents/generators/generate_tender_pdfs.py"
 """
 
 import os
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
+
+from tender_translations import FORM, english
 
 # ============================================================================
 # Tender data matching seed SQL (002_tender_seed_data.sql + 004_harmonized)
@@ -295,8 +298,9 @@ for _fn, _num, _titre, _mo, _reg, _mt, _delai, _desc in _EXTRA_TENDERS:
     })
 
 
-def generate_tender_pdf(tender_data, output_path):
-    """Generate a realistic French DCE tender PDF."""
+def generate_tender_pdf(tender_data, output_path, lang="fr"):
+    """One tender notice, in French (the original) or English (fields from english())."""
+    text = FORM[lang]
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
 
@@ -306,7 +310,7 @@ def generate_tender_pdf(tender_data, output_path):
         nonlocal y
         # Top header
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(1.5*cm, y, "REPUBLIQUE FRANCAISE")
+        c.drawString(1.5*cm, y, text["country"])
         y -= 0.5*cm
         c.setFont("Helvetica", 8)
         c.drawString(1.5*cm, y, tender_data["maitre_ouvrage"])
@@ -314,10 +318,10 @@ def generate_tender_pdf(tender_data, output_path):
 
         # Title block
         c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(width / 2, y, "AVIS D'APPEL PUBLIC A LA CONCURRENCE")
+        c.drawCentredString(width / 2, y, text["notice"])
         y -= 0.7*cm
         c.setFont("Helvetica-Bold", 11)
-        c.drawCentredString(width / 2, y, f"Marche n {tender_data['numero']}")
+        c.drawCentredString(width / 2, y, f"{text['contract']} {tender_data['numero']}")
         y -= 1*cm
 
         # Horizontal line
@@ -342,10 +346,11 @@ def generate_tender_pdf(tender_data, output_path):
             c.showPage()
             y = height - 2*cm
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(1.5*cm, y, f"{label} :")
+        separator = " :" if lang == "fr" else ":"
+        c.drawString(1.5*cm, y, f"{label}{separator}")
         c.setFont("Helvetica", 9)
         # If value fits on same line
-        label_width = c.stringWidth(f"{label} : ", "Helvetica-Bold", 9)
+        label_width = c.stringWidth(f"{label}{separator} ", "Helvetica-Bold", 9)
         remaining = width - 1.5*cm - label_width - 1.5*cm
         if c.stringWidth(str(value), "Helvetica", 9) < remaining:
             c.drawString(1.5*cm + label_width, y, str(value))
@@ -413,74 +418,58 @@ def generate_tender_pdf(tender_data, output_path):
 
     # Title
     c.setFont("Helvetica-Bold", 10)
-    write_text(f"Objet : {tender_data['titre']}")
+    write_text(f"{text['subject']}{' :' if lang == 'fr' else ':'} {tender_data['titre']}")
     y -= 0.3*cm
 
     # Section 1: Identification
-    write_section("ARTICLE 1 - IDENTIFICATION DU POUVOIR ADJUDICATEUR")
-    write_field("Maitre d'ouvrage", tender_data["maitre_ouvrage"])
-    write_field("Representant", tender_data["representant"])
-    write_field("Contact", tender_data["contact"])
-    write_field("Region", tender_data["region"])
+    write_section(text["a1"])
+    write_field(text["client"], tender_data["maitre_ouvrage"])
+    write_field(text["representative"], tender_data["representant"])
+    write_field(text["contact"], tender_data["contact"])
+    write_field(text["region"], tender_data["region"])
 
     # Section 2: Objet du marche
-    write_section("ARTICLE 2 - OBJET DU MARCHE")
-    write_field("Nature du marche", tender_data["nature"])
-    write_field("Montant estimatif", tender_data["montant"])
-    write_field("Delai d'execution", tender_data["delai"])
+    write_section(text["a2"])
+    write_field(text["nature"], tender_data["nature"])
+    write_field(text["amount"], tender_data["montant"])
+    write_field(text["delay"], tender_data["delai"])
     y -= 0.2*cm
     write_text(tender_data["description"])
 
     # Section 3: Conditions de participation
-    write_section("ARTICLE 3 - CONDITIONS DE PARTICIPATION")
+    write_section(text["a3"])
     c.setFont("Helvetica", 9)
-    write_text("Les candidats devront satisfaire aux exigences suivantes :")
+    write_text(text["requirements"])
     y -= 0.1*cm
     for exigence in tender_data["exigences"]:
         write_bullet(exigence)
 
     # Section 4: Criteres d'attribution
-    write_section("ARTICLE 4 - CRITERES D'ATTRIBUTION")
-    write_text("Les offres seront jugees selon les criteres ponderes suivants :")
+    write_section(text["a4"])
+    write_text(text["criteria"])
     y -= 0.1*cm
     for critere, poids in tender_data["criteres"].items():
-        write_bullet(f"{critere} : {poids}")
+        write_bullet(f"{critere}{' :' if lang == 'fr' else ':'} {poids}")
 
     # Section 5: Modalites
-    write_section("ARTICLE 5 - MODALITES DE REMISE DES OFFRES")
-    write_field("Date limite de remise", tender_data["date_limite"])
-    write_text(
-        "Les offres devront etre transmises par voie electronique via la plateforme "
-        "de dematerialisation des marches publics. Les candidats sont invites a "
-        "deposer leurs plis dans les delais impartis. Tout pli recu hors delai "
-        "sera declare irrecevable."
-    )
+    write_section(text["a5"])
+    write_field(text["deadline"], tender_data["date_limite"])
+    write_text(text["submission"])
     y -= 0.2*cm
-    write_text(
-        "Les variantes sont autorisees sous reserve de presenter une offre de base "
-        "conforme au cahier des charges. Les offres seront redigees en langue francaise. "
-        "Le delai de validite des offres est fixe a 120 jours."
-    )
+    write_text(text["variants"])
 
     # Section 6: Pieces du dossier
-    write_section("ARTICLE 6 - COMPOSITION DU DOSSIER DE CONSULTATION (DCE)")
-    write_text("Le dossier de consultation comprend les pieces suivantes :")
+    write_section(text["a6"])
+    write_text(text["documents"])
     y -= 0.1*cm
     for i, piece in enumerate(tender_data["pieces"], 1):
-        write_bullet(f"Piece {i} - {piece}")
+        write_bullet(f"{text['document']} {i} - {piece}")
 
     # Section 7: Renseignements complementaires
-    write_section("ARTICLE 7 - RENSEIGNEMENTS COMPLEMENTAIRES")
-    write_text(
-        "Pour tout renseignement complementaire, les candidats sont invites a adresser "
-        f"leurs questions par ecrit a {tender_data['contact'].split('/')[0].strip()} "
-        "au plus tard 10 jours avant la date limite de remise des offres."
-    )
+    write_section(text["a7"])
+    write_text(text["questions"].format(contact=tender_data['contact'].split('/')[0].strip()))
     y -= 0.3*cm
-    write_text(
-        "Les reponses aux questions seront communiquees a l'ensemble des candidats "
-        "via la plateforme de dematerialisation."
-    )
+    write_text(text["answers"])
 
     # Footer
     y -= 0.8*cm
@@ -490,16 +479,14 @@ def generate_tender_pdf(tender_data, output_path):
     c.line(1.5*cm, y, width - 1.5*cm, y)
     y -= 0.5*cm
     c.setFont("Helvetica-Oblique", 8)
-    c.drawCentredString(width / 2, y, f"Marche {tender_data['numero']} - {tender_data['maitre_ouvrage']}")
+    c.drawCentredString(width / 2, y, f"{text['footer_contract']} {tender_data['numero']} - {tender_data['maitre_ouvrage']}")
     y -= 0.4*cm
-    c.drawCentredString(width / 2, y, "Document genere dans le cadre de la procedure de mise en concurrence")
+    c.drawCentredString(width / 2, y, text["footer"])
 
     c.save()
 
 
 def main():
-    import shutil
-
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
     output_dir = os.path.join(project_root, "documents", "tenders")
@@ -514,10 +501,9 @@ def main():
         size = os.path.getsize(pdf_path)
         print(f"  {tender['numero']} -> {tender['filename']} ({size:,} bytes)")
 
-        # Generate EN version (copy with _en suffix)
-        en_file = tender["filename"].replace(".pdf", "_en.pdf")
-        en_path = os.path.join(output_dir, en_file)
-        shutil.copy2(pdf_path, en_path)
+        # English translation
+        en_path = os.path.join(output_dir, tender["filename"].replace(".pdf", "_en.pdf"))
+        generate_tender_pdf(english(tender), en_path, "en")
         en_count += 1
 
     print(f"\nGenerated {len(TENDERS)} tender PDFs + {en_count} EN versions in {output_dir}")

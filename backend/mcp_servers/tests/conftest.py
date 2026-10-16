@@ -69,10 +69,12 @@ async def documents_embedded():
                              vector="[" + ",".join(map(str, fake_embedding(row["text"]))) + "]", id=row["id"])
 
 
-CLAIM_TEXT = """AUTO CLAIM FORM
-Claimant: Jean Martin, jean.martin@mail.fr, 06 12 34 56 78
-Accident on the A6, rear bumper and trunk damaged.
-Estimated Repair Cost: $6,200.00"""
+CLAIM_TEXT = """DÉCLARATION DE SINISTRE AUTOMOBILE
+Nom : Jean Martin
+E-mail : jean.martin@mail.fr
+Téléphone : 06 12 34 56 78
+Accident sur l'A6, pare-chocs arrière et coffre endommagés.
+Montant réclamé : 6 200,00 €"""
 
 
 @pytest.fixture(scope="session")

@@ -28,7 +28,7 @@ answer with exactly one JSON code block:
 
 REVIEW_REQUEST = """
 When your recommendation is "{review_decision}", a person decides: replace null in "review" with
-{{"reasons": ["<why a person must decide>"], "checks": ["<a fact the reviewer should verify>"], "suggestion": <the decision you lean to, one of {human_decisions}, or null>}}"""
+{{"reasons": ["<why a person must decide, in French>"], "checks": ["<a fact the reviewer should verify, in French>"], "suggestion": <the decision you would take if you had to, one of {human_decisions} (never "{review_decision}"), or null>}}"""
 
 _CODE_BLOCK = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
 _TRAILING_COMMA = re.compile(r",\s*([}\]])")

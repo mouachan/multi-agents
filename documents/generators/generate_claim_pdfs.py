@@ -1,622 +1,533 @@
-#!/usr/bin/env python3
-"""
-Generate realistic claim PDF documents for the multi-agents platform.
-Outputs to documents/claims/ with filenames matching the seed data.
-"""
+"""Claim forms of the demo (documents/claims): for each seeded claim, the French form (claim_<type>_<n>.pdf,
+the document the agent reads) and its English translation (claim_<type>_<n>_en.pdf, shown to English
+readers). Both versions carry the same facts and figures.
 
+The facts of the ten precedents (CLM-2024-0001 to 0010) support their recorded decision
+(database/seed_data/precedent_decisions.json): the agent compares new claims with them. The other
+claims cover the usual outcomes: covered and clear, not covered (no contract of the claim's type in
+the seed), and cases a person should look at (late declaration, amount above the ceiling...).
+Amounts are in euros; "Montant réclamé" is the line the payout computation reads
+(backend/mcp_servers/claims_server).
+
+From the repository root:
+    podman run --rm -v ./:/src:Z -w /src registry.access.redhat.com/ubi9/python-312 \\
+      bash -c "pip install -q reportlab && python documents/generators/generate_claim_pdfs.py"
+"""
 import os
-import sys
-from datetime import datetime, timedelta
 import random
-from reportlab.lib.pagesizes import letter
+import unicodedata
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
+
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.units import cm, inch
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
 
-# Use fixed seed for reproducible output
-random.seed(42)
+INSURER = "Demo Assurances"   # fictitious insurer of the demo
 
-# ============================================================================
-# Auto claim scenarios
-# ============================================================================
-AUTO_SCENARIOS = [
-    {"incident": "Rear-end collision at intersection of Route 66 and Main St. Traffic was heavy during rush hour. The other driver ran a red light.",
-     "damage": "Front bumper severely damaged, both headlights broken, radiator punctured, hood bent. Airbags did not deploy.",
-     "location": "Intersection of Route 66 and Main St, Springfield, IL",
-     "vehicle": "Toyota Camry 2022", "plate": "ABC-4521"},
-    {"incident": "Side-swipe collision on highway I-55 during lane change. Other vehicle merged without checking blind spot.",
-     "damage": "Driver side door deeply scratched, side mirror torn off, rear quarter panel dented. Paint damage along entire driver side.",
-     "location": "I-55 Southbound, Mile Marker 42, near Springfield",
-     "vehicle": "Honda Accord 2021", "plate": "XYZ-7834"},
-    {"incident": "Rear-end collision in Walmart parking lot while backing out of space. Low speed impact.",
-     "damage": "Rear bumper dented and cracked, taillight assembly broken, trunk lid misaligned. Minor cosmetic damage.",
-     "location": "Walmart Supercenter Parking Lot, 1500 Oak Ave, Springfield, IL",
-     "vehicle": "Ford F-150 2023", "plate": "DEF-2198"},
-    {"incident": "Hit-and-run incident while vehicle was parked on Elm Street overnight. Discovered damage in the morning.",
-     "damage": "Passenger side front fender crushed, door panel scratched, wheel rim bent. Paint transfer from white vehicle.",
-     "location": "456 Elm Street, Springfield, IL (street parking)",
-     "vehicle": "Chevrolet Malibu 2020", "plate": "GHI-5567"},
-    {"incident": "Fender bender at stoplight on 5th and Main. Vehicle ahead stopped suddenly for pedestrian.",
-     "damage": "Front fender pushed in, hood slightly buckled, bumper cover cracked. Headlight housing cracked.",
-     "location": "Intersection of 5th Street and Main Avenue, Springfield, IL",
-     "vehicle": "Nissan Altima 2022", "plate": "JKL-3342"},
-    {"incident": "Multi-vehicle pileup on Highway 66 due to sudden fog. Chain reaction involving 4 vehicles.",
-     "damage": "Significant front and rear damage, both bumpers destroyed, trunk crushed, rear window shattered. Totaled.",
-     "location": "Highway 66 near Exit 12, Sangamon County, IL",
-     "vehicle": "Subaru Outback 2021", "plate": "MNO-8891"},
-    {"incident": "Collision with deer crossing rural road at dusk. Animal appeared suddenly from wooded area.",
-     "damage": "Hood severely dented, windshield cracked in multiple places, front grille destroyed. Deer hair embedded in damage.",
-     "location": "Rural Route 45, 3 miles south of Chatham, IL",
-     "vehicle": "Dodge Ram 1500 2022", "plate": "PQR-1123"},
-    {"incident": "Backed into concrete pole in shopping center parking garage. Limited visibility due to pillar obstruction.",
-     "damage": "Rear bumper deeply dented, backup camera destroyed, rear parking sensors non-functional. Exhaust pipe bent.",
-     "location": "Springfield Mall Parking Garage, Level B2, Pine Street",
-     "vehicle": "BMW X3 2023", "plate": "STU-6745"},
-    {"incident": "T-bone collision at uncontrolled intersection. Other driver failed to yield right of way.",
-     "damage": "Passenger door completely crushed, B-pillar deformed, side airbags deployed. Window shattered. Occupant injury.",
-     "location": "Intersection of Oak Drive and Maple Court, Springfield, IL",
-     "vehicle": "Hyundai Tucson 2022", "plate": "VWX-9908"},
-    {"incident": "Lost control on icy road and slid into guardrail. Black ice conditions, temperature was 28F.",
-     "damage": "Front right quarter panel crushed against guardrail, wheel assembly damaged, axle potentially bent.",
-     "location": "Highway 72 North, near Lake Springfield",
-     "vehicle": "Jeep Cherokee 2021", "plate": "YZA-2234"},
-    {"incident": "Rear-ended while stopped at railroad crossing. Following vehicle distracted by phone.",
-     "damage": "Rear bumper destroyed, trunk lid bent, rear lights broken. Whiplash reported by driver.",
-     "location": "Railroad crossing on County Road 14, Sherman, IL",
-     "vehicle": "Kia Sorento 2023", "plate": "BCD-5567"},
-    {"incident": "Swerved to avoid pothole and hit curb. Deep pothole on poorly maintained road.",
-     "damage": "Front right tire blown, wheel rim cracked, suspension damage, lower control arm bent.",
-     "location": "3200 Block of Washington Street, Springfield, IL",
-     "vehicle": "Mazda CX-5 2022", "plate": "EFG-8890"},
-    {"incident": "Hail storm damage while parked at workplace. Golf ball sized hail for 15 minutes.",
-     "damage": "Multiple dents across hood, roof, and trunk. Windshield chipped in 3 places. Both side mirrors cracked.",
-     "location": "State Capitol Complex Parking Lot, Springfield, IL",
-     "vehicle": "Tesla Model 3 2023", "plate": "HIJ-1122"},
-    {"incident": "Collision in drive-through lane. Vehicle behind rolled forward while driver was at window.",
-     "damage": "Rear bumper scratched and pushed in, rear sensor bar damaged. Minor trunk lid paint damage.",
-     "location": "McDonald's Drive-Through, 890 Wabash Ave, Springfield, IL",
-     "vehicle": "Volkswagen Jetta 2021", "plate": "KLM-4455"},
-    {"incident": "Garage door closed on vehicle while pulling out. Door sensor malfunction.",
-     "damage": "Roof panel dented and scratched, rear spoiler broken, rear window gasket displaced.",
-     "location": "Residential garage, 567 Birch Lane, Springfield, IL",
-     "vehicle": "Toyota RAV4 2022", "plate": "NOP-7788"},
-    {"incident": "Flooding damage from flash flood. Vehicle stalled in rising water on underpass.",
-     "damage": "Engine hydrolocked, interior flooded to dashboard level, electrical system compromised. Likely total loss.",
-     "location": "Veterans Parkway underpass at I-72, Springfield, IL",
-     "vehicle": "Honda CR-V 2021", "plate": "QRS-0011"},
-    {"incident": "Construction zone accident. Loose gravel kicked up by truck, followed by sudden stop.",
-     "damage": "Windshield shattered by large stone, front bumper impacted barrier, paint chips across entire front.",
-     "location": "I-55 construction zone, Mile 38-42, Williamsville, IL",
-     "vehicle": "Ford Escape 2023", "plate": "TUV-3344"},
-    {"incident": "Vandalism in apartment complex parking. Vehicle keyed and tires slashed overnight.",
-     "damage": "Deep key scratches on all four panels, two tires slashed, driver side mirror kicked off.",
-     "location": "Sunset Apartments, 2100 South Grand Ave, Springfield, IL",
-     "vehicle": "Chevrolet Equinox 2022", "plate": "WXY-6677"},
-    {"incident": "Backing out of driveway into neighbor's parked car. Limited visibility due to hedge.",
-     "damage": "Rear bumper cracked, tail light broken, minor trunk dent. Other vehicle also damaged.",
-     "location": "Residential driveway, 234 Cedar Court, Rochester, IL",
-     "vehicle": "Buick Encore 2021", "plate": "ZAB-9900"},
-    {"incident": "Collision with shopping cart in grocery store parking lot during high winds.",
-     "damage": "Multiple door dings, passenger side panel dented, paint scratched in several spots.",
-     "location": "Meijer Parking Lot, 3000 Lindbergh Blvd, Springfield, IL",
-     "vehicle": "Nissan Rogue 2023", "plate": "CDE-2233"},
+LABELS = {
+    "fr": {
+        "title": {"Auto": "DÉCLARATION DE SINISTRE AUTOMOBILE", "Home": "DÉCLARATION DE SINISTRE HABITATION",
+                  "Medical": "DEMANDE DE REMBOURSEMENT DE FRAIS DE SANTÉ", "Life": "DÉCLARATION DE SINISTRE PRÉVOYANCE"},
+        "department": {"Auto": "Service sinistres automobile", "Home": "Service sinistres habitation",
+                       "Medical": "Service santé", "Life": "Service prévoyance"},
+        "claim": "SINISTRE", "number": "N° de sinistre", "filed": "Date de déclaration", "incident": "Date du sinistre",
+        "policy": "N° de contrat", "insured": "ASSURÉ", "name": "Nom", "address": "Adresse", "phone": "Téléphone",
+        "email": "E-mail", "details": {"Auto": "VÉHICULE", "Home": "BIEN ASSURÉ", "Medical": "SOINS", "Life": "GARANTIE"},
+        "circumstances": "CIRCONSTANCES", "damage": {"Auto": "DOMMAGES", "Home": "DOMMAGES", "Medical": "DÉTAIL DES SOINS",
+                                                       "Life": "SITUATION DE L'ASSURÉ"},
+        "amount": "MONTANT", "claimed": "Montant réclamé", "attachments": "PIÈCES JOINTES",
+        "signature": "Signature de l'assuré", "date": "Date",
+    },
+    "en": {
+        "title": {"Auto": "MOTOR INSURANCE CLAIM FORM", "Home": "HOME INSURANCE CLAIM FORM",
+                  "Medical": "HEALTH EXPENSES CLAIM FORM", "Life": "PERSONAL PROTECTION CLAIM FORM"},
+        "department": {"Auto": "Motor claims department", "Home": "Home claims department",
+                       "Medical": "Health department", "Life": "Personal protection department"},
+        "claim": "CLAIM", "number": "Claim number", "filed": "Date filed", "incident": "Date of loss",
+        "policy": "Policy number", "insured": "POLICYHOLDER", "name": "Name", "address": "Address", "phone": "Phone",
+        "email": "Email", "details": {"Auto": "VEHICLE", "Home": "INSURED PROPERTY", "Medical": "CARE", "Life": "COVER"},
+        "circumstances": "CIRCUMSTANCES", "damage": {"Auto": "DAMAGE", "Home": "DAMAGE", "Medical": "CARE DETAILS",
+                                                      "Life": "SITUATION OF THE INSURED"},
+        "amount": "AMOUNT", "claimed": "Amount Claimed", "attachments": "ATTACHMENTS",
+        "signature": "Policyholder signature", "date": "Date",
+    },
+}
+
+Text = Dict[str, str]                 # {"fr": ..., "en": ...}
+Fields = List[Tuple[Text, Text]]      # (label, value) in both languages
+
+
+def t(fr: str, en: str) -> Text:
+    return {"fr": fr, "en": en}
+
+
+@dataclass
+class Claim:
+    number: str
+    type: str                  # Auto, Home, Medical, Life (as in the seed)
+    file: str
+    name: str
+    address: str
+    submitted: str             # as in the seed
+    days_before: int           # incident date = submitted - days_before
+    amount: float              # claimed, in euros
+    circumstances: Text
+    damage: Text
+    details: Fields = field(default_factory=list)
+    attachments: Text = field(default_factory=lambda: t("Photos", "Photos"))
+
+
+CLAIMS: List[Claim] = [
+    # ------------------------------------------------------------------ precedents (decided at install)
+    Claim("CLM-2024-0001", "Medical", "claim_medical_001.pdf", "Pierre Dupont", "12 rue de la Paix, 75002 Paris",
+          "2025-11-15 09:30:00", 12, 2850,
+          t("Méniscectomie du genou droit sous arthroscopie, en ambulatoire, après une lésion du ménisque interne "
+            "survenue lors d'une chute dans un escalier.",
+            "Arthroscopic meniscectomy of the right knee, as a day case, after a tear of the medial meniscus "
+            "caused by a fall down the stairs."),
+          t("Factures détaillées jointes, avec les actes CCAM : NFFC004 (méniscectomie par arthroscopie), "
+            "anesthésie ZZLP025, consultation pré-opératoire. Remboursement Sécurité sociale déduit.",
+            "Detailed invoices attached, with the CCAM procedure codes: NFFC004 (arthroscopic meniscectomy), "
+            "anaesthesia ZZLP025, pre-operative consultation. National health insurance refund deducted."),
+          [(t("Établissement", "Facility"), t("Clinique du Parc, Paris 16e", "Clinique du Parc, Paris 16th")),
+           (t("Chirurgien", "Surgeon"), t("Dr Hélène Morel, chirurgien orthopédiste", "Dr Hélène Morel, orthopaedic surgeon")),
+           (t("Actes CCAM", "CCAM codes"), t("NFFC004, ZZLP025, consultation CS", "NFFC004, ZZLP025, CS consultation"))],
+          t("Factures détaillées, décompte Sécurité sociale, compte-rendu opératoire",
+            "Detailed invoices, national health insurance statement, operative report")),
+    Claim("CLM-2024-0002", "Auto", "claim_auto_001.pdf", "Marie Leroy", "45 avenue Victor Hugo, 69006 Lyon",
+          "2025-11-18 14:15:00", 4, 6400,
+          t("Collision à l'intersection du cours Lafayette et de la rue Garibaldi à Lyon : l'autre conducteur n'a pas "
+            "respecté le feu rouge. Constat amiable signé par les deux parties ; procès-verbal de police établi.",
+            "Collision at the junction of cours Lafayette and rue Garibaldi in Lyon: the other driver ran the red light. "
+            "Joint accident report signed by both parties; police report drawn up."),
+          t("Avant droit enfoncé, phare et pare-chocs avant cassés, aile avant droite déformée. L'expertise du véhicule "
+            "confirme les dommages visibles sur les photos. Véhicule de remplacement demandé pendant les réparations.",
+            "Front right crushed, headlight and front bumper broken, front right wing bent. The vehicle assessment "
+            "confirms the damage visible on the photos. Courtesy car requested during the repairs."),
+          [(t("Véhicule", "Vehicle"), t("Peugeot 308, 2022", "Peugeot 308, 2022")),
+           (t("Immatriculation", "Registration"), t("GH-482-KL", "GH-482-KL")),
+           (t("Constat amiable", "Joint accident report"), t("Oui, signé par les deux parties", "Yes, signed by both parties")),
+           (t("Procès-verbal de police", "Police report"), t("PV n° 2025-LY-18342", "Report no. 2025-LY-18342"))],
+          t("Constat amiable, procès-verbal de police, rapport d'expertise, 8 photos",
+            "Joint accident report, police report, assessment report, 8 photos")),
+    Claim("CLM-2024-0003", "Auto", "claim_auto_002.pdf", "Jean Moreau", "8 boulevard Haussmann, 75009 Paris",
+          "2025-11-20 10:45:00", 9, 9800,
+          t("Sortie de piste dans un virage lors d'un rallye amateur organisé sur le circuit fermé de Linas-Montlhéry. "
+            "Le conducteur indique participer à la manche régionale du rallye du club automobile de l'Essonne.",
+            "Ran off the track in a bend during an amateur rally held on the closed circuit of Linas-Montlhéry. "
+            "The driver states he was taking part in the regional round of the Essonne car club rally."),
+          t("Train avant arraché, radiateur percé, carrosserie avant et latérale gauche enfoncée après le choc contre "
+            "les rails de sécurité du circuit. Les photos montrent la piste et les rails du circuit.",
+            "Front axle torn off, radiator pierced, front and left-side bodywork dented after hitting the circuit's "
+            "crash barriers. The photos show the track and the circuit's barriers."),
+          [(t("Véhicule", "Vehicle"), t("Renault Mégane RS, 2021", "Renault Mégane RS, 2021")),
+           (t("Immatriculation", "Registration"), t("FD-219-AZ", "FD-219-AZ")),
+           (t("Lieu", "Place"), t("Circuit de Linas-Montlhéry (circuit fermé)", "Linas-Montlhéry circuit (closed circuit)")),
+           (t("Événement", "Event"), t("Rallye amateur, manche régionale", "Amateur rally, regional round"))],
+          t("Photos, attestation de l'organisateur du rallye, devis du garage",
+            "Photos, certificate from the rally organiser, garage estimate")),
+    Claim("CLM-2024-0004", "Home", "claim_home_001.pdf", "Sophie Bernard", "23 rue Garibaldi, 69003 Lyon",
+          "2025-11-22 16:00:00", 8, 15000,
+          t("Tempête des 13 et 14 novembre 2025 sur Lyon, avec des rafales à 130 km/h. Un arrêté de catastrophe "
+            "naturelle a été publié au Journal officiel le 15/11/2025 pour la commune de Lyon.",
+            "Storm of 13 and 14 November 2025 over Lyon, with gusts at 130 km/h. A natural disaster decree was "
+            "published in the Journal officiel on 15/11/2025 for the city of Lyon."),
+          t("Toiture arrachée sur 20 m², tuiles et gouttières détruites, deux fenêtres du séjour brisées, infiltrations "
+            "d'eau dans la chambre. L'expertise du 20/11/2025 évalue les dommages à 15 000 €.",
+            "Roof torn off over 20 m², tiles and gutters destroyed, two living-room windows broken, water infiltration "
+            "in the bedroom. The assessment of 20/11/2025 puts the damage at €15,000."),
+          [(t("Bien", "Property"), t("Maison individuelle, résidence principale", "Detached house, main residence")),
+           (t("Nature du sinistre", "Type of loss"), t("Tempête", "Storm")),
+           (t("Arrêté de catastrophe naturelle", "Natural disaster decree"), t("Oui, JO du 15/11/2025", "Yes, Journal officiel of 15/11/2025"))],
+          t("Rapport d'expertise, 15 photos, bulletin météo, copie de l'arrêté",
+            "Assessment report, 15 photos, weather report, copy of the decree")),
+    Claim("CLM-2024-0005", "Medical", "claim_medical_002.pdf", "Thomas Petit", "156 route de Vannes, 44000 Nantes",
+          "2025-11-25 08:20:00", 85, 47000,
+          t("Hospitalisation de 3 jours (du 01/09 au 03/09/2025) pour des douleurs abdominales, avec examens et "
+            "surveillance. Demande envoyée 85 jours après la sortie.",
+            "3-day hospital stay (01/09 to 03/09/2025) for abdominal pain, with tests and monitoring. Claim sent "
+            "85 days after discharge."),
+          t("Montant total de 47 000 € pour 3 jours. Une facture est datée du 05/09/2025, après la sortie ; deux actes "
+            "CCAM facturés ne correspondent pas au compte-rendu d'hospitalisation.",
+            "Total of €47,000 for 3 days. One invoice is dated 05/09/2025, after discharge; two invoiced CCAM codes "
+            "do not match the hospital report."),
+          [(t("Établissement", "Facility"), t("Clinique Saint-Augustin, Nantes", "Clinique Saint-Augustin, Nantes")),
+           (t("Séjour", "Stay"), t("3 jours, du 01/09 au 03/09/2025", "3 days, 01/09 to 03/09/2025")),
+           (t("Délai de déclaration", "Declaration delay"), t("85 jours après la sortie", "85 days after discharge"))],
+          t("Factures, compte-rendu d'hospitalisation", "Invoices, hospital report")),
+    Claim("CLM-2024-0006", "Auto", "claim_auto_003.pdf", "Isabelle Durand", "3 place Bellecour, 69002 Lyon",
+          "2025-11-27 11:30:00", 5, 8500,
+          t("Véhicule à l'arrêt percuté par l'arrière sur le quai Claude Bernard à Lyon. Le tiers, identifié, reconnaît "
+            "sa responsabilité à 100 % sur le constat amiable signé.",
+            "Stationary vehicle hit from behind on quai Claude Bernard in Lyon. The identified third party admits "
+            "full liability on the signed joint accident report."),
+          t("Pare-chocs arrière, hayon et feux arrière à remplacer, plancher de coffre déformé. L'expertise chiffre "
+            "les réparations à 8 500 €, conformément aux photos.",
+            "Rear bumper, tailgate and rear lights to be replaced, boot floor bent. The assessment puts the repairs "
+            "at €8,500, consistent with the photos."),
+          [(t("Véhicule", "Vehicle"), t("Citroën C5 Aircross, 2023", "Citroën C5 Aircross, 2023")),
+           (t("Immatriculation", "Registration"), t("GK-731-PB", "GK-731-PB")),
+           (t("Tiers", "Third party"), t("Identifié, responsable à 100 % (constat amiable)", "Identified, fully liable (joint report)"))],
+          t("Constat amiable, rapport d'expertise, 10 photos", "Joint accident report, assessment report, 10 photos")),
+    Claim("CLM-2024-0007", "Home", "claim_home_002.pdf", "Nicolas Lambert", "67 avenue Jean Jaurès, 31000 Toulouse",
+          "2025-11-29 13:45:00", 10, 7200,
+          t("Dégât des eaux dans la salle de bains de la maison de Toulouse. Le rapport du plombier indique une fuite "
+            "progressive : les joints de la douche n'ont pas été remplacés depuis 8 ans.",
+            "Water damage in the bathroom of the house in Toulouse. The plumber's report describes a gradual leak: "
+            "the shower seals had not been replaced for 8 years."),
+          t("Plancher de la salle de bains pourri, moisissures derrière le carrelage, plafond de la cuisine taché. Les "
+            "traces montrent une infiltration lente sur plusieurs mois.",
+            "Bathroom floor rotten, mould behind the tiles, kitchen ceiling stained. The marks show a slow "
+            "infiltration over several months."),
+          [(t("Bien", "Property"), t("Maison individuelle", "Detached house")),
+           (t("Nature du sinistre", "Type of loss"), t("Dégât des eaux", "Water damage")),
+           (t("Rapport du plombier", "Plumber's report"), t("Fuite progressive, joints de douche non remplacés depuis 8 ans",
+                                                          "Gradual leak, shower seals not replaced for 8 years"))],
+          t("Rapport du plombier, 9 photos, devis de réparation", "Plumber's report, 9 photos, repair estimate")),
+    Claim("CLM-2024-0008", "Medical", "claim_medical_003.pdf", "Claire Fontaine", "14 rue de Sèze, 69006 Lyon",
+          "2025-12-01 09:10:00", 20, 12300,
+          t("Bilan et suivi d'une maladie auto-immune : examens d'imagerie, analyses et trois consultations de "
+            "spécialistes (rhumatologue, néphrologue, dermatologue).",
+            "Work-up and follow-up of an autoimmune disease: imaging, lab tests and three specialist consultations "
+            "(rheumatologist, nephrologist, dermatologist)."),
+          t("Montant total de 12 300 €. Les factures des trois consultations de spécialistes ne détaillent pas les "
+            "actes CCAM ; les autres factures sont détaillées.",
+            "Total of €12,300. The invoices of the three specialist consultations do not detail the CCAM codes; "
+            "the other invoices are detailed."),
+          [(t("Établissement", "Facility"), t("Hôpital Édouard-Herriot, Lyon", "Édouard-Herriot hospital, Lyon")),
+           (t("Consultations", "Consultations"), t("3 spécialistes, actes CCAM non détaillés", "3 specialists, CCAM codes not detailed"))],
+          t("Factures, ordonnances", "Invoices, prescriptions")),
+    Claim("CLM-2024-0009", "Auto", "claim_auto_004.pdf", "Antoine Rousseau", "29 quai de la Tournelle, 75005 Paris",
+          "2025-12-03 15:30:00", 6, 12600,
+          t("Perte de contrôle du véhicule de nuit sur le boulevard périphérique, choc contre la glissière centrale. "
+            "Le procès-verbal de police relève une alcoolémie de 0,8 g/L (seuil légal : 0,5 g/L).",
+            "Loss of control of the vehicle at night on the Paris ring road, crash into the central barrier. The "
+            "police report records a blood alcohol level of 0.8 g/L (legal limit: 0.5 g/L)."),
+          t("Avant et flanc gauche détruits, airbags déclenchés, roue avant gauche arrachée.",
+            "Front and left side destroyed, airbags deployed, front left wheel torn off."),
+          [(t("Véhicule", "Vehicle"), t("Volkswagen Golf, 2020", "Volkswagen Golf, 2020")),
+           (t("Immatriculation", "Registration"), t("EX-604-TR", "EX-604-TR")),
+           (t("Procès-verbal de police", "Police report"), t("PV n° 2025-PA-77120, alcoolémie 0,8 g/L",
+                                                           "Report no. 2025-PA-77120, blood alcohol 0.8 g/L"))],
+          t("Procès-verbal de police, devis du garage, photos", "Police report, garage estimate, photos")),
+    Claim("CLM-2024-0010", "Home", "claim_home_003.pdf", "Julie Martin", "88 rue Nationale, 59000 Lille",
+          "2025-12-05 10:00:00", 7, 18400,
+          t("Incendie partiel de la cuisine parti d'une friteuse. Il s'agit du troisième sinistre déclaré sur ce bien "
+            "en 18 mois, après un dégât des eaux (mars 2024) et un vol (janvier 2025), tous deux indemnisés.",
+            "Partial fire in the kitchen started by a deep fryer. This is the third claim on this property in 18 months, "
+            "after water damage (March 2024) and a theft (January 2025), both compensated."),
+          t("Cuisine détruite, suie dans le séjour, plafond à refaire. Devis de remise en état : 18 400 €.",
+            "Kitchen destroyed, soot in the living room, ceiling to be redone. Repair estimate: €18,400."),
+          [(t("Bien", "Property"), t("Appartement, résidence principale", "Flat, main residence")),
+           (t("Nature du sinistre", "Type of loss"), t("Incendie partiel", "Partial fire")),
+           (t("Sinistres antérieurs (24 mois)", "Previous claims (24 months)"),
+            t("Dégât des eaux (03/2024), vol (01/2025)", "Water damage (03/2024), theft (01/2025)"))],
+          t("Rapport des pompiers, devis, 12 photos", "Fire brigade report, estimate, 12 photos")),
+
+    # ------------------------------------------------------------------ claims to process
+    Claim("CLM-2024-0011", "Medical", "claim_medical_004.pdf", "Philippe Garcia", "5 rue du Faubourg, 13001 Marseille",
+          "2025-12-07 08:45:00", 5, 1650,
+          t("Passage aux urgences pour une douleur thoracique : scanner, dosages de troponine, surveillance cardiaque "
+            "pendant 6 heures. Origine non cardiaque ; sortie le jour même.",
+            "Emergency visit for chest pain: CT scan, troponin tests, cardiac monitoring for 6 hours. Non-cardiac "
+            "origin; discharged the same day."),
+          t("Factures détaillées avec les actes CCAM. Reste à charge après remboursement de la Sécurité sociale : 1 650 €.",
+            "Detailed invoices with the CCAM codes. Amount left to pay after the national health insurance refund: €1,650."),
+          [(t("Établissement", "Facility"), t("Hôpital de la Timone, Marseille", "La Timone hospital, Marseille"))],
+          t("Factures détaillées, décompte Sécurité sociale", "Detailed invoices, national health insurance statement")),
+    Claim("CLM-2024-0012", "Auto", "claim_auto_005.pdf", "Nathalie Thomas", "41 avenue de la République, 33000 Bordeaux",
+          "2025-12-09 14:20:00", 4, 5900,
+          t("Accrochage sur la rocade de Bordeaux lors d'un changement de file ; le véhicule voisin s'est rabattu sans "
+            "vérifier son angle mort.",
+            "Side-swipe on the Bordeaux ring road during a lane change; the neighbouring vehicle cut in without checking "
+            "its blind spot."),
+          t("Portière conducteur rayée et enfoncée, rétroviseur arraché, aile arrière gauche bosselée.",
+            "Driver's door scratched and dented, door mirror torn off, rear left wing dented."),
+          [(t("Véhicule", "Vehicle"), t("Toyota Yaris, 2021", "Toyota Yaris, 2021")),
+           (t("Immatriculation", "Registration"), t("FT-318-MD", "FT-318-MD"))],
+          t("Constat amiable, devis du garage, photos", "Joint accident report, garage estimate, photos")),
+    Claim("CLM-2024-0013", "Home", "claim_home_004.pdf", "François Robert", "17 rue des Lices, 35000 Rennes",
+          "2025-12-11 11:15:00", 6, 4300,
+          t("Dégât des eaux provenant de l'appartement du dessus : rupture du flexible d'alimentation du lave-linge du voisin.",
+            "Water damage from the flat upstairs: the neighbour's washing machine supply hose burst."),
+          t("Plafond du séjour effondré sur 4 m², parquet gondolé, peintures à refaire.",
+            "Living-room ceiling collapsed over 4 m², wooden floor warped, paintwork to be redone."),
+          [(t("Bien", "Property"), t("Appartement", "Flat")),
+           (t("Nature du sinistre", "Type of loss"), t("Dégât des eaux", "Water damage"))],
+          t("Constat dégât des eaux, photos, devis", "Water damage report, photos, estimate")),
+    Claim("CLM-2024-0014", "Auto", "claim_auto_006.pdf", "Catherine Richard", "62 cours Mirabeau, 13100 Aix-en-Provence",
+          "2025-12-13 16:30:00", 3, 6750,
+          t("Orage de grêle pendant 15 minutes alors que le véhicule était stationné sur le parking de l'employeur.",
+            "Hail storm for 15 minutes while the vehicle was parked in the employer's car park."),
+          t("Nombreux impacts sur le capot, le toit et le coffre ; pare-brise étoilé à trois endroits ; deux "
+            "rétroviseurs fissurés.",
+            "Many dents on the bonnet, roof and boot; windscreen chipped in three places; both door mirrors cracked."),
+          [(t("Véhicule", "Vehicle"), t("Renault Clio, 2023", "Renault Clio, 2023")),
+           (t("Immatriculation", "Registration"), t("GM-905-EC", "GM-905-EC"))],
+          t("Bulletin météo, devis du carrossier, photos", "Weather report, body shop estimate, photos")),
+    Claim("CLM-2024-0015", "Medical", "claim_medical_005.pdf", "David Simon", "9 place du Capitole, 31000 Toulouse",
+          "2025-12-15 09:00:00", 14, 61200,
+          t("Pontage coronarien programmé, suivi d'un séjour de 9 jours en chirurgie cardiaque et d'une "
+            "réadaptation en centre spécialisé.",
+            "Planned coronary bypass, followed by a 9-day stay in cardiac surgery and rehabilitation in a specialised "
+            "centre."),
+          t("Reste à charge après remboursement de la Sécurité sociale : 61 200 € (dépassements d'honoraires, chambre "
+            "particulière, réadaptation).",
+            "Amount left to pay after the national health insurance refund: €61,200 (extra fees, private room, "
+            "rehabilitation)."),
+          [(t("Établissement", "Facility"), t("Clinique Pasteur, Toulouse", "Clinique Pasteur, Toulouse")),
+           (t("Séjour", "Stay"), t("9 jours", "9 days"))],
+          t("Factures détaillées, compte-rendu opératoire", "Detailed invoices, operative report")),
+    Claim("CLM-2024-0016", "Auto", "claim_auto_007.pdf", "Valérie Michel", "33 rue de la Liberté, 06000 Nice",
+          "2025-12-17 13:45:00", 2, 3200,
+          t("Tentative de vol pendant la nuit, véhicule garé dans la rue : serrure forcée, contacteur endommagé. "
+            "Plainte déposée au commissariat de Nice.",
+            "Attempted theft during the night, vehicle parked in the street: lock forced, ignition switch damaged. "
+            "Complaint filed at the Nice police station."),
+          t("Serrure conducteur et contacteur à remplacer, vitre arrière brisée, tableau de bord abîmé.",
+            "Driver's lock and ignition switch to be replaced, rear window broken, dashboard damaged."),
+          [(t("Véhicule", "Vehicle"), t("Peugeot 2008, 2022", "Peugeot 2008, 2022")),
+           (t("Immatriculation", "Registration"), t("GE-447-NB", "GE-447-NB")),
+           (t("Dépôt de plainte", "Police complaint"), t("Oui, récépissé n° 2025-NI-5521", "Yes, receipt no. 2025-NI-5521"))],
+          t("Récépissé de plainte, devis, photos", "Complaint receipt, estimate, photos")),
+    Claim("CLM-2024-0017", "Home", "claim_home_005.pdf", "Arnaud Lefebvre", "71 avenue Foch, 67000 Strasbourg",
+          "2025-12-19 10:30:00", 3, 9300,
+          t("Cambriolage pendant les vacances : porte d'entrée fracturée, appartement fouillé.",
+            "Burglary during the holidays: front door forced, flat searched."),
+          t("Vol d'un ordinateur, de bijoux et d'un téléviseur ; porte d'entrée à remplacer.",
+            "Theft of a computer, jewellery and a television; front door to be replaced."),
+          [(t("Bien", "Property"), t("Appartement", "Flat")),
+           (t("Nature du sinistre", "Type of loss"), t("Vol avec effraction", "Burglary"))],
+          t("Récépissé de plainte, factures d'achat, photos", "Complaint receipt, purchase invoices, photos")),
+    Claim("CLM-2024-0018", "Life", "claim_life_001.pdf", "Christine Dubois", "25 rue de Vesle, 51100 Reims",
+          "2025-12-21 15:00:00", 60, 140000,
+          t("Accident de la route : collision frontale sur l'autoroute A4. Hospitalisation de 3 semaines en soins "
+            "intensifs ; séquelles permanentes.",
+            "Road accident: head-on collision on the A4 motorway. 3 weeks in intensive care; permanent after-effects."),
+          t("Invalidité permanente partielle évaluée à 40 % par le médecin expert. Capital demandé : 40 % du capital "
+            "assuré de 350 000 €.",
+            "Permanent partial disability assessed at 40% by the medical expert. Capital requested: 40% of the "
+            "insured capital of €350,000."),
+          [(t("Garantie", "Cover"), t("Invalidité permanente", "Permanent disability")),
+           (t("Capital assuré", "Insured capital"), t("350 000,00 €", "€350,000.00")),
+           (t("Taux d'invalidité", "Disability rate"), t("40 % (expertise médicale)", "40% (medical assessment)"))],
+          t("Rapport de police, certificat médical, rapport d'expertise médicale", "Police report, medical certificate, medical assessment")),
+    Claim("CLM-2024-0019", "Auto", "claim_auto_008.pdf", "Sébastien Roux", "48 boulevard Gambetta, 34000 Montpellier",
+          "2025-12-23 08:15:00", 42, 7400,
+          t("Choc contre un poteau en sortant d'un parking souterrain à Montpellier, faute de visibilité. Le sinistre "
+            "est déclaré 42 jours après les faits (délai contractuel : 5 jours ouvrés).",
+            "Hit a pole when leaving an underground car park in Montpellier, visibility being poor. The claim is "
+            "declared 42 days after the event (contractual delay: 5 working days)."),
+          t("Pare-chocs arrière enfoncé, caméra de recul détruite, radars de stationnement hors d'usage.",
+            "Rear bumper dented, reversing camera destroyed, parking sensors out of order."),
+          [(t("Véhicule", "Vehicle"), t("BMW X1, 2023", "BMW X1, 2023")),
+           (t("Immatriculation", "Registration"), t("GP-260-RS", "GP-260-RS")),
+           (t("Délai de déclaration", "Declaration delay"), t("42 jours (contrat : 5 jours ouvrés)", "42 days (policy: 5 working days)"))],
+          t("Devis du garage, photos", "Garage estimate, photos")),
+    Claim("CLM-2024-0020", "Home", "claim_home_006.pdf", "Émilie Girard", "16 rue Saint-Jean, 69005 Lyon",
+          "2025-12-25 12:00:00", 4, 11200,
+          t("Rupture d'une canalisation gelée dans la salle de bains de l'étage pendant la vague de froid (-12 °C).",
+            "A frozen pipe burst in the upstairs bathroom during the cold spell (-12 °C)."),
+          t("Sol de la salle de bains détruit, plafond du séjour effondré, parquet déformé dans deux pièces.",
+            "Bathroom floor destroyed, living-room ceiling collapsed, wooden floor warped in two rooms."),
+          [(t("Bien", "Property"), t("Maison individuelle", "Detached house")),
+           (t("Nature du sinistre", "Type of loss"), t("Dégât des eaux (gel)", "Water damage (frost)"))],
+          t("Rapport du plombier, devis, photos", "Plumber's report, estimate, photos")),
+    Claim("CLM-2024-0021", "Medical", "claim_medical_006.pdf", "Laurent Martinez", "54 avenue de Toulouse, 33000 Bordeaux",
+          "2025-12-27 14:30:00", 10, 720,
+          t("Rééducation après une entorse grave de la cheville : 12 séances de kinésithérapie prescrites.",
+            "Rehabilitation after a severe ankle sprain: 12 physiotherapy sessions prescribed."),
+          t("Reste à charge après remboursement de la Sécurité sociale : 720 € (dépassements d'honoraires).",
+            "Amount left to pay after the national health insurance refund: €720 (extra fees)."),
+          [(t("Établissement", "Facility"), t("Cabinet de kinésithérapie des Chartrons, Bordeaux",
+                                                "Les Chartrons physiotherapy practice, Bordeaux"))],
+          t("Ordonnance, factures, décompte Sécurité sociale", "Prescription, invoices, national health insurance statement")),
+    Claim("CLM-2024-0022", "Auto", "claim_auto_009.pdf", "Sandrine Lopez", "7 rue du Port, 44000 Nantes",
+          "2025-12-29 09:45:00", 5, 7900,
+          t("Collision avec un chevreuil sur une route départementale près de Nantes, à la tombée de la nuit.",
+            "Collision with a deer on a country road near Nantes, at dusk."),
+          t("Capot enfoncé, pare-brise fissuré, calandre détruite, phare gauche cassé.",
+            "Bonnet dented, windscreen cracked, grille destroyed, left headlight broken."),
+          [(t("Véhicule", "Vehicle"), t("Dacia Duster, 2022", "Dacia Duster, 2022")),
+           (t("Immatriculation", "Registration"), t("GA-118-LP", "GA-118-LP")),
+           (t("Attestation", "Certificate"), t("Attestation de la gendarmerie (collision avec un animal sauvage)",
+                                               "Gendarmerie certificate (collision with a wild animal)"))],
+          t("Attestation de gendarmerie, devis, photos", "Gendarmerie certificate, estimate, photos")),
+    Claim("CLM-2024-0023", "Home", "claim_home_007.pdf", "Christophe Muller", "39 place Kléber, 67000 Strasbourg",
+          "2026-01-02 11:00:00", 5, 13500,
+          t("Tempête avec des vents de plus de 100 km/h : chute d'un arbre du jardin sur la toiture.",
+            "Storm with winds above 100 km/h: a tree from the garden fell on the roof."),
+          t("Charpente endommagée sur deux pièces, gouttières arrachées, bâche provisoire posée.",
+            "Roof structure damaged over two rooms, gutters torn off, temporary tarpaulin fitted."),
+          [(t("Bien", "Property"), t("Maison individuelle", "Detached house")),
+           (t("Nature du sinistre", "Type of loss"), t("Tempête", "Storm"))],
+          t("Photos, devis du couvreur", "Photos, roofer's estimate")),
+    Claim("CLM-2024-0024", "Life", "claim_life_002.pdf", "Hélène Fournier", "82 rue de Paris, 59000 Lille",
+          "2026-01-04 16:15:00", 45, 100000,
+          t("Maladie grave diagnostiquée : cancer du poumon de stade III, traitement par chimiothérapie et "
+            "radiothérapie en cours. Arrêt de travail prolongé.",
+            "Serious illness diagnosed: stage III lung cancer, chemotherapy and radiotherapy under way. Extended sick "
+            "leave."),
+          t("Demande du capital de la garantie maladies graves : 100 000 €. Le dossier médical complet n'est pas "
+            "encore joint (compte-rendu anatomopathologique à fournir).",
+            "Claim for the critical illness capital: €100,000. The full medical file is not attached yet (pathology "
+            "report to be provided)."),
+          [(t("Garantie", "Cover"), t("Maladies graves", "Critical illness")),
+           (t("Capital assuré", "Insured capital"), t("100 000,00 €", "€100,000.00"))],
+          t("Certificat médical, protocole de soins", "Medical certificate, care protocol")),
+    Claim("CLM-2024-0025", "Medical", "claim_medical_007.pdf", "Benoît Giraud", "11 rue Émile Zola, 38000 Grenoble",
+          "2026-01-06 08:30:00", 15, 8900,
+          t("Rupture du ligament croisé antérieur du genou gauche lors d'une chute à ski ; ligamentoplastie sous "
+            "arthroscopie et 2 nuits d'hospitalisation.",
+            "Torn anterior cruciate ligament of the left knee in a skiing fall; arthroscopic ligament repair and "
+            "2 nights in hospital."),
+          t("Factures détaillées avec les actes CCAM. Reste à charge après remboursement de la Sécurité sociale : 8 900 €.",
+            "Detailed invoices with the CCAM codes. Amount left to pay after the national health insurance refund: €8,900."),
+          [(t("Établissement", "Facility"), t("Clinique des Cèdres, Grenoble", "Clinique des Cèdres, Grenoble"))],
+          t("Factures détaillées, compte-rendu opératoire", "Detailed invoices, operative report")),
+    Claim("CLM-2024-0026", "Auto", "claim_auto_010.pdf", "Cécile André", "60 avenue Jean Perrot, 38000 Grenoble",
+          "2026-01-08 13:00:00", 6, 11300,
+          t("Glissade sur une route de montagne verglacée près de Chamrousse, sortie de route dans un fossé. Le "
+            "véhicule n'était pas équipé de pneus hiver alors que la commune les impose (loi Montagne).",
+            "Skid on an icy mountain road near Chamrousse, ran into a ditch. The vehicle had no winter tyres although "
+            "the area requires them (Mountain Law)."),
+          t("Train avant faussé, bas de caisse enfoncé, jante avant droite cassée.",
+            "Front axle bent, sill dented, front right rim broken."),
+          [(t("Véhicule", "Vehicle"), t("Volkswagen Tiguan, 2022", "Volkswagen Tiguan, 2022")),
+           (t("Immatriculation", "Registration"), t("GC-582-VT", "GC-582-VT")),
+           (t("Équipement hiver", "Winter equipment"), t("Non (obligatoire dans la zone)", "No (required in the area)"))],
+          t("Photos, devis du garage", "Photos, garage estimate")),
+    Claim("CLM-2024-0027", "Home", "claim_home_008.pdf", "Guillaume Mercier", "22 cours Lafayette, 69003 Lyon",
+          "2026-01-10 10:45:00", 3, 15200,
+          t("Feu de cuisson : de l'huile a pris feu sur la plaque et s'est propagée à la hotte et aux meubles hauts.",
+            "Cooking fire: oil caught fire on the hob and spread to the extractor hood and the wall units."),
+          t("Hotte et quatre meubles hauts détruits, plafond noirci, suie dans la cuisine et la salle à manger.",
+            "Extractor hood and four wall units destroyed, ceiling blackened, soot in the kitchen and dining room."),
+          [(t("Bien", "Property"), t("Appartement", "Flat")),
+           (t("Nature du sinistre", "Type of loss"), t("Incendie", "Fire"))],
+          t("Photos, devis du cuisiniste", "Photos, kitchen fitter's estimate")),
+    Claim("CLM-2024-0028", "Medical", "claim_medical_008.pdf", "Delphine Blanc", "35 rue de la Gare, 21000 Dijon",
+          "2026-01-12 15:30:00", 20, 3400,
+          t("Pose de deux implants dentaires et de couronnes.",
+            "Two dental implants and crowns fitted."),
+          t("Reste à charge après remboursement de la Sécurité sociale : 3 400 €.",
+            "Amount left to pay after the national health insurance refund: €3,400."),
+          [(t("Praticien", "Practitioner"), t("Cabinet dentaire du Parc, Dijon", "Le Parc dental practice, Dijon"))],
+          t("Devis et factures du dentiste", "Dentist's estimate and invoices")),
+    Claim("CLM-2024-0029", "Life", "claim_life_003.pdf", "Fabrice Guérin", "19 place de la Comédie, 34000 Montpellier",
+          "2026-01-14 09:15:00", 30, 90000,
+          t("Chute d'une échelle lors de travaux de toiture : traumatisme crânien et fractures multiples, opération "
+            "en urgence.",
+            "Fell from a ladder while working on the roof: head injury and multiple fractures, emergency surgery."),
+          t("Incapacité de travail de longue durée. Capital demandé au titre de la garantie invalidité : 90 000 €.",
+            "Long-term inability to work. Capital requested under the disability cover: €90,000."),
+          [(t("Garantie", "Cover"), t("Invalidité", "Disability"))],
+          t("Rapport des pompiers, certificat médical, compte-rendu opératoire", "Fire brigade report, medical certificate, operative report")),
+    Claim("CLM-2024-0030", "Auto", "claim_auto_011.pdf", "Audrey Chevalier", "44 rue Paradis, 13006 Marseille",
+          "2026-01-16 14:00:00", 4, 14912,
+          t("Collision dans un carrefour à Marseille : un véhicule venant de droite n'a pas respecté le stop.",
+            "Collision at a junction in Marseille: a vehicle coming from the right did not stop at the stop sign."),
+          t("Portière passager enfoncée, montant central déformé, airbags latéraux déclenchés.",
+            "Passenger door crushed, central pillar bent, side airbags deployed."),
+          [(t("Véhicule", "Vehicle"), t("Hyundai Tucson, 2022", "Hyundai Tucson, 2022")),
+           (t("Immatriculation", "Registration"), t("GL-733-AM", "GL-733-AM"))],
+          t("Constat amiable, devis du garage, photos", "Joint accident report, garage estimate, photos")),
 ]
 
-# ============================================================================
-# Home claim scenarios
-# ============================================================================
-HOME_SCENARIOS = [
-    {"cause": "Burst pipe in kitchen under the sink. Pipe corroded due to age (original 1985 plumbing). Water flowed for approximately 4 hours before discovery.",
-     "damage": "Kitchen hardwood floor warped (200 sq ft), lower cabinets swollen and delaminated, drywall water damage extending into dining room.",
-     "type": "Water Damage", "cost": 12500},
-    {"cause": "Severe thunderstorm with 70mph winds caused roof shingle damage and subsequent leak. Multiple shingles torn off on south-facing slope.",
-     "damage": "Ceiling water stains in master bedroom and hallway (150 sq ft). Insulation saturated in attic. Drywall bubbling and potential mold concern.",
-     "type": "Storm Damage", "cost": 8700},
-    {"cause": "Electrical fire originated in garage outlet (overloaded circuit). Fire contained to garage but smoke damage throughout first floor.",
-     "damage": "Garage structure charred (west wall), stored tools and equipment destroyed, vehicle in garage sustained heat damage. Smoke damage to kitchen and living room.",
-     "type": "Fire Damage", "cost": 35000},
-    {"cause": "Large oak tree fell on house during ice storm. Tree was approximately 60 feet tall and landed across the roof ridge.",
-     "damage": "Roof structure collapsed in two rooms (master bedroom and office), gutter system destroyed on east side, exterior siding damaged. Temporary tarp installed.",
-     "type": "Storm Damage", "cost": 22000},
-    {"cause": "Basement flooding from sump pump failure during heavy rainfall. Pump motor burned out, backup battery also dead.",
-     "damage": "Finished basement carpet ruined (800 sq ft), drywall damaged 4 feet up all walls, HVAC ductwork contaminated, stored belongings destroyed.",
-     "type": "Water Damage", "cost": 18500},
-    {"cause": "Vandalism - rocks thrown through living room bay window. Incident occurred during nighttime. Police report filed.",
-     "damage": "Bay window completely shattered (triple pane, custom size), interior water damage from rain entry before temporary covering, curtains and carpet stained.",
-     "type": "Vandalism", "cost": 6200},
-    {"cause": "Dishwasher supply line failed (braided stainless steel connector burst). Water leaked for estimated 8 hours overnight.",
-     "damage": "Kitchen tile floor undermined, subfloor rotted, lower kitchen cabinets destroyed (6 units), adjacent laundry room floor buckled.",
-     "type": "Water Damage", "cost": 14300},
-    {"cause": "Lightning strike hit chimney during severe thunderstorm. Electrical surge destroyed electronics and caused small fire in attic.",
-     "damage": "Chimney masonry cracked and partially collapsed, attic fire damage (contained), entire home electrical system fried including HVAC control board, TV, computers.",
-     "type": "Storm Damage", "cost": 28000},
-    {"cause": "Frozen pipe burst in upstairs bathroom during cold snap (-15F). Pipe in exterior wall with insufficient insulation.",
-     "damage": "Bathroom flooring destroyed, water cascaded to first floor causing ceiling collapse in living room, hardwood floor warping in two rooms.",
-     "type": "Water Damage", "cost": 16800},
-    {"cause": "High winds (60+ mph) tore vinyl siding panels off east and north sides of house. Exposed sheathing then absorbed rain.",
-     "damage": "32 siding panels missing/damaged, house wrap torn, OSB sheathing swelling from moisture, insulation compromised in affected wall cavities.",
-     "type": "Storm Damage", "cost": 9500},
-    {"cause": "Water heater tank failure (10-year-old unit). Bottom rusted through, 50 gallons released into utility room.",
-     "damage": "Utility room flooring destroyed, adjacent family room carpet saturated, lower drywall damage in both rooms, furnace base corroded.",
-     "type": "Water Damage", "cost": 7800},
-    {"cause": "Tornado damage - EF1 tornado passed within 200 yards. Not a direct hit but wind damage significant.",
-     "damage": "Roof ridge cap torn off, multiple skylights broken, fence destroyed, shed demolished, significant yard debris.",
-     "type": "Storm Damage", "cost": 19500},
-    {"cause": "Cooking fire on stovetop. Grease fire spread to range hood and upper cabinets before extinguisher deployment.",
-     "damage": "Range hood destroyed, upper cabinets (4 units) charred, ceiling above stove fire-damaged, smoke and soot throughout kitchen and dining area.",
-     "type": "Fire Damage", "cost": 15200},
-    {"cause": "Raccoon infestation in attic. Animals entered through damaged soffit and nested for weeks before discovery.",
-     "damage": "Attic insulation contaminated (must be replaced), HVAC flex ducts chewed through, soffit boards destroyed, animal waste remediation needed.",
-     "type": "Animal Damage", "cost": 8900},
-    {"cause": "Ice dam formation on roof caused water to back up under shingles and leak into walls of second floor.",
-     "damage": "Interior wall damage in two bedrooms, ceiling paint bubbling and peeling, mold discovered behind drywall in one wall, window trim rotted.",
-     "type": "Water Damage", "cost": 11200},
-]
 
-# ============================================================================
-# Medical claim scenarios
-# ============================================================================
-MEDICAL_SCENARIOS = [
-    {"service": "Annual physical examination including comprehensive blood work panel (CBC, CMP, lipid panel, thyroid, A1C). EKG performed due to family history.",
-     "diagnosis": "Routine preventive care examination - Z00.00", "provider": "Springfield Family Medicine Center",
-     "doctor": "Dr. Sarah Chen, MD", "npi": "1234567890", "cost": 850},
-    {"service": "Emergency room visit for acute chest pain. CT angiogram, troponin levels x3, cardiac monitoring 6 hours. Discharged with follow-up.",
-     "diagnosis": "Acute chest pain, non-cardiac origin - R07.9", "provider": "Springfield General Hospital Emergency Dept",
-     "doctor": "Dr. James Rodriguez, MD", "npi": "2345678901", "cost": 8500},
-    {"service": "Arthroscopic ACL reconstruction surgery with hamstring autograft. Pre-op MRI, anesthesia, 2-night hospital stay, post-op brace.",
-     "diagnosis": "Complete tear of anterior cruciate ligament, right knee - S83.511A", "provider": "Illinois Orthopedic Specialists",
-     "doctor": "Dr. Michael Park, MD, FAAOS", "npi": "3456789012", "cost": 32000},
-    {"service": "Diagnostic MRI of lumbar spine with and without contrast. Radiologist interpretation and report.",
-     "diagnosis": "Low back pain with radiculopathy, lumbar region - M54.5", "provider": "Advanced Imaging Associates",
-     "doctor": "Dr. Lisa Wang, MD (Radiology)", "npi": "4567890123", "cost": 3200},
-    {"service": "Physical therapy - 12 sessions post ACL reconstruction. Includes ROM exercises, strengthening, gait training, modalities.",
-     "diagnosis": "Post-surgical rehabilitation, right knee ACL repair - Z96.651", "provider": "Rehab Plus Physical Therapy",
-     "doctor": "Dr. Amanda Foster, DPT", "npi": "5678901234", "cost": 2400},
-    {"service": "Dental crown replacement - porcelain-fused-to-metal crown on molar #30. Includes impression, temporary crown, and final placement.",
-     "diagnosis": "Dental caries, tooth #30 with prior root canal - K02.9", "provider": "Springfield Family Dental Care",
-     "doctor": "Dr. Robert Kim, DDS", "npi": "6789012345", "cost": 1800},
-    {"service": "Comprehensive allergy testing panel (environmental and food) - 60 allergen skin prick test plus specific IgE blood panel.",
-     "diagnosis": "Allergic rhinitis, seasonal and perennial - J30.9", "provider": "Central Illinois Allergy & Asthma Clinic",
-     "doctor": "Dr. Patricia Nguyen, MD", "npi": "7890123456", "cost": 1200},
-    {"service": "Screening colonoscopy with polyp removal (2 sessile polyps removed via snare polypectomy). Moderate sedation.",
-     "diagnosis": "Encounter for screening for malignant neoplasm of colon - Z12.11", "provider": "Springfield Gastroenterology Center",
-     "doctor": "Dr. David Cohen, MD, FACG", "npi": "8901234567", "cost": 4500},
-    {"service": "Mental health counseling - 8 individual therapy sessions (CBT-based). Initial evaluation plus 7 follow-up sessions.",
-     "diagnosis": "Generalized anxiety disorder with moderate depression - F41.1, F32.1", "provider": "Behavioral Health Services of Springfield",
-     "doctor": "Dr. Jennifer Adams, PsyD", "npi": "9012345678", "cost": 1600},
-    {"service": "Urgent care visit for ankle injury. X-ray (3 views), examination, air cast application, crutch fitting.",
-     "diagnosis": "Sprain of calcaneofibular ligament, right ankle - S93.411A", "provider": "QuickCare Urgent Care Center",
-     "doctor": "Dr. Thomas Brown, MD", "npi": "0123456789", "cost": 950},
-    {"service": "Dermatology consultation for suspicious mole. Shave biopsy performed and sent to pathology. Follow-up visit for results.",
-     "diagnosis": "Dysplastic nevus, trunk - D22.5", "provider": "Springfield Dermatology Associates",
-     "doctor": "Dr. Karen Mitchell, MD, FAAD", "npi": "1122334455", "cost": 650},
-    {"service": "Prenatal care - routine 20-week anatomy ultrasound scan. Detailed fetal survey with measurements and images.",
-     "diagnosis": "Supervision of normal pregnancy, second trimester - Z34.02", "provider": "Women's Health Center of Springfield",
-     "doctor": "Dr. Emily Richardson, MD, OB-GYN", "npi": "2233445566", "cost": 1100},
-    {"service": "Ophthalmology exam - comprehensive dilated eye exam, OCT scan, visual field test. New prescription for corrective lenses.",
-     "diagnosis": "Open-angle glaucoma suspect, bilateral - H40.011", "provider": "Prairie Eye Center",
-     "doctor": "Dr. William Torres, MD, FACS", "npi": "3344556677", "cost": 450},
-    {"service": "Cardiology consultation - stress echocardiogram, 24-hour Holter monitor, follow-up visit with treatment plan discussion.",
-     "diagnosis": "Palpitations and exercise intolerance - R00.2", "provider": "Heart & Vascular Institute of Illinois",
-     "doctor": "Dr. Maria Santos, MD, FACC", "npi": "4455667788", "cost": 3800},
-    {"service": "ENT consultation for chronic sinusitis. CT sinus scan, nasal endoscopy, culture obtained. Medical management initiated.",
-     "diagnosis": "Chronic sinusitis, unspecified - J32.9", "provider": "Springfield ENT Specialists",
-     "doctor": "Dr. Andrew Lee, MD", "npi": "5566778899", "cost": 1400},
-]
-
-# ============================================================================
-# Life claim scenarios
-# ============================================================================
-LIFE_SCENARIOS = [
-    {"cause": "Accident de la route - collision frontale sur autoroute A4. Hospitalisation en soins intensifs pendant 3 semaines. Sequelles permanentes avec invalidite partielle evaluee a 40%.",
-     "beneficiary": "Conjoint(e) et enfants", "insured_amount": 150000,
-     "documents": "Rapport de police, certificat medical detaille, rapport d'expertise medicale, justificatif d'hospitalisation"},
-    {"cause": "Maladie grave diagnostiquee - cancer du poumon stade III. Traitement par chimiotherapie et radiotherapie en cours. Arret de travail prolonge avec pronostic reserve.",
-     "beneficiary": "Conjoint(e)", "insured_amount": 200000,
-     "documents": "Certificat medical, compte-rendu anatomopathologique, protocole de soins, justificatifs de traitement"},
-    {"cause": "Accident domestique grave - chute d'une echelle lors de travaux de toiture. Traumatisme cranien severe et fractures multiples. Intervention chirurgicale d'urgence realisee.",
-     "beneficiary": "Enfants designes au contrat", "insured_amount": 100000,
-     "documents": "Rapport des pompiers, certificat medical d'urgence, compte-rendu operatoire, bulletin de situation"},
-]
-
-# ============================================================================
-# Claims from seed data (001_seed_data.sql) — single source of truth
-# ============================================================================
-CLAIMS = [
-    {"claim_number": "CLM-2024-0001", "name": "Pierre Dupont",     "type": "Medical", "file": "claim_medical_001.pdf", "submitted_at": "2025-11-15 09:30:00", "address": "12 rue de la Paix, 75002 Paris"},
-    {"claim_number": "CLM-2024-0002", "name": "Marie Leroy",       "type": "Auto",    "file": "claim_auto_001.pdf",    "submitted_at": "2025-11-18 14:15:00", "address": "45 avenue Victor Hugo, 69006 Lyon"},
-    {"claim_number": "CLM-2024-0003", "name": "Jean Moreau",       "type": "Auto",    "file": "claim_auto_002.pdf",    "submitted_at": "2025-11-20 10:45:00", "address": "8 boulevard Haussmann, 75009 Paris"},
-    {"claim_number": "CLM-2024-0004", "name": "Sophie Bernard",    "type": "Home",    "file": "claim_home_001.pdf",    "submitted_at": "2025-11-22 16:00:00", "address": "23 rue Garibaldi, 69003 Lyon"},
-    {"claim_number": "CLM-2024-0005", "name": "Thomas Petit",      "type": "Medical", "file": "claim_medical_002.pdf", "submitted_at": "2025-11-25 08:20:00", "address": "156 route de Vannes, 44000 Nantes"},
-    {"claim_number": "CLM-2024-0006", "name": "Isabelle Durand",   "type": "Auto",    "file": "claim_auto_003.pdf",    "submitted_at": "2025-11-27 11:30:00", "address": "3 place Bellecour, 69002 Lyon"},
-    {"claim_number": "CLM-2024-0007", "name": "Nicolas Lambert",   "type": "Home",    "file": "claim_home_002.pdf",    "submitted_at": "2025-11-29 13:45:00", "address": "67 avenue Jean Jaures, 31000 Toulouse"},
-    {"claim_number": "CLM-2024-0008", "name": "Claire Fontaine",   "type": "Medical", "file": "claim_medical_003.pdf", "submitted_at": "2025-12-01 09:10:00", "address": "14 rue de Seze, 69006 Lyon"},
-    {"claim_number": "CLM-2024-0009", "name": "Antoine Rousseau",  "type": "Auto",    "file": "claim_auto_004.pdf",    "submitted_at": "2025-12-03 15:30:00", "address": "29 quai de la Tournelle, 75005 Paris"},
-    {"claim_number": "CLM-2024-0010", "name": "Julie Martin",      "type": "Home",    "file": "claim_home_003.pdf",    "submitted_at": "2025-12-05 10:00:00", "address": "88 rue Nationale, 59000 Lille"},
-    {"claim_number": "CLM-2024-0011", "name": "Philippe Garcia",   "type": "Medical", "file": "claim_medical_004.pdf", "submitted_at": "2025-12-07 08:45:00", "address": "5 rue du Faubourg, 13001 Marseille"},
-    {"claim_number": "CLM-2024-0012", "name": "Nathalie Thomas",   "type": "Auto",    "file": "claim_auto_005.pdf",    "submitted_at": "2025-12-09 14:20:00", "address": "41 avenue de la Republique, 33000 Bordeaux"},
-    {"claim_number": "CLM-2024-0013", "name": "Francois Robert",   "type": "Home",    "file": "claim_home_004.pdf",    "submitted_at": "2025-12-11 11:15:00", "address": "17 rue des Lices, 35000 Rennes"},
-    {"claim_number": "CLM-2024-0014", "name": "Catherine Richard",  "type": "Auto",   "file": "claim_auto_006.pdf",    "submitted_at": "2025-12-13 16:30:00", "address": "62 cours Mirabeau, 13100 Aix-en-Provence"},
-    {"claim_number": "CLM-2024-0015", "name": "David Simon",       "type": "Medical", "file": "claim_medical_005.pdf", "submitted_at": "2025-12-15 09:00:00", "address": "9 place du Capitole, 31000 Toulouse"},
-    {"claim_number": "CLM-2024-0016", "name": "Valerie Michel",    "type": "Auto",    "file": "claim_auto_007.pdf",    "submitted_at": "2025-12-17 13:45:00", "address": "33 rue de la Liberte, 06000 Nice"},
-    {"claim_number": "CLM-2024-0017", "name": "Arnaud Lefebvre",   "type": "Home",    "file": "claim_home_005.pdf",    "submitted_at": "2025-12-19 10:30:00", "address": "71 avenue Foch, 67000 Strasbourg"},
-    {"claim_number": "CLM-2024-0018", "name": "Christine Dubois",  "type": "Life",    "file": "claim_life_001.pdf",    "submitted_at": "2025-12-21 15:00:00", "address": "25 rue de Vesle, 51100 Reims"},
-    {"claim_number": "CLM-2024-0019", "name": "Sebastien Roux",    "type": "Auto",    "file": "claim_auto_008.pdf",    "submitted_at": "2025-12-23 08:15:00", "address": "48 boulevard Gambetta, 34000 Montpellier"},
-    {"claim_number": "CLM-2024-0020", "name": "Emilie Girard",     "type": "Home",    "file": "claim_home_006.pdf",    "submitted_at": "2025-12-25 12:00:00", "address": "16 rue Saint-Jean, 69005 Lyon"},
-    {"claim_number": "CLM-2024-0021", "name": "Laurent Martinez",  "type": "Medical", "file": "claim_medical_006.pdf", "submitted_at": "2025-12-27 14:30:00", "address": "54 avenue de Toulouse, 33000 Bordeaux"},
-    {"claim_number": "CLM-2024-0022", "name": "Sandrine Lopez",    "type": "Auto",    "file": "claim_auto_009.pdf",    "submitted_at": "2025-12-29 09:45:00", "address": "7 rue du Port, 44000 Nantes"},
-    {"claim_number": "CLM-2024-0023", "name": "Christophe Muller", "type": "Home",    "file": "claim_home_007.pdf",    "submitted_at": "2026-01-02 11:00:00", "address": "39 place Kleber, 67000 Strasbourg"},
-    {"claim_number": "CLM-2024-0024", "name": "Helene Fournier",   "type": "Life",    "file": "claim_life_002.pdf",    "submitted_at": "2026-01-04 16:15:00", "address": "82 rue de Paris, 59000 Lille"},
-    {"claim_number": "CLM-2024-0025", "name": "Benoit Giraud",     "type": "Medical", "file": "claim_medical_007.pdf", "submitted_at": "2026-01-06 08:30:00", "address": "11 rue Emile Zola, 38000 Grenoble"},
-    {"claim_number": "CLM-2024-0026", "name": "Cecile Andre",      "type": "Auto",    "file": "claim_auto_010.pdf",    "submitted_at": "2026-01-08 13:00:00", "address": "60 avenue Jean Perrot, 38000 Grenoble"},
-    {"claim_number": "CLM-2024-0027", "name": "Guillaume Mercier", "type": "Home",    "file": "claim_home_008.pdf",    "submitted_at": "2026-01-10 10:45:00", "address": "22 cours Lafayette, 69003 Lyon"},
-    {"claim_number": "CLM-2024-0028", "name": "Delphine Blanc",    "type": "Medical", "file": "claim_medical_008.pdf", "submitted_at": "2026-01-12 15:30:00", "address": "35 rue de la Gare, 21000 Dijon"},
-    {"claim_number": "CLM-2024-0029", "name": "Fabrice Guerin",    "type": "Life",    "file": "claim_life_003.pdf",    "submitted_at": "2026-01-14 09:15:00", "address": "19 place de la Comedie, 34000 Montpellier"},
-    {"claim_number": "CLM-2024-0030", "name": "Audrey Chevalier",  "type": "Auto",    "file": "claim_auto_011.pdf",    "submitted_at": "2026-01-16 14:00:00", "address": "44 rue Paradis, 13006 Marseille"},
-]
+def money(amount: float, lang: str) -> str:
+    """12300 -> "12 300,00 €" (fr) / "€12,300.00" (en)."""
+    if lang == "fr":
+        return f"{amount:,.2f} €".replace(",", " ").replace(".", ",")
+    return f"€{amount:,.2f}"
 
 
-def generate_auto_claim_pdf(output_path, claim_number, name, address, date_incident, scenario_idx):
-    """Generate a realistic auto insurance claim PDF."""
-    scenario = AUTO_SCENARIOS[scenario_idx % len(AUTO_SCENARIOS)]
-    amount = random.randint(2000, 35000)
-    policy_num = f"AUTO-{random.randint(100000, 999999)}"
+def render(path: str, claim: Claim, lang: str, figures: Dict[str, str]) -> None:
+    """One claim form: header, then sections of fields and paragraphs."""
+    labels = LABELS[lang]
+    pdf = canvas.Canvas(path, pagesize=A4)
+    width, height = A4
+    left, right = 2 * cm, width - 2 * cm
+    y = height - 2 * cm
 
-    c = canvas.Canvas(output_path, pagesize=letter)
-    width, height = letter
-
-    # Header
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(1*inch, height - 0.8*inch, "AUTO INSURANCE CLAIM FORM")
-    c.setFont("Helvetica", 9)
-    c.drawString(1*inch, height - 1.05*inch, "Springfield Mutual Insurance Company - Claims Department")
-    c.line(1*inch, height - 1.15*inch, width - 1*inch, height - 1.15*inch)
-
-    c.setFont("Helvetica", 10)
-    y = height - 1.5*inch
-
-    def write_field(label, value, bold_label=True):
+    def line(text: str, font: str = "Helvetica", size: int = 10, x: float = left, step: float = 0.5 * cm) -> None:
         nonlocal y
-        if bold_label:
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(1*inch, y, f"{label}:")
-            c.setFont("Helvetica", 10)
-            c.drawString(3*inch, y, str(value))
-        else:
-            c.drawString(1*inch, y, str(value))
-        y -= 0.22*inch
+        pdf.setFont(font, size)
+        pdf.drawString(x, y, text)
+        y -= step
 
-    def write_section(title):
+    def section(title: str) -> None:
         nonlocal y
-        y -= 0.15*inch
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(1*inch, y, title)
-        c.line(1*inch, y - 0.05*inch, width - 1*inch, y - 0.05*inch)
-        y -= 0.3*inch
-        c.setFont("Helvetica", 10)
+        y -= 0.2 * cm
+        line(title, "Helvetica-Bold", 11, step=0.15 * cm)
+        pdf.line(left, y, right, y)
+        y -= 0.45 * cm
 
-    def write_wrapped(text, max_width=6.5):
-        nonlocal y
-        words = text.split()
-        line = ""
+    def fields(rows: List[Tuple[str, str]]) -> None:
+        for label, value in rows:
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(left, y, f"{label} :" if lang == "fr" else f"{label}:")
+            line(value, x=left + 5.5 * cm)
+
+    def paragraph(text: str) -> None:
+        words, current = text.split(), ""
         for word in words:
-            test = f"{line} {word}".strip()
-            if c.stringWidth(test, "Helvetica", 10) < max_width * inch:
-                line = test
+            if pdf.stringWidth(f"{current} {word}".strip(), "Helvetica", 10) > right - left:
+                line(current, step=0.45 * cm)
+                current = word
             else:
-                c.drawString(1*inch, y, line)
-                y -= 0.18*inch
-                line = word
-        if line:
-            c.drawString(1*inch, y, line)
-            y -= 0.18*inch
+                current = f"{current} {word}".strip()
+        if current:
+            line(current, step=0.45 * cm)
 
-    write_section("CLAIM INFORMATION")
-    write_field("Claim Number", claim_number)
-    write_field("Date Filed", datetime.now().strftime("%Y-%m-%d"))
-    write_field("Date of Incident", date_incident.strftime("%Y-%m-%d %H:%M"))
-    write_field("Policy Number", policy_num)
+    line(labels["title"][claim.type], "Helvetica-Bold", 16, step=0.6 * cm)
+    line(f"{INSURER} — {labels['department'][claim.type]}", size=9, step=0.9 * cm)
 
-    write_section("CLAIMANT INFORMATION")
-    write_field("Full Name", name)
-    write_field("Address", address)
-    write_field("Phone", f"(555) {random.randint(100,999)}-{random.randint(1000,9999)}")
-    write_field("Email", f"{name.lower().replace(' ', '.')}@email.com")
+    section(labels["claim"])
+    fields([(labels["number"], claim.number), (labels["filed"], figures["filed"]),
+            (labels["incident"], figures["incident"]), (labels["policy"], figures["policy"])])
+    section(labels["insured"])
+    fields([(labels["name"], claim.name), (labels["address"], claim.address),
+            (labels["phone"], figures["phone"]), (labels["email"], figures["email"])])
+    if claim.details:
+        section(labels["details"][claim.type])
+        fields([(label[lang], value[lang]) for label, value in claim.details])
+    section(labels["circumstances"])
+    paragraph(claim.circumstances[lang])
+    section(labels["damage"][claim.type])
+    paragraph(claim.damage[lang])
+    section(labels["amount"])
+    fields([(labels["claimed"], money(claim.amount, lang))])
+    section(labels["attachments"])
+    paragraph(claim.attachments[lang])
 
-    write_section("VEHICLE INFORMATION")
-    write_field("Vehicle", scenario["vehicle"])
-    write_field("License Plate", scenario["plate"])
-    write_field("VIN", f"{''.join(random.choices('0123456789ABCDEFGHJKLMNPRSTUVWXYZ', k=17))}")
-    write_field("Mileage", f"{random.randint(5000, 85000):,} miles")
-
-    write_section("INCIDENT DETAILS")
-    write_field("Location", "")
-    write_wrapped(scenario["location"])
-    y -= 0.1*inch
-    write_field("Description", "")
-    write_wrapped(scenario["incident"])
-
-    write_section("DAMAGE ASSESSMENT")
-    write_wrapped(scenario["damage"])
-    y -= 0.1*inch
-    write_field("Estimated Repair Cost", f"${amount:,.2f}")
-    write_field("Police Report", f"SPD-2024-{random.randint(10000, 99999)}")
-    write_field("Tow Required", random.choice(["Yes - ABC Towing", "No"]))
-
-    y -= 0.3*inch
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1*inch, y, "Claimant Signature: ________________________")
-    c.drawString(4.5*inch, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-
-    c.save()
-    return amount
+    y -= 0.6 * cm
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(left, y, f"{labels['signature']} : ____________________" if lang == "fr"
+                   else f"{labels['signature']}: ____________________")
+    pdf.drawString(left + 11 * cm, y, f"{labels['date']} : {figures['filed']}" if lang == "fr"
+                   else f"{labels['date']}: {figures['filed']}")
+    pdf.save()
 
 
-def generate_home_claim_pdf(output_path, claim_number, name, address, date_loss, scenario_idx):
-    """Generate a realistic home insurance claim PDF."""
-    scenario = HOME_SCENARIOS[scenario_idx % len(HOME_SCENARIOS)]
-    amount = scenario.get("cost", random.randint(5000, 30000))
-    policy_num = f"HOME-{random.randint(100000, 999999)}"
-
-    c = canvas.Canvas(output_path, pagesize=letter)
-    width, height = letter
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(1*inch, height - 0.8*inch, "HOME INSURANCE CLAIM FORM")
-    c.setFont("Helvetica", 9)
-    c.drawString(1*inch, height - 1.05*inch, "Springfield Mutual Insurance Company - Property Claims Division")
-    c.line(1*inch, height - 1.15*inch, width - 1*inch, height - 1.15*inch)
-
-    c.setFont("Helvetica", 10)
-    y = height - 1.5*inch
-
-    def write_field(label, value):
-        nonlocal y
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(1*inch, y, f"{label}:")
-        c.setFont("Helvetica", 10)
-        c.drawString(3.2*inch, y, str(value))
-        y -= 0.22*inch
-
-    def write_section(title):
-        nonlocal y
-        y -= 0.15*inch
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(1*inch, y, title)
-        c.line(1*inch, y - 0.05*inch, width - 1*inch, y - 0.05*inch)
-        y -= 0.3*inch
-        c.setFont("Helvetica", 10)
-
-    def write_wrapped(text, max_width=6.5):
-        nonlocal y
-        words = text.split()
-        line = ""
-        for word in words:
-            test = f"{line} {word}".strip()
-            if c.stringWidth(test, "Helvetica", 10) < max_width * inch:
-                line = test
-            else:
-                c.drawString(1*inch, y, line)
-                y -= 0.18*inch
-                line = word
-        if line:
-            c.drawString(1*inch, y, line)
-            y -= 0.18*inch
-
-    write_section("CLAIM INFORMATION")
-    write_field("Claim Number", claim_number)
-    write_field("Date of Loss", date_loss.strftime("%Y-%m-%d"))
-    write_field("Type of Loss", scenario["type"])
-    write_field("Policy Number", policy_num)
-
-    write_section("PROPERTY OWNER INFORMATION")
-    write_field("Full Name", name)
-    write_field("Property Address", address)
-    write_field("Phone", f"(555) {random.randint(100,999)}-{random.randint(1000,9999)}")
-    write_field("Email", f"{name.lower().replace(' ', '.')}@email.com")
-
-    write_section("CAUSE OF LOSS")
-    write_wrapped(scenario["cause"])
-
-    write_section("DAMAGE DESCRIPTION")
-    write_wrapped(scenario["damage"])
-
-    write_section("COST ESTIMATE")
-    write_field("Estimated Repair Cost", f"${amount:,.2f}")
-    write_field("Emergency Repairs Done", random.choice([
-        "Yes - Emergency plumber called",
-        "Yes - Board-up service deployed",
-        "Yes - Temporary tarp installed",
-        "No emergency repairs needed"
-    ]))
-    write_field("Photos Attached", "Yes - 12 photos")
-    write_field("Contractor Estimate", random.choice(["Pending", "Attached", "Scheduled for inspection"]))
-
-    y -= 0.3*inch
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1*inch, y, "Property Owner Signature: ________________________")
-    c.drawString(4.5*inch, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-
-    c.save()
-    return amount
+def figures_of(claim: Claim, rng: random.Random) -> Dict[str, str]:
+    """The figures that are not facts of the claim (dates, policy, contact), drawn once for both versions."""
+    submitted = datetime.strptime(claim.submitted, "%Y-%m-%d %H:%M:%S")
+    plain = unicodedata.normalize("NFKD", claim.name.lower()).encode("ascii", "ignore").decode()
+    first, last = plain.split(" ", 1)
+    return {
+        "filed": submitted.strftime("%d/%m/%Y"),
+        "incident": (submitted - timedelta(days=claim.days_before)).strftime("%d/%m/%Y"),
+        "policy": f"{claim.type[:3].upper()}-{rng.randint(100000, 999999)}",
+        "phone": f"06 {rng.randint(10, 99)} {rng.randint(10, 99)} {rng.randint(10, 99)} {rng.randint(10, 99)}",
+        "email": f"{first[0]}.{last.replace(' ', '')}@exemple.fr",
+    }
 
 
-def generate_medical_claim_pdf(output_path, claim_number, name, address, date_service, scenario_idx):
-    """Generate a realistic medical insurance claim PDF."""
-    scenario = MEDICAL_SCENARIOS[scenario_idx % len(MEDICAL_SCENARIOS)]
-    amount = scenario.get("cost", random.randint(200, 5000))
-    policy_num = f"MED-{random.randint(100000, 999999)}"
-
-    c = canvas.Canvas(output_path, pagesize=letter)
-    width, height = letter
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(1*inch, height - 0.8*inch, "MEDICAL INSURANCE CLAIM FORM")
-    c.setFont("Helvetica", 9)
-    c.drawString(1*inch, height - 1.05*inch, "Springfield Mutual Insurance Company - Health Claims Processing")
-    c.line(1*inch, height - 1.15*inch, width - 1*inch, height - 1.15*inch)
-
-    c.setFont("Helvetica", 10)
-    y = height - 1.5*inch
-
-    def write_field(label, value):
-        nonlocal y
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(1*inch, y, f"{label}:")
-        c.setFont("Helvetica", 10)
-        c.drawString(3.2*inch, y, str(value))
-        y -= 0.22*inch
-
-    def write_section(title):
-        nonlocal y
-        y -= 0.15*inch
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(1*inch, y, title)
-        c.line(1*inch, y - 0.05*inch, width - 1*inch, y - 0.05*inch)
-        y -= 0.3*inch
-        c.setFont("Helvetica", 10)
-
-    def write_wrapped(text, max_width=6.5):
-        nonlocal y
-        words = text.split()
-        line = ""
-        for word in words:
-            test = f"{line} {word}".strip()
-            if c.stringWidth(test, "Helvetica", 10) < max_width * inch:
-                line = test
-            else:
-                c.drawString(1*inch, y, line)
-                y -= 0.18*inch
-                line = word
-        if line:
-            c.drawString(1*inch, y, line)
-            y -= 0.18*inch
-
-    write_section("CLAIM INFORMATION")
-    write_field("Claim Number", claim_number)
-    write_field("Date of Service", date_service.strftime("%Y-%m-%d"))
-    write_field("Policy Number", policy_num)
-    write_field("Group Number", f"GRP-{random.randint(1000, 9999)}")
-
-    write_section("PATIENT INFORMATION")
-    write_field("Patient Name", name)
-    write_field("Date of Birth", f"{random.randint(1960, 2000)}-{random.randint(1,12):02d}-{random.randint(1,28):02d}")
-    write_field("Address", address)
-    write_field("Phone", f"(555) {random.randint(100,999)}-{random.randint(1000,9999)}")
-
-    write_section("PROVIDER INFORMATION")
-    write_field("Provider Name", scenario["provider"])
-    write_field("Attending Physician", scenario["doctor"])
-    write_field("Provider NPI", scenario["npi"])
-    write_field("Tax ID", f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}")
-
-    write_section("DIAGNOSIS AND TREATMENT")
-    write_field("Diagnosis", "")
-    write_wrapped(scenario["diagnosis"])
-    y -= 0.1*inch
-    write_field("Services Rendered", "")
-    write_wrapped(scenario["service"])
-
-    write_section("CHARGES")
-    write_field("Total Charges", f"${amount:,.2f}")
-    copay = random.choice([20, 30, 40, 50, 75])
-    write_field("Patient Copay", f"${copay:.2f}")
-    write_field("Amount Claimed", f"${amount - copay:,.2f}")
-    write_field("Prior Authorization", random.choice(["Not Required", f"Auth #{random.randint(100000, 999999)}"]))
-
-    y -= 0.3*inch
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1*inch, y, "Patient Signature: ________________________")
-    c.drawString(4.5*inch, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-
-    c.save()
-    return amount
-
-
-def generate_life_claim_pdf(output_path, claim_number, name, address, date_incident, scenario_idx):
-    """Generate a realistic life insurance claim PDF."""
-    scenario = LIFE_SCENARIOS[scenario_idx % len(LIFE_SCENARIOS)]
-    policy_num = f"VIE-{random.randint(100000, 999999)}"
-
-    c = canvas.Canvas(output_path, pagesize=letter)
-    width, height = letter
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(1*inch, height - 0.8*inch, "LIFE INSURANCE CLAIM FORM")
-    c.setFont("Helvetica", 9)
-    c.drawString(1*inch, height - 1.05*inch, "Springfield Mutual Insurance Company - Life Claims Division")
-    c.line(1*inch, height - 1.15*inch, width - 1*inch, height - 1.15*inch)
-
-    c.setFont("Helvetica", 10)
-    y = height - 1.5*inch
-
-    def write_field(label, value):
-        nonlocal y
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(1*inch, y, f"{label}:")
-        c.setFont("Helvetica", 10)
-        c.drawString(3.2*inch, y, str(value))
-        y -= 0.22*inch
-
-    def write_section(title):
-        nonlocal y
-        y -= 0.15*inch
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(1*inch, y, title)
-        c.line(1*inch, y - 0.05*inch, width - 1*inch, y - 0.05*inch)
-        y -= 0.3*inch
-        c.setFont("Helvetica", 10)
-
-    def write_wrapped(text, max_width=6.5):
-        nonlocal y
-        words = text.split()
-        line = ""
-        for word in words:
-            test = f"{line} {word}".strip()
-            if c.stringWidth(test, "Helvetica", 10) < max_width * inch:
-                line = test
-            else:
-                c.drawString(1*inch, y, line)
-                y -= 0.18*inch
-                line = word
-        if line:
-            c.drawString(1*inch, y, line)
-            y -= 0.18*inch
-
-    write_section("CLAIM INFORMATION")
-    write_field("Claim Number", claim_number)
-    write_field("Date of Incident", date_incident.strftime("%Y-%m-%d"))
-    write_field("Policy Number", policy_num)
-    write_field("Claim Type", "Life Insurance - Sinistre")
-
-    write_section("POLICYHOLDER INFORMATION")
-    write_field("Subscriber Name", name)
-    write_field("Address", address)
-    write_field("Phone", f"(555) {random.randint(100,999)}-{random.randint(1000,9999)}")
-    write_field("Email", f"{name.lower().replace(' ', '.')}@email.com")
-
-    write_section("BENEFICIARY INFORMATION")
-    write_field("Designated Beneficiary", scenario["beneficiary"])
-
-    write_section("CAUSE OF CLAIM")
-    write_wrapped(scenario["cause"])
-
-    write_section("INSURED AMOUNT")
-    write_field("Capital Assure", f"${scenario['insured_amount']:,.2f}")
-    write_field("Coverage Type", random.choice(["Capital Deces", "Invalidite Permanente", "Incapacite Temporaire"]))
-
-    write_section("REQUIRED DOCUMENTS")
-    for doc in scenario["documents"].split(", "):
-        c.drawString(1.2*inch, y, f"- {doc}")
-        y -= 0.2*inch
-
-    y -= 0.3*inch
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1*inch, y, "Claimant Signature: ________________________")
-    c.drawString(4.5*inch, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-
-    c.save()
-    return scenario["insured_amount"]
-
+# ------------------------------------------------------------------ CLM-ENT-001
+# The construction site claim of the enterprise scenario (linked to the tenders), French only.
 
 def generate_construction_sinistre_pdf(output_path):
     """Generate the construction damage claim PDF (CLM-ENT-001)."""
@@ -720,65 +631,16 @@ def generate_construction_sinistre_pdf(output_path):
     c.save()
 
 
-def main():
-    import shutil
-
-    # Resolve output directory relative to this script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
-    output_dir = os.path.join(project_root, "documents", "claims")
-    os.makedirs(output_dir, exist_ok=True)
-
-    print(f"Generating claim PDFs to: {output_dir}\n")
-
-    # Track scenario indices per type for round-robin assignment
-    type_counters = {"Auto": 0, "Home": 0, "Medical": 0, "Life": 0}
-    count = 0
-    en_count = 0
-
+def main() -> None:
+    output = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "claims")
+    rng = random.Random(42)
     for claim in CLAIMS:
-        submitted = datetime.strptime(claim["submitted_at"], "%Y-%m-%d %H:%M:%S")
-        # Incident always 3-15 days BEFORE submission
-        incident_date = submitted - timedelta(days=random.randint(3, 15))
-        pdf_path = os.path.join(output_dir, claim["file"])
-        scenario_idx = type_counters[claim["type"]]
-        type_counters[claim["type"]] += 1
-
-        if claim["type"] == "Auto":
-            generate_auto_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
-                                    claim["address"], incident_date, scenario_idx)
-        elif claim["type"] == "Home":
-            generate_home_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
-                                    claim["address"], incident_date, scenario_idx)
-        elif claim["type"] == "Medical":
-            generate_medical_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
-                                       claim["address"], incident_date, scenario_idx)
-        elif claim["type"] == "Life":
-            generate_life_claim_pdf(pdf_path, claim["claim_number"], claim["name"],
-                                    claim["address"], incident_date, scenario_idx)
-
-        size = os.path.getsize(pdf_path)
-        print(f"  {claim['claim_number']} ({claim['type']:7s}) -> {claim['file']} ({size:,} bytes) - {claim['name']}")
-        count += 1
-
-        # Generate EN version (copy with _en suffix)
-        en_file = claim["file"].replace(".pdf", "_en.pdf")
-        en_path = os.path.join(output_dir, en_file)
-        shutil.copy2(pdf_path, en_path)
-        en_count += 1
-
-    # Construction sinistre (harmonized scenario)
-    print("\nConstruction Damage Claim:")
-    pdf_path = os.path.join(output_dir, "clm-ent-001-sinistre.pdf")
-    generate_construction_sinistre_pdf(pdf_path)
-    size = os.path.getsize(pdf_path)
-    print(f"  CLM-ENT-001 -> clm-ent-001-sinistre.pdf ({size:,} bytes)")
-    count += 1
-
-    print(f"\nGenerated {count} claim PDFs + {en_count} EN versions in {output_dir}")
-    print(f"  Auto: {type_counters['Auto']}, Home: {type_counters['Home']}, "
-          f"Medical: {type_counters['Medical']}, Life: {type_counters['Life']}, "
-          f"Construction: 1")
+        figures = figures_of(claim, rng)
+        render(os.path.join(output, claim.file), claim, "fr", figures)
+        render(os.path.join(output, claim.file.replace(".pdf", "_en.pdf")), claim, "en", figures)
+        print(f"{claim.number} {claim.type:8} {money(claim.amount, 'fr'):>14}  {claim.file} (+ _en)")
+    generate_construction_sinistre_pdf(os.path.join(output, "clm-ent-001-sinistre.pdf"))
+    print(f"{len(CLAIMS)} claims, French and English forms, and CLM-ENT-001, in {os.path.abspath(output)}")
 
 
 if __name__ == "__main__":
