@@ -59,6 +59,43 @@ Usage: include "multi-agents.mcp.env" (dict "root" $ "name" "claims" "cfg" .Valu
 {{- end -}}
 
 {{/*
+What the AI hub needs to deploy an MCP server from its catalog entry (Deploy MCP server): the
+environment of the chart's MCPServer above, secret values as references to the platform's secrets.
+The deploy form builds an MCPServer (mcp.x-k8s.io, MCP lifecycle operator) from it.
+Usage: include "multi-agents.catalog.mcpRuntimeMetadata" (dict "root" $ "name" "claims" "cfg" .Values.mcp.claims) | fromJson
+*/}}
+{{- define "multi-agents.catalog.mcpRuntimeMetadata" -}}
+{{- $help := dict
+      "POSTGRES_HOST" "PostgreSQL host of the platform" "POSTGRES_PORT" "PostgreSQL port"
+      "POSTGRES_USER" "PostgreSQL user" "POSTGRES_PASSWORD" "PostgreSQL password" "POSTGRES_DATABASE" "PostgreSQL database"
+      "OGX_ENDPOINT" "OGX endpoint (embeddings, vision)" "OGX_EMBEDDING_MODEL" "Embedding model in OGX"
+      "OGX_TIMEOUT" "Timeout of the OGX calls (seconds)" "OGX_VISION_MODEL" "Vision model of the OCR"
+      "SANDBOX_MCP_URL" "MCP endpoint of the OpenShell sandbox (run_python)"
+      "GUARDRAILS_ENDPOINT" "NeMo Guardrails: masks the personal data of the tool results"
+      "GUARDRAILS_CONFIG_ID" "NeMo Guardrails configuration" "GUARDRAILS_MODEL" "Model of the NeMo LLM rails"
+      "LOG_LEVEL" "Log level" "PORT" "Port of the MCP endpoint" "PYTHONUNBUFFERED" "Python logs without buffering" }}
+{{- $config := list }}
+{{- $secrets := dict }}
+{{- range $e := include "multi-agents.mcp.env" . | fromYamlArray }}
+{{- if $e.valueFrom }}
+{{- $ref := $e.valueFrom.secretKeyRef }}
+{{- $key := dict "key" $ref.key "envVarName" $e.name "required" true "description" (get $help $e.name | default $e.name) }}
+{{- $_ := set $secrets $ref.name (append (get $secrets $ref.name | default list) $key) }}
+{{- else }}
+{{- $config = append $config (dict "name" $e.name "type" "config" "required" true "defaultValue" $e.value
+      "description" (get $help $e.name | default $e.name)) }}
+{{- end }}
+{{- end }}
+{{- $secretList := list }}
+{{- range $name, $keys := $secrets }}
+{{- $secretList = append $secretList (dict "name" $name "keys" $keys "mountAsFile" false
+      "description" "Secret of the multi-agents platform (deploy in its namespace)") }}
+{{- end }}
+{{- dict "defaultPort" 8080 "mcpPath" "/mcp" "requiredEnvironmentVariables" $config
+      "prerequisites" (dict "secrets" $secretList) | toJson }}
+{{- end -}}
+
+{{/*
 In-cluster URL of an MCP server's Streamable HTTP endpoint.
 Usage: include "multi-agents.mcp.serverUrl" (dict "root" $ "name" "claims")
 */}}

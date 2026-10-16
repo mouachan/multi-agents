@@ -48,7 +48,7 @@ redHatSupported, partnerSupported and communitySupported.
       "tags" (concat (list "multi-agents") ($m.tags | default list))
       "tools" $tools
       "artifacts" (list (dict "uri" (printf "oci://%s" $image)))
-      "runtimeMetadata" (dict "defaultPort" 8080 "mcpPath" "/mcp")
+      "runtimeMetadata" (include "multi-agents.catalog.mcpRuntimeMetadata" (dict "root" $ "name" $name "cfg" $cfg) | fromJson)
       "securityIndicators" (dict "verifiedSource" true "secureEndpoint" (and $.Values.auth.enabled $.Values.mcpGateway.enabled) "sast" true "readOnlyTools" $readOnly)
       "customProperties" $support }}
 {{- if $repo }}

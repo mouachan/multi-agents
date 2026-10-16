@@ -436,6 +436,14 @@ curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}
   catalog is ready (`oc logs job/catalog-reload -n <namespace>`). Check the entries with
   `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
   (`multi_agents_agents`, `multi_agents_mcp`).
+* **Deploy an MCP server from the AI hub** (*AI hub → MCP servers → entry → Deploy MCP server*):
+  each of our entries carries what the deploy form needs (`runtimeMetadata`, generated from the
+  environment of the chart's own `MCPServer`): image, port and path, the configuration variables
+  with their values (`defaultValue`), and the platform secret (`postgresql-secret`) as references,
+  never values. Choose the release namespace (the database, OGX and NeMo addresses are those of
+  the platform) and a new name, e.g. `tracking-catalog`: the dashboard creates an `MCPServer`, the
+  MCP lifecycle operator its Deployment and Service (`oc get mcpserver -n <namespace>`). The AI
+  hub lists it under *Deployments*; delete it there, or `oc delete mcpserver tracking-catalog`.
 
   SAST of the MCP servers and agents (no high or medium finding apart from B104, listening
   on all interfaces, required in a container):
@@ -523,6 +531,24 @@ precedents on every upgrade; the backend embeds each processed document.
 * Fallback: ConfigMap file, then last loaded value. Each MLflow trace records
   `prompt.name` / `prompt.version` / `prompt.source`.
 * Set `mlflow.prompts.promoteOnSync=false` to keep UI promotions across upgrades.
+
+**Measure a version before promoting it.** The precedents (`precedent_decisions.json`, 30 cases
+with a known decision) are the reference. *Admin → Evaluation of the decisions* (or
+`POST /api/v1/admin/evaluations {"prompt_alias": "..."}`) processes them again with the agents,
+exactly as a processing but without saving anything, and logs a run in the MLflow experiment
+`decision-evaluation`: accuracy overall and per domain, share of cases handed to a person, the
+prompt versions used, one line per case. To try a new prompt:
+
+1. register it as a new version of the prompt (MLflow UI, or `mlflow.genai.register_prompt`) and
+   give it the alias `candidate`;
+2. evaluate `production`, then `candidate` (prompts without a `candidate` alias use their file);
+3. compare the two runs in MLflow (*Experiments → decision-evaluation*, select both → *Compare*);
+4. promote: move `production` to the version in the MLflow UI, or commit the text in
+   `files/prompts/agents/` (the next upgrade registers and promotes it).
+
+The reviewers' decisions are recorded on the processing traces as MLflow feedback
+(`reviewer_decision`, `agent_correct`): *Traces → Assessments* shows where the agents and the
+reviewers disagree, the cases to add to the reference.
 
 **Traces**: experiment `multi-agent-orchestrator` (*MLflow → Experiments*), one trace per chat
 turn or business processing (backend, A2A and agent spans together). The *Sessions* view groups
