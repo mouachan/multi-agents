@@ -22,6 +22,7 @@ PROFILES = {
         prompt="courrier-info-instructions",
         tools=["search_courrier_knowledge"],
         tags={"domain": "postal"},
+        search_first=True,       # answers only from the postal knowledge base
     ),
     "courrier_suivi": Profile(
         prompt="courrier-suivi-instructions",

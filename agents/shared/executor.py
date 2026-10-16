@@ -83,6 +83,9 @@ class Profile:
     tools: List[str]
     model: Optional[str] = None
     tags: Dict[str, str] = field(default_factory=dict)   # added to the agent's traces
+    # Chat: call a tool before answering (an agent that answers from a knowledge base). The model
+    # sometimes answers from memory while saying it searched.
+    search_first: bool = False
 
 
 class DomainAgentExecutor(AgentExecutor):
@@ -203,6 +206,9 @@ class DomainAgentExecutor(AgentExecutor):
         async def run(model: str) -> Dict[str, Any]:
             if processing and meta.get("decision_values") and tools:
                 return await self._guided(updater, model, instructions, message, tools, previous, meta)
+            if profile.search_first and tools:
+                return await self._respond(updater, model, instructions, message, tools, previous,
+                                           tool_choice="required", max_tool_calls=1)
             return await self._respond(updater, model, instructions, message, tools, previous)
 
         try:

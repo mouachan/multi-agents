@@ -17,7 +17,8 @@ agents read, with "success" and "processing_time_seconds" (shown in the processi
                                           unexpected failure (logged with its traceback)
 A tool that fails half-way but has partial results returns them with "success": False and "error".
 Before it leaves the server the result goes through personal_data.mask(): the model never reads the
-names, e-mail addresses or phone numbers of the people in the records.
+names, e-mail addresses or phone numbers of the people in the records. Then injection.remove_instructions():
+instructions hidden in the document texts are removed and reported ("security").
 """
 import functools
 import inspect
@@ -28,6 +29,7 @@ from typing import Any, Awaitable, Callable, Dict
 
 from mcp.server.fastmcp import FastMCP
 
+from .injection import remove_instructions
 from .personal_data import mask
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ def tool(mcp: FastMCP, *, personal_data: bool = True) -> Callable:
                 result = {"success": True, **(await function(*args, **kwargs))}
                 if personal_data:
                     result = await mask(result)
+                result = remove_instructions(result)
             except ToolError as e:
                 result = {"success": False, "error": str(e)}
             except Exception as e:

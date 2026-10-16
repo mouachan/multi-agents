@@ -5,7 +5,9 @@ POST /api/v1/<domain>/<id>/process marks the case "processing", starts process_c
 
   1. sends the processing request to the domain's agent (A2A): the prompt file of the domain, the case
      data, the tools of the guided workflow (run in this order) and the decision values;
-  2. saves the agent's decision and the status that follows from it (app/services/decisions.py);
+  2. saves the agent's decision and the status that follows from it (app/services/decisions.py). When a
+     tool removed instructions aimed at the AI from a document (prompt injection, MCP servers'
+     shared/injection.py), the case goes to a person whatever the agent decided;
   3. keeps the processing steps (each tool call and its output) in the case metadata, for the page;
   4. embeds the case document, so that later cases find it as a precedent (app/services/embeddings.py);
   5. for claims, records the types of personal data found in the documents (app/services/pii_report.py).
@@ -35,6 +37,8 @@ from app.services.turn_trace import TurnTrace
 logger = logging.getLogger(__name__)
 
 OCR_PREVIEW_CHARS = 4000   # OCR text already known, given to the agent with the request
+INJECTION_REASON = ("Le document contient {count} instruction(s) destinée(s) à l'IA, retirée(s) avant l'analyse "
+                    "(tentative de manipulation) : vérifier le document avant de décider.")
 
 
 def job_name(spec: DomainSpec, case_id) -> str:
@@ -73,6 +77,23 @@ def processing_steps(tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "error_message": call.get("error"),
         })
     return steps
+
+
+def instructions_removed(tool_calls: List[Dict[str, Any]]) -> int:
+    """How many instructions aimed at the AI the tools removed from the documents."""
+    return sum(step["output_data"].get("security", {}).get("instructions_removed", 0)
+               for step in processing_steps(tool_calls))
+
+
+def handed_over(spec: DomainSpec, decision: Dict[str, Any], removed: int) -> Dict[str, Any]:
+    """The agent's decision turned into a review: a document tried to manipulate the agent."""
+    review = dict(decision.get("review") or {})
+    review["reasons"] = [INJECTION_REASON.format(count=removed), *(review.get("reasons") or [])]
+    review["checks"] = ["Ouvrir le document et lire l'instruction retirée", *(review.get("checks") or [])]
+    agent_choice = decision.get("recommendation")
+    if agent_choice in spec.human_decisions:      # what the agent had decided becomes its suggestion
+        review["suggestion"] = agent_choice
+    return {**decision, "recommendation": spec.review_decision, "review": review}
 
 
 async def ask_agent(spec: DomainSpec, case, request: str) -> Dict[str, Any]:
@@ -114,7 +135,13 @@ async def process_case(db: AsyncSession, spec: DomainSpec, case_id) -> None:
     started = time.monotonic()
     try:
         result = await ask_agent(spec, case, await processing_request(db, spec, case))
-        await decisions.save_agent_decision(db, spec, case, result.get("decision") or {}, result.get("model"))
+        decision = result.get("decision") or {}
+        removed = instructions_removed(result.get("tool_calls", []))
+        if removed:
+            logger.warning("%s %s: %d instruction(s) aimed at the AI removed from its documents",
+                           spec.label, case_number(spec, case), removed)
+            decision = handed_over(spec, decision, removed)
+        await decisions.save_agent_decision(db, spec, case, decision, result.get("model"))
         case.meta = {**(case.meta or {}),
                      "processing_steps": processing_steps(result.get("tool_calls", [])),
                      "usage": result.get("usage") or {},

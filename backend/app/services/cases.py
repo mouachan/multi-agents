@@ -1,9 +1,10 @@
 """How a case is described: to the agent (the processing request) and to the UI (the API)."""
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy import inspect
 
 from app.domains import DomainSpec
+from app.domains.spec import fact, section
 from app.models.case import CaseColumns
 
 _SHARED_COLUMNS = {name for name in vars(CaseColumns) if not name.startswith("_")}
@@ -41,9 +42,19 @@ def case_to_api(spec: DomainSpec, case) -> Dict[str, Any]:
         "metadata": meta,
         "processing_steps": meta.get("processing_steps", []),
         # the facts of the last processing, taken from the agent's tool outputs (the domain's evidence())
-        "evidence": spec.evidence(tool_outputs(case)) if meta.get("processing_steps") else [],
+        "evidence": evidence(spec, case) if meta.get("processing_steps") else [],
         "trace": meta.get("trace"),     # MLflow trace of the last processing
     }
+
+
+def evidence(spec: DomainSpec, case) -> List[Dict[str, Any]]:
+    """The domain's evidence, and a security section when tools removed instructions aimed at the AI."""
+    outputs = tool_outputs(case)
+    sections = spec.evidence(outputs)
+    removed = sum(output.get("security", {}).get("instructions_removed", 0) for output in outputs.values())
+    if removed:
+        sections = [section("security", facts=[fact("instructions_removed", removed)]), *sections]
+    return sections
 
 
 def tool_outputs(case) -> Dict[str, Dict[str, Any]]:

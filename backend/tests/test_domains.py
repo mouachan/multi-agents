@@ -96,3 +96,24 @@ async def test_postal_tracking_timeline(client):
 async def test_claims_personal_data_report(client):
     claim = (await client.get(f"{API}/claims/")).json()["items"][0]
     assert (await client.get(f"{API}/claims/{claim['id']}/personal-data")).status_code == 200
+
+
+async def test_a_document_that_tries_to_manipulate_the_agent_goes_to_a_person(client, agent, fresh_data, domain):
+    # the agent approved, but a tool removed an instruction aimed at the AI from the document
+    case = await first_case(client, domain.name)
+    agent.answer.update(
+        output="done",
+        decision={"recommendation": domain.human_decisions[0], "confidence": 1.0, "reasoning": "Validé"},
+        tool_calls=[tool_call(domain.processing_tools[0], {"success": True, "raw_text": "[INSTRUCTION RETIRÉE]",
+                                                           "security": {"instructions_removed": 1}})],
+    )
+    await client.post(f"{API}/{domain.name}/{case['id']}/process")
+    await wait_for_jobs()
+
+    processed = (await client.get(f"{API}/{domain.name}/{case['id']}")).json()
+    assert processed["status"] == domain.review_status
+    assert processed["evidence"][0] == {"key": "security", "items": [],
+                                        "facts": [{"key": "instructions_removed", "value": 1, "unit": ""}]}
+    decision = (await client.get(f"{API}/{domain.name}/{case['id']}/decision")).json()
+    assert "instruction" in decision["review"]["reasons"][0]
+    assert decision["review"]["suggestion"] == domain.human_decisions[0]    # what the agent had decided

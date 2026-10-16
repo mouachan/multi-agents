@@ -398,6 +398,8 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
     },
     evidence: {
       title: "Ce que l'agent a trouvé",
+      security: 'Sécurité',
+      fact_instructions_removed: "Instructions destinées à l'IA retirées du document",
       subtitle: "Faits extraits des outils du traitement, sans LLM : vérifiables",
       payout: "Calcul de l'indemnisation",
       contracts: "Contrats de l'assuré",
@@ -847,6 +849,8 @@ export const translations: Record<Locale, Record<string, Record<string, string>>
     },
     evidence: {
       title: "What the agent found",
+      security: 'Security',
+      fact_instructions_removed: 'Instructions aimed at the AI removed from the document',
       subtitle: "Facts taken from the processing's tools, without any LLM: checkable",
       payout: "Payout calculation",
       contracts: "The claimant's contracts",
