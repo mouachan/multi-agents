@@ -343,7 +343,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v3.5.23
+    tag: v3.5.24
 
   # Service
   service:
@@ -385,7 +385,7 @@ frontend:
   # Image
   image:
     repository: frontend
-    tag: v3.5.23
+    tag: v3.5.24
 
   # Service
   service:
@@ -715,7 +715,7 @@ agents:
     replicas: 1
     image:
       repository: claims-agent
-      tag: v3.5.23
+      tag: v3.5.24
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -731,7 +731,7 @@ agents:
     replicas: 1
     image:
       repository: tenders-agent
-      tag: v3.5.23
+      tag: v3.5.24
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
@@ -747,7 +747,7 @@ agents:
     replicas: 1
     image:
       repository: postal-agent
-      tag: v3.5.23
+      tag: v3.5.24
     model: ""          # default: models.reasoning
     logLevel: INFO
     resources:
