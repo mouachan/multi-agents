@@ -35,10 +35,9 @@ Next steps
   1. Wait for the pods and the post-install Jobs (init-postgres, data-init, prompt-sync, maas-api-key):
        oc get pods,jobs -n {{ $ns }}
 {{- if .Values.rhoaiCatalog.enabled }}
-  2. Restart the OpenShift AI catalog so it loads the agents and MCP servers, then check it is ready.
-     Needed after every install or upgrade that changes the catalog entries: until the restart,
-     the whole AI hub catalog (models, agents, MCP servers) can be unavailable.
-       oc rollout restart deploy/model-catalog -n {{ .Values.rhoaiCatalog.namespace }}
+  2. The OpenShift AI catalog restarts when the agents and MCP servers entries change (Job
+     catalog-reload, it waits until the catalog is ready). Check it:
+       oc logs job/catalog-reload -n {{ $ns }}
        oc exec -n {{ .Values.rhoaiCatalog.namespace }} deploy/model-catalog -c catalog -- curl -s http://127.0.0.1:8080/readyz
        # -> {"plugins":{"agent":true,"mcp":true,"model":true},"status":"ready"}
 {{- end }}

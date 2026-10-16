@@ -427,11 +427,13 @@ curl -H "Authorization: Bearer $TOKEN" $B/tenders/ -o /dev/null -w '%{http_code}
   Security indicators: *Verified source*, *Secure endpoint* (MCP Gateway with per-user
   authorization), *SAST* (Bandit, see below) and *Read only tools* (computed from the tools'
   access types).
-  **After any change to the catalog entries, restart the catalog**:
-  `oc rollout restart deploy/model-catalog -n rhoai-model-registries`. The catalog reloads a
-  modified source file by itself, but its *model* plugin fails that reload (`label with name
-  'Multi-agents' already exists from another origin`) and the pod turns NotReady: the whole
-  AI hub catalog (models, agents, MCP servers) is then unavailable until the restart. Check them with
+  **The catalog restarts by itself when our entries change** (Job `catalog-reload`, run after
+  every install and upgrade). The catalog reloads a modified source file on its own, but its
+  *model* plugin fails that reload (`label with name 'Multi-agents' already exists from another
+  origin`) and the pod turns NotReady: the whole AI hub catalog (models, agents, MCP servers)
+  would be unavailable. The Job writes the hash of the entries on the catalog's pod template:
+  unchanged entries, no restart; changed entries, one rollout, and the Job waits until the
+  catalog is ready (`oc logs job/catalog-reload -n <namespace>`). Check the entries with
   `oc logs -n rhoai-model-registries deploy/model-catalog -c catalog | grep multi_agents`
   (`multi_agents_agents`, `multi_agents_mcp`).
 
@@ -617,8 +619,10 @@ one.
 * When the `version` of a catalog entry changes, the catalog keeps the previous record next
   to the new one (duplicate cards). The entries use the chart `appVersion`, so image rebuilds
   do not change it; after an `appVersion` bump, clean up as follows. Disabling the source (`enabled: false` in the
-  `sources.yaml` of ConfigMap `multi-agents-catalog`) removes its records; enable it again
-  with a `helm upgrade`, and restart `model-catalog` after each change (see above).
+  `sources.yaml` of ConfigMap `multi-agents-catalog`) removes its records: disable it,
+  restart `model-catalog` (`oc rollout restart deploy/model-catalog -n rhoai-model-registries`),
+  then run the `helm upgrade` (it enables the source again and the `catalog-reload` Job restarts
+  the catalog).
 * The model-catalog loads the sources only as leader: after a restart, the new pod can log
   `Lock held by another instance` until the lease of the previous pod expires, and serves
   the previous entries meanwhile.

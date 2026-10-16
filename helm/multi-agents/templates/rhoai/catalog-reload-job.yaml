@@ -1,0 +1,93 @@
+{{- if .Values.rhoaiCatalog.enabled }}
+{{- /*
+Restarts the OpenShift AI model-catalog when our catalog entries change (GitHub issue #1).
+
+The catalog reloads a changed ConfigMap by itself, but the reload breaks its model plugin ("label
+already exists from another origin"): the pod turns NotReady and the whole AI hub catalog (models,
+agents, MCP servers) is unavailable until it restarts. This post-install/upgrade Job writes the hash
+of the multi-agents-catalog ConfigMap on the catalog's pod template: same entries, same hash, no
+restart; new entries, new hash, one rollout. It then waits until the catalog is ready again.
+*/}}
+{{- $cat := .Values.rhoaiCatalog }}
+{{- $ns := include "multi-agents.namespace" . }}
+{{- $checksum := include (print $.Template.BasePath "/rhoai/catalog-sources.yaml") . | sha256sum | trunc 16 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: catalog-reload
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $ns }}-catalog-reload
+  namespace: {{ $cat.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [model-catalog]
+    verbs: [get, list, watch, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $ns }}-catalog-reload
+  namespace: {{ $cat.namespace }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $ns }}-catalog-reload
+subjects:
+  - kind: ServiceAccount
+    name: catalog-reload
+    namespace: {{ $ns }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-reload
+  namespace: {{ $ns }}
+  labels:
+    {{- include "multi-agents.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: catalog-reload
+      containers:
+        - name: reload
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          env:
+            - {name: NS, value: {{ $cat.namespace | quote }}}
+            - {name: CHECKSUM, value: {{ $checksum | quote }}}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              key="multi-agents.io/catalog-checksum"
+              current=$(oc get deploy/model-catalog -n "$NS" -o jsonpath="{.spec.template.metadata.annotations.multi-agents\.io/catalog-checksum}")
+              if [ "$current" = "$CHECKSUM" ]; then
+                echo "Catalog entries unchanged ($CHECKSUM): no restart"
+                exit 0
+              fi
+              echo "Catalog entries changed (${current:-none} -> $CHECKSUM): restarting model-catalog"
+              oc patch deploy/model-catalog -n "$NS" --type merge \
+                -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"$key\":\"$CHECKSUM\"}}}}}"
+              oc rollout status deploy/model-catalog -n "$NS" --timeout=10m
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+{{- end }}
