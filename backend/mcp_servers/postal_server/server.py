@@ -17,8 +17,8 @@ TRACKING_EVENTS = 20
 @tool(mcp)
 async def list_reclamations(status: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
     """
-    List postal complaints, the most recent first, with their current decision. "total" is the number of
-    matching complaints (use it to answer "how many"), the list holds the most recent ones.
+    List postal complaints, the most recent first, with their current decision. "matching" is the number of
+    complaints with this status (the answer to "how many"); the list holds the most recent ones.
 
     Args:
         status: Optional status filter (pending, processing, completed, rejected, escalated, failed)

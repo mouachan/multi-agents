@@ -23,7 +23,7 @@ async def test_list_read_documents_statistics(servers, server, list_tool, get_to
     number = (await fetch_one(seeded))["number"]
 
     listing = await call(mcp, list_tool, limit=5)
-    assert listing["success"] and 0 < listing["listed"] == len(listing[f"{key}s"]) <= 5 <= listing["total"]
+    assert listing["success"] and 0 < listing["listed"] == len(listing[f"{key}s"]) <= 5 <= listing["matching"]
     assert "processing_time_seconds" in listing
 
     case = await call(mcp, get_tool, **{argument: number})
@@ -46,7 +46,7 @@ async def test_a_status_filter_lists_only_that_status(servers):
     listing = await call(servers["claims"], "list_claims", status="pending", limit=3)
     assert {c["status"] for c in listing["claims"]} == {"pending"} and listing["listed"] == 3
     pending = await fetch_one("SELECT COUNT(*) AS n FROM claims WHERE status = 'pending' AND NOT is_archived")
-    assert listing["total"] == pending["n"] > 3       # how many match, not how many are listed
+    assert listing["matching"] == pending["n"] > 3    # how many match, not how many are listed
 
 
 async def test_the_complaint_comes_with_its_tracking_events(servers):

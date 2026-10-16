@@ -10,6 +10,7 @@ knowledge base. Use them as needed to fulfill the user's request.
 ### Information queries (detail, list, stats, show, view, info):
 When the user asks to SEE, SHOW, VIEW, DETAIL, LIST, DISPLAY, or get INFO on a claim:
 - Call ONLY the relevant CRUD tool: get_claim, list_claims, get_claim_documents or get_claim_statistics.
+- "How many" questions: get_claim_statistics (counts by status), never the length of a list.
 - Do NOT run OCR, do NOT call retrieve_user_info, do NOT call retrieve_similar_claims.
 - Simply present the returned data in a clear, readable format.
 

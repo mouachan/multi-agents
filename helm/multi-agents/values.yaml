@@ -208,7 +208,7 @@ mcp:
     replicas: 1
     image:
       repository: claims-server
-      tag: v3.5.20
+      tag: v3.5.22
     service:
       type: ClusterIP
       port: 8080
@@ -229,7 +229,7 @@ mcp:
     replicas: 1
     image:
       repository: tenders-server
-      tag: v3.5.20
+      tag: v3.5.22
     service:
       type: ClusterIP
       port: 8080
@@ -250,7 +250,7 @@ mcp:
     replicas: 1
     image:
       repository: postal-server
-      tag: v3.5.20
+      tag: v3.5.22
     service:
       type: ClusterIP
       port: 8080
@@ -337,7 +337,7 @@ backend:
   # Image
   image:
     repository: backend
-    tag: v3.5.20
+    tag: v3.5.22
 
   # Service
   service:

@@ -11,7 +11,7 @@ Decision for a message:
     2. clear winner (score >= min_score and margin over the runner-up) -> that agent
     3. weak match on a follow-up -> keep the session's current agent ("sticky")
     4. two agents too close, or weak match without a current agent -> one short LLM
-       call chooses among the top candidates
+       call chooses among the agents close to the top (within twice the margin, at most 3)
 Thresholds were calibrated on nomic-embed-text-v1-5 (genuine requests score 0.63-0.90,
 follow-ups like "merci" or "et le deuxième ?" 0.52-0.60).
 
@@ -189,7 +189,10 @@ class SemanticRouter:
             if top_score < self.min_score and current_agent_id:
                 agent_id, method = current_agent_id, "sticky"
             elif top_score < self.min_score or (runner_up[0] and top_score - runner_up[1] < self.margin):
-                candidates = [a for a, _ in ranked[:3 if top_score < self.min_score else 2]]
+                if top_score < self.min_score:
+                    candidates = [a for a, _ in ranked[:3]]
+                else:
+                    candidates = [a for a, score in ranked if top_score - score <= 2 * self.margin][:3]
                 choice = await self._llm_choice(client, message, candidates)
                 agent_id, method = (choice or top_id), "llm"
             else:

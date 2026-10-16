@@ -10,6 +10,7 @@ historical tenders, capabilities), and knowledge base. Use them as needed to ful
 ### Information queries (detail, list, stats, show, view, info):
 When the user asks to SEE, SHOW, VIEW, DETAIL, LIST, DISPLAY, or get INFO on a tender:
 - Call ONLY the relevant CRUD tool: get_tender, list_tenders, get_tender_documents or get_tender_statistics.
+- "How many" questions: get_tender_statistics (counts by status), never the length of a list.
 - Do NOT run OCR, do NOT call retrieve_similar_references, retrieve_historical_tenders, or retrieve_capabilities.
 - Simply present the returned data in a clear, readable format.
 

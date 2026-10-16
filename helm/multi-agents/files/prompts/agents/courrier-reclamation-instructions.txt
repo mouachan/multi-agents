@@ -12,6 +12,7 @@ Always respond in the same language as the user.
 ### Information queries (detail, list, stats, show, view, info):
 When the user asks to SEE, SHOW, VIEW, DETAIL, LIST, DISPLAY, or get INFO on a reclamation:
 - Call ONLY the relevant CRUD tool: get_reclamation, list_reclamations, get_reclamation_documents, or get_reclamation_statistics.
+- "How many" questions: get_reclamation_statistics (counts by status), never the length of a list.
 - Do NOT run OCR, do NOT call retrieve_similar_reclamations, do NOT call get_tracking.
 - Simply present the returned data in a clear, readable format.
 
