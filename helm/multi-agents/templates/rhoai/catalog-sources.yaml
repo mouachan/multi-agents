@@ -32,7 +32,7 @@ redHatSupported, partnerSupported and communitySupported.
 {{- $image := printf "%s/%s:%s" $registry $cfg.image.repository $cfg.image.tag }}
 {{- $logo := $.Files.Get (printf "files/branding/mcp/%s.svg" $name) | default $appLogo }}
 {{- $readme := printf "%s\n\n%s\n" ($.Files.Get (printf "files/catalog/mcp/%s.md" $name) | trim)
-      (include "multi-agents.catalog.mcpReadme" (dict "root" $ "name" $name "tools" $tools "readOnly" $readOnly "image" $image)) }}
+      (include "multi-agents.catalog.mcpReadme" (dict "root" $ "name" $name "cfg" $cfg "tools" $tools "readOnly" $readOnly "image" $image)) }}
 {{- $entry := dict
       "name" (printf "%s-mcp" $name)
       "displayName" $m.displayName

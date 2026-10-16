@@ -59,6 +59,21 @@ All users (authentication disabled)
 - **In-cluster:** `http://{{ .name }}-server.{{ $ns }}.svc.cluster.local:8080/mcp` (Streamable HTTP), `/sse` (SSE), `/health`
 - **Image:** `{{ .image }}`
 
+## Deploy from the AI hub
+*Deploy MCP server* runs another instance of this server (an `MCPServer`, run by the MCP lifecycle
+operator). Deploy it in the platform namespace `{{ $ns }}`, under a new name (e.g. `{{ .name }}-catalog`).
+The YAML of the form leaves the configuration as `<NAME>` placeholders: replace them with these values.
+{{- $runtime := include "multi-agents.catalog.mcpRuntimeMetadata" (dict "root" $root "name" .name "cfg" .cfg) | fromJson }}
+
+| Variable | Value |
+|---|---|
+{{- range $runtime.requiredEnvironmentVariables }}
+| `{{ .name }}` | `{{ .defaultValue }}` |
+{{- end }}
+
+The credentials come from the platform's secrets, already referenced:
+{{- range $runtime.prerequisites.secrets }} `{{ .name }}`{{ end }}.
+
 ## Governance
 {{- if $secured }}
 Each tool call through the MCP Gateway carries the OpenShift token of the user who asked the agent.
