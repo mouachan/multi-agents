@@ -1,0 +1,14 @@
+# Tools of the demo video: Playwright + full Chromium (recording), ffmpeg (montage), Kokoro TTS (voice-over).
+# The Kokoro model weights are downloaded from Hugging Face at the first run (cache volume, see demo-video.sh),
+# never baked into the image.
+FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
+
+RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# CPU-only PyTorch first: the default wheels pull several GB of CUDA libraries
+RUN pip install --no-cache-dir --root-user-action=ignore torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir --root-user-action=ignore playwright==1.65.2 numpy soundfile "kokoro>=0.9.4"
+
+COPY *.py /opt/demo-video/
+WORKDIR /work
