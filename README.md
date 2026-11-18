@@ -26,6 +26,14 @@ What the demo shows:
 * **Observability**: one **MLflow** trace per chat turn or processing, agent prompts versioned in the
   MLflow Prompt Registry, metrics dashboard.
 
+## Demo video
+
+[![Demo video: agentic AI on Red Hat OpenShift AI 3.5](https://img.youtube.com/vi/5Xy7TIOXdyw/maxresdefault.jpg)](https://www.youtube.com/watch?v=5Xy7TIOXdyw)
+
+A narrated tour of about 3.5 minutes: Models-as-a-Service, the agents and MCP servers in the OpenShift AI hub,
+a claim, a tender and a complaint processed by the agents, the human review, the chat and its execution trace,
+the MLflow traces, governance and the OpenShell sandbox. To record it again: [scripts/demo-video](scripts/demo-video/README.md).
+
 ## Architecture
 
 ```mermaid
@@ -123,6 +131,7 @@ curl -N -X POST "$B/chat/sessions/$SESSION/messages" -H 'Content-Type: applicati
 | `data-init/` | the job that prepares the data at installation |
 | `database/` | schema, seed, precedent decisions |
 | `documents/` | the sample PDFs |
+| `scripts/demo-video/` | records, narrates and edits the demo video (Playwright, Kokoro, ffmpeg in podman) |
 
 Where to change what, and how to add a tool or a domain: [docs/code-guide.md](docs/code-guide.md).
 
